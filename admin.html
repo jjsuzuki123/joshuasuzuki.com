@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin · Josh Suzuki</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Helvetica Neue", Arial, sans-serif;
+      background: #f7f7f8;
+      color: #111111;
+    }
+
+    .admin-shell {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 2.5rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    .home-link {
+      font-size: 0.85rem;
+      color: #374151;
+      text-decoration: none;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      padding: 0.3rem 0.8rem;
+      background: #ffffff;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+
+    .home-link:hover {
+      background: #f3f4f6;
+      border-color: rgba(0, 0, 0, 0.3);
+      transform: translateY(-1px);
+    }
+
+    main {
+      display: grid;
+      gap: 1.5rem;
+    }
+
+    .panel {
+      border-radius: 0.9rem;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    .panel h2 {
+      margin: 0 0 0.8rem;
+      font-size: 1rem;
+    }
+
+    .panel p {
+      margin: 0 0 0.6rem;
+      font-size: 0.9rem;
+      color: #555555;
+    }
+
+    .login-form {
+      display: grid;
+      gap: 0.7rem;
+      max-width: 260px;
+    }
+
+    .login-form label {
+      font-size: 0.85rem;
+      color: #374151;
+    }
+
+    .login-form input {
+      margin-top: 0.25rem;
+      padding: 0.5rem 0.6rem;
+      border-radius: 0.6rem;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      background: #ffffff;
+      color: #111111;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .login-form input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4);
+    }
+
+    .login-form button {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 999px;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: linear-gradient(135deg, #2563eb, #60a5fa);
+      color: #ffffff;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+
+    .login-form button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+    }
+
+    .login-status {
+      font-size: 0.8rem;
+      color: #6b7280;
+      min-height: 1.2rem;
+    }
+
+    .entries-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      gap: 1rem;
+    }
+
+    .entries-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .entries-actions button {
+      padding: 0.3rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      background: #ffffff;
+      color: #111111;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .entries-actions button:hover {
+      background: #f3f4f6;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    thead {
+      background: #f3f4f6;
+    }
+
+    th,
+    td {
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      vertical-align: top;
+    }
+
+    th {
+      text-align: left;
+      font-weight: 500;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+
+    td.message-cell {
+      max-width: 360px;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+
+    .pill-muted {
+      font-size: 0.75rem;
+      color: #6b7280;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      padding: 0.15rem 0.55rem;
+      background: #ffffff;
+    }
+
+    .delete-btn {
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid rgba(239, 68, 68, 0.6);
+      background: #ffffff;
+      color: #b91c1c;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+
+    .delete-btn:hover {
+      background: #fee2e2;
+    }
+
+    .entries-status {
+      font-size: 0.8rem;
+      color: #6b7280;
+      margin-top: 0.5rem;
+      min-height: 1.2rem;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <header>
+      <h1>Admin · Contact Entries</h1>
+      <a href="/" class="home-link">← Back to site</a>
+    </header>
+
+    <main>
+      <!-- Login panel -->
+      <section id="login-view" class="panel">
+        <h2>Admin Login</h2>
+        <p>Enter the admin password to view and manage contact form entries.</p>
+        <form id="login-form" class="login-form">
+          <label>
+            Password
+            <input id="password" name="password" type="password" required />
+          </label>
+          <button type="submit">Log in</button>
+          <p id="login-status" class="login-status"></p>
+        </form>
+      </section>
+
+      <!-- Entries panel -->
+      <section id="entries-view" class="panel hidden">
+        <div class="entries-header">
+          <h2>Contact Entries</h2>
+          <div class="entries-actions">
+            <button type="button" id="refresh-entries">Refresh</button>
+            <span class="pill-muted" id="entries-count">0 entries</span>
+          </div>
+        </div>
+
+        <div class="entries-table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Message</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="entries-body">
+              <!-- Filled by admin.js -->
+            </tbody>
+          </table>
+        </div>
+        <p id="entries-status" class="entries-status"></p>
+      </section>
+    </main>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
