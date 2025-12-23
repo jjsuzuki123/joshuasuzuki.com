@@ -1,0 +1,64 @@
+name: Deploy to S3 + CloudFront
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      S3_BUCKET: josh-personal-site-1
+      CF_DISTRIBUTION_ID: E3LDS3FK17E3JF
+      AWS_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::545095759709:role/GitHubActionsDeployPersonalSite
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync . s3://${S3_BUCKET} \
+            --delete \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --exclude ".DS_Store" \
+            --exclude "deploy.sh" \
+            --exclude ".env" \
+            --exclude ".env.*"
+
+      - name: Set HTML Cache-Control (recommended)
+        run: |
+          aws s3 cp s3://${S3_BUCKET}/index.html s3://${S3_BUCKET}/index.html \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+      - name: Set Resume/Admin HTML Cache-Control (recommended)
+        run: |
+          aws s3 cp s3://${S3_BUCKET}/resume/index.html s3://${S3_BUCKET}/resume/index.html \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+          aws s3 cp s3://${S3_BUCKET}/admin/index.html s3://${S3_BUCKET}/admin/index.html \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+      - name: CloudFront invalidation
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${CF_DISTRIBUTION_ID} \
+            --paths "/*"
