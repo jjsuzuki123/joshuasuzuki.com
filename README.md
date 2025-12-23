@@ -6,4 +6,4 @@ Personal website built with vanilla HTML, CSS, and JavaScript.
 - Static site hosted on S3
 - Served via CloudFront
 - Custom domain: joshuasuzuki.com
-- Backend APIs via AWS API Gateway (contact form + admin)
+- Backend APIs via AWS API Gateway + Lambdas (contact form + admin)
