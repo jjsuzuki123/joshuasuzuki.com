@@ -39,23 +39,26 @@ jobs:
             --exclude ".env" \
             --exclude ".env.*"
 
-      - name: Set HTML Cache-Control (recommended)
+      - name: Set HTML Cache-Control (only if files exist)
         run: |
-          aws s3 cp s3://${S3_BUCKET}/index.html s3://${S3_BUCKET}/index.html \
-            --metadata-directive REPLACE \
-            --cache-control "no-cache, no-store, must-revalidate" \
-            --content-type "text/html; charset=utf-8"
+          set -euo pipefail
 
-      - name: Set Resume/Admin HTML Cache-Control (recommended)
-        run: |
-          aws s3 cp s3://${S3_BUCKET}/resume/index.html s3://${S3_BUCKET}/resume/index.html \
-            --metadata-directive REPLACE \
-            --cache-control "no-cache, no-store, must-revalidate" \
-            --content-type "text/html; charset=utf-8"
-          aws s3 cp s3://${S3_BUCKET}/admin/index.html s3://${S3_BUCKET}/admin/index.html \
-            --metadata-directive REPLACE \
-            --cache-control "no-cache, no-store, must-revalidate" \
-            --content-type "text/html; charset=utf-8"
+          set_cache() {
+            local key="$1"
+            if aws s3api head-object --bucket "${S3_BUCKET}" --key "${key}" >/dev/null 2>&1; then
+              echo "Setting Cache-Control for ${key}"
+              aws s3 cp "s3://${S3_BUCKET}/${key}" "s3://${S3_BUCKET}/${key}" \
+                --metadata-directive REPLACE \
+                --cache-control "no-cache, no-store, must-revalidate" \
+                --content-type "text/html; charset=utf-8"
+            else
+              echo "Skipping ${key} (not found in bucket)"
+            fi
+          }
+
+          set_cache "index.html"
+          set_cache "resume/index.html"
+          set_cache "admin/index.html"
 
       - name: CloudFront invalidation
         run: |
