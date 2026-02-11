@@ -1,0 +1,184 @@
+cat > aisimulator/index.html <<'EOF'
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI System Scaling Simulator</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+    <!-- Site-wide styling (absolute paths per your rules) -->
+    <link rel="stylesheet" href="/styles.css" />
+
+    <style>
+      /* Local layout only; keep the global aesthetic from styles.css */
+      .sim-wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
+      .sim-head h1 { margin: 0 0 8px 0; }
+      .sim-head p { margin: 0; opacity: 0.8; }
+      .sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }
+      .sim-card {
+        border: 1px solid rgba(0,0,0,0.08);
+        border-radius: 16px;
+        padding: 18px;
+        background: rgba(255,255,255,0.6);
+        backdrop-filter: blur(6px);
+      }
+      .sim-card h2 { margin: 0 0 10px 0; font-size: 16px; }
+      label { display: block; font-size: 12px; margin-top: 12px; opacity: 0.85; }
+      input[type="range"] { width: 100%; }
+      .kpi { font-size: 20px; font-weight: 650; margin-top: 10px; }
+      .muted { font-size: 12px; opacity: 0.7; }
+      .warn { color: #b45309; margin: 8px 0 0 0; }
+      .bad { color: #b91c1c; margin: 8px 0 0 0; }
+      code { background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 6px; }
+      @media (max-width: 900px) { .sim-grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+
+  <body>
+    <!-- Reuse your global JS so cursor glow + any site logic remains consistent -->
+    <script src="/script.js" defer></script>
+
+    <main class="sim-wrap">
+      <header class="sim-head">
+        <h1>AI System Scaling Simulator</h1>
+        <p class="muted">
+          A deterministic model of an AI inference system: how cost + latency change as demand scales, and what breaks first.
+        </p>
+      </header>
+
+      <section class="sim-grid">
+        <div class="sim-card">
+          <h2>Controls</h2>
+
+          <label>RPS (requests/sec): <span id="rpsVal"></span></label>
+          <input id="rps" type="range" min="1" max="500" value="60" />
+
+          <label>GPUs (replicas): <span id="gpusVal"></span></label>
+          <input id="gpus" type="range" min="1" max="128" value="8" />
+
+          <label>Tokens In: <span id="tinVal"></span></label>
+          <input id="tin" type="range" min="1" max="4000" value="500" />
+
+          <label>Tokens Out: <span id="toutVal"></span></label>
+          <input id="tout" type="range" min="1" max="4000" value="800" />
+
+          <label>Base Throughput (tokens/sec/GPU): <span id="tpsVal"></span></label>
+          <input id="tps" type="range" min="200" max="8000" value="2200" />
+
+          <label>Batch Size: <span id="batchVal"></span></label>
+          <input id="batch" type="range" min="1" max="64" value="8" />
+
+          <label>Overhead (ms): <span id="overVal"></span></label>
+          <input id="over" type="range" min="0" max="200" value="25" />
+
+          <label>Network (ms): <span id="netVal"></span></label>
+          <input id="net" type="range" min="0" max="300" value="60" />
+
+          <label>GPU $/hour: <span id="priceVal"></span></label>
+          <input id="price" type="range" min="0.5" max="20" step="0.1" value="3.5" />
+
+          <p class="muted" style="margin-top: 14px;">
+            Batching gain: <code>eff(b) = 1 + α·ln(b)</code> capped at <code>maxEff</code>.
+          </p>
+        </div>
+
+        <div class="sim-card">
+          <h2>Outputs</h2>
+
+          <div class="kpi">P95 Latency: <span id="p95"></span></div>
+          <div class="kpi">Mean Latency: <span id="mean"></span></div>
+          <div class="kpi">Utilization (ρ): <span id="rho"></span></div>
+          <div class="kpi">$ / 1M req: <span id="cpm"></span></div>
+          <div class="kpi">GPU $/month: <span id="month"></span></div>
+
+          <div id="warnings" style="margin-top: 14px;"></div>
+
+          <p class="muted" style="margin-top: 14px;">
+            Model: M/M/c queue + batch formation delay. This is built for decision clarity, not perfect fidelity.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module">
+      import { simulateAI } from "./simulator.js";
+
+      const el = (id) => document.getElementById(id);
+      const inputs = {
+        rps: el("rps"),
+        gpus: el("gpus"),
+        tin: el("tin"),
+        tout: el("tout"),
+        tps: el("tps"),
+        batch: el("batch"),
+        over: el("over"),
+        net: el("net"),
+        price: el("price"),
+      };
+
+      const setText = (id, v) => (el(id).textContent = v);
+
+      function fmtMs(sec) {
+        if (!isFinite(sec)) return "∞";
+        return `${Math.round(sec * 1000)} ms`;
+      }
+      function fmt2(x) {
+        if (!isFinite(x)) return "∞";
+        return x.toFixed(2);
+      }
+      function fmtMoney(x) {
+        if (!isFinite(x)) return "∞";
+        return `$${x.toFixed(2)}`;
+      }
+
+      function render() {
+        setText("rpsVal", inputs.rps.value);
+        setText("gpusVal", inputs.gpus.value);
+        setText("tinVal", inputs.tin.value);
+        setText("toutVal", inputs.tout.value);
+        setText("tpsVal", inputs.tps.value);
+        setText("batchVal", inputs.batch.value);
+        setText("overVal", inputs.over.value);
+        setText("netVal", inputs.net.value);
+        setText("priceVal", inputs.price.value);
+
+        const result = simulateAI({
+          rps: Number(inputs.rps.value),
+          gpus: Number(inputs.gpus.value),
+          tokensIn: Number(inputs.tin.value),
+          tokensOut: Number(inputs.tout.value),
+          tpsPerGpuBase: Number(inputs.tps.value),
+          batchSize: Number(inputs.batch.value),
+          batchAlpha: 0.35,
+          batchMaxEff: 2.2,
+          maxBatchWaitMs: 10,
+          overheadMs: Number(inputs.over.value),
+          netMs: Number(inputs.net.value),
+          gpuPricePerHour: Number(inputs.price.value),
+          hoursPerMonth: 730,
+        });
+
+        setText("p95", fmtMs(result.latency.p95Sec));
+        setText("mean", fmtMs(result.latency.meanSec));
+        setText("rho", fmt2(result.derived.rho));
+        setText("cpm", fmtMoney(result.cost.costPer1M));
+        setText("month", fmtMoney(result.cost.costPerMonth));
+
+        const warnDiv = el("warnings");
+        warnDiv.innerHTML = "";
+        if (result.warnings.length) {
+          result.warnings.forEach((w) => {
+            const p = document.createElement("p");
+            p.className = w.includes("UNSTABLE") ? "bad" : "warn";
+            p.textContent = `⚠ ${w}`;
+            warnDiv.appendChild(p);
+          });
+        }
+      }
+
+      Object.values(inputs).forEach((i) => i.addEventListener("input", render));
+      render();
+    </script>
+  </body>
+</html>
+EOF
