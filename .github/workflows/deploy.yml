@@ -60,6 +60,19 @@ jobs:
           set_cache "resume/index.html"
           set_cache "admin/index.html"
 
+      - name: Set PDF metadata (Content-Type + inline display)
+        run: |
+          set -euo pipefail
+          if aws s3api head-object --bucket "${S3_BUCKET}" --key "Josh-Suzuki-Resume.pdf" >/dev/null 2>&1; then
+            echo "Setting Content-Type and Content-Disposition for PDF"
+            aws s3 cp "s3://${S3_BUCKET}/Josh-Suzuki-Resume.pdf" "s3://${S3_BUCKET}/Josh-Suzuki-Resume.pdf" \
+              --metadata-directive REPLACE \
+              --content-type "application/pdf" \
+              --content-disposition "inline"
+          else
+            echo "Skipping Josh-Suzuki-Resume.pdf (not found)"
+          fi
+
       - name: CloudFront invalidation
         run: |
           aws cloudfront create-invalidation \
