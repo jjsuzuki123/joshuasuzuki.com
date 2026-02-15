@@ -111,30 +111,34 @@ function initFastlyTenureTimer() {
   }
 
   function update() {
-    const totalMs = Date.now() - startMs;
-    if (totalMs < 0) {
+    try {
+      const totalMs = Date.now() - startMs;
+      if (totalMs < 0) {
+        el.textContent = "—";
+        return;
+      }
+      const totalSeconds = Math.floor(totalMs / 1000);
+      const seconds = totalSeconds % 60;
+      const totalMinutes = Math.floor(totalSeconds / 60);
+      const minutes = totalMinutes % 60;
+      const totalHours = Math.floor(totalMinutes / 60);
+      const hours = totalHours % 24;
+      const totalDays = Math.floor(totalHours / 24);
+      const years = Math.floor(totalDays / 365);
+      const days = totalDays % 365;
+
+      const parts = [
+        formatPart(years, "year"),
+        formatPart(days, "day"),
+        formatPart(hours, "hour"),
+        formatPart(minutes, "minute"),
+        formatPart(seconds, "second"),
+      ].filter(Boolean);
+
+      el.textContent = parts.length ? parts.join(", ") : "0 seconds";
+    } catch (err) {
       el.textContent = "—";
-      return;
     }
-    const totalSeconds = Math.floor(totalMs / 1000);
-    const seconds = totalSeconds % 60;
-    const totalMinutes = Math.floor(totalSeconds / 60);
-    const minutes = totalMinutes % 60;
-    const totalHours = Math.floor(totalMinutes / 60);
-    const hours = totalHours % 24;
-    const totalDays = Math.floor(totalHours / 24);
-    const years = Math.floor(totalDays / 365);
-    const days = totalDays % 365;
-
-    const parts = [
-      formatPart(years, "year"),
-      formatPart(days, "day"),
-      formatPart(hours, "hour"),
-      formatPart(minutes, "minute"),
-      formatPart(seconds, "second"),
-    ].filter(Boolean);
-
-    el.textContent = parts.length ? parts.join(", ") : "0 seconds";
   }
 
   update();
@@ -142,7 +146,7 @@ function initFastlyTenureTimer() {
 
   function cleanup() {
     clearInterval(intervalId);
-    observer.disconnect();
+    if (observer) observer.disconnect();
     document.removeEventListener("pagehide", onPageHide);
   }
 
@@ -150,20 +154,27 @@ function initFastlyTenureTimer() {
     cleanup();
   }
 
-  const observer = new MutationObserver(() => {
-    if (!document.contains(el)) {
-      cleanup();
-    }
-  });
-  observer.observe(el.parentNode, { childList: true, subtree: true });
+  let observer = null;
+  const parent = el.parentNode;
+  if (parent) {
+    observer = new MutationObserver(() => {
+      if (!document.contains(el)) {
+        cleanup();
+      }
+    });
+    observer.observe(parent, { childList: true, subtree: true });
+  }
   document.addEventListener("pagehide", onPageHide);
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initFastlyTenureTimer);
-} else {
-  initFastlyTenureTimer();
+function runWhenReady(fn) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", fn);
+  } else {
+    fn();
+  }
 }
+runWhenReady(initFastlyTenureTimer);
 
 /* =========================
    Timeline Highlight (viewport-based)
