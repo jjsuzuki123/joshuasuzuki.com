@@ -246,6 +246,18 @@ main {
   color: #4b5563;
 }
 
+.timeline-tenure-timer {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-tenure-label {
+  font-weight: 500;
+  color: #374151;
+}
+
 /* Active highlight */
 .timeline-item.is-active .timeline-card {
   border-color: rgba(37, 99, 235, 0.45);

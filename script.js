@@ -90,6 +90,52 @@
 })();
 
 /* =========================
+   Fastly Tenure Timer
+========================= */
+
+(function fastlyTenureTimer() {
+  const el = document.getElementById("fastly-tenure-value");
+  if (!el) return;
+
+  // July 1, 2021 12:01am EST (UTC-5)
+  const start = new Date("2021-07-01T00:01:00-05:00");
+
+  function formatPart(n, unit) {
+    return n ? `${n} ${unit}${n === 1 ? "" : "s"} ` : "";
+  }
+
+  function update() {
+    const totalMs = Date.now() - start.getTime();
+    if (totalMs < 0) {
+      el.textContent = "—";
+      return;
+    }
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const seconds = totalSeconds % 60;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const minutes = totalMinutes % 60;
+    const totalHours = Math.floor(totalMinutes / 60);
+    const hours = totalHours % 24;
+    const totalDays = Math.floor(totalHours / 24);
+    const years = Math.floor(totalDays / 365);
+    const days = totalDays % 365;
+
+    const parts = [
+      formatPart(years, "year"),
+      formatPart(days, "day"),
+      formatPart(hours, "hour"),
+      formatPart(minutes, "minute"),
+      `${seconds} second${seconds === 1 ? "" : "s"}`,
+    ].filter(Boolean);
+
+    el.textContent = parts.join(", ").trim();
+  }
+
+  update();
+  setInterval(update, 1000);
+})();
+
+/* =========================
    Timeline Highlight (viewport-based)
 ========================= */
 
