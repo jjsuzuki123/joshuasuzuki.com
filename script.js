@@ -93,19 +93,25 @@
    Fastly Tenure Timer
 ========================= */
 
-(function fastlyTenureTimer() {
+function initFastlyTenureTimer() {
   const el = document.getElementById("fastly-tenure-value");
   if (!el) return;
 
-  // July 1, 2021 12:01am EST (UTC-5)
-  const start = new Date("2021-07-01T00:01:00-05:00");
+  // July 1, 2021 12:01am EST = 05:01 UTC (month is 0-indexed)
+  const start = new Date(Date.UTC(2021, 6, 1, 5, 1, 0, 0));
+  const startMs = start.getTime();
+  if (Number.isNaN(startMs)) {
+    el.textContent = "—";
+    return;
+  }
 
   function formatPart(n, unit) {
-    return n ? `${n} ${unit}${n === 1 ? "" : "s"} ` : "";
+    if (n === 0) return "";
+    return n + " " + unit + (n === 1 ? "" : "s");
   }
 
   function update() {
-    const totalMs = Date.now() - start.getTime();
+    const totalMs = Date.now() - startMs;
     if (totalMs < 0) {
       el.textContent = "—";
       return;
@@ -125,15 +131,21 @@
       formatPart(days, "day"),
       formatPart(hours, "hour"),
       formatPart(minutes, "minute"),
-      `${seconds} second${seconds === 1 ? "" : "s"}`,
+      seconds + " second" + (seconds === 1 ? "" : "s"),
     ].filter(Boolean);
 
-    el.textContent = parts.join(", ").trim();
+    el.textContent = parts.length ? parts.join(", ") : "0 seconds";
   }
 
   update();
   setInterval(update, 1000);
-})();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initFastlyTenureTimer);
+} else {
+  initFastlyTenureTimer();
+}
 
 /* =========================
    Timeline Highlight (viewport-based)
