@@ -2,7 +2,7 @@
 # Fetches production PDF URL and logs status, headers, and body start to debug.log (NDJSON)
 set -euo pipefail
 LOG="/Users/jjsuzuki/personal-site/.cursor/debug.log"
-URL="https://www.joshuasuzuki.com/Josh-Suzuki-Resume.pdf"
+URL="https://www.joshuasuzuki.com/AE%20Resume%20-%202026.docx.pdf"
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
 HEADERS=$(mktemp)

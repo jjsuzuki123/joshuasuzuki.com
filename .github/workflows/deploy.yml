@@ -63,14 +63,14 @@ jobs:
       - name: Set PDF metadata (Content-Type + inline display)
         run: |
           set -euo pipefail
-          if aws s3api head-object --bucket "${S3_BUCKET}" --key "Josh-Suzuki-Resume.pdf" >/dev/null 2>&1; then
+          if aws s3api head-object --bucket "${S3_BUCKET}" --key "AE Resume - 2026.docx.pdf" >/dev/null 2>&1; then
             echo "Setting Content-Type and Content-Disposition for PDF"
-            aws s3 cp "s3://${S3_BUCKET}/Josh-Suzuki-Resume.pdf" "s3://${S3_BUCKET}/Josh-Suzuki-Resume.pdf" \
+            aws s3 cp "s3://${S3_BUCKET}/AE Resume - 2026.docx.pdf" "s3://${S3_BUCKET}/AE Resume - 2026.docx.pdf" \
               --metadata-directive REPLACE \
               --content-type "application/pdf" \
               --content-disposition "inline"
           else
-            echo "Skipping Josh-Suzuki-Resume.pdf (not found)"
+            echo "Skipping AE Resume - 2026.docx.pdf (not found)"
           fi
 
       - name: CloudFront invalidation
