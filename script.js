@@ -131,14 +131,32 @@ function initFastlyTenureTimer() {
       formatPart(days, "day"),
       formatPart(hours, "hour"),
       formatPart(minutes, "minute"),
-      seconds + " second" + (seconds === 1 ? "" : "s"),
+      formatPart(seconds, "second"),
     ].filter(Boolean);
 
     el.textContent = parts.length ? parts.join(", ") : "0 seconds";
   }
 
   update();
-  setInterval(update, 1000);
+  const intervalId = setInterval(update, 1000);
+
+  function cleanup() {
+    clearInterval(intervalId);
+    observer.disconnect();
+    document.removeEventListener("pagehide", onPageHide);
+  }
+
+  function onPageHide() {
+    cleanup();
+  }
+
+  const observer = new MutationObserver(() => {
+    if (!document.contains(el)) {
+      cleanup();
+    }
+  });
+  observer.observe(el.parentNode, { childList: true, subtree: true });
+  document.addEventListener("pagehide", onPageHide);
 }
 
 if (document.readyState === "loading") {
