@@ -1,4 +1,3 @@
-cat > deploy.sh <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -51,6 +50,3 @@ aws cloudfront create-invalidation \
   --region "${AWS_REGION}" >/dev/null
 
 echo "Done ✅  https://www.joshuasuzuki.com"
-BASH
-
-chmod +x deploy.sh
