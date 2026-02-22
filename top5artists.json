@@ -1,0 +1,169 @@
+{
+  "generatedAt": "2026-02-22T14:00:00Z",
+  "source": "manual-curation",
+  "description": "Top 5 Spotify artists (sample data) for joshuasuzuki.com /music page. No external calls required.",
+  "timeRange": "short_term",
+  "limit": 5,
+  "artists": [
+    {
+      "rank": 1,
+      "id": "06HL4z0CvFAxyc27GXpf02",
+      "name": "Taylor Swift",
+      "type": "artist",
+      "spotifyUrl": "https://open.spotify.com/artist/06HL4z0CvFAxyc27GXpf02",
+      "uri": "spotify:artist:06HL4z0CvFAxyc27GXpf02",
+      "genres": ["pop"],
+      "popularity": 100,
+      "followers": { "total": 110000000 },
+      "images": [
+        {
+          "url": "https://i.scdn.co/image/ab6761610000e5ebb13f3d6efc0e5b3c1c8d6d9a",
+          "width": 640,
+          "height": 640
+        },
+        {
+          "url": "https://i.scdn.co/image/ab67616100005174b13f3d6efc0e5b3c1c8d6d9a",
+          "width": 320,
+          "height": 320
+        },
+        {
+          "url": "https://i.scdn.co/image/ab6761610000f178b13f3d6efc0e5b3c1c8d6d9a",
+          "width": 160,
+          "height": 160
+        }
+      ],
+      "externalIds": {
+        "isrc": null,
+        "musicbrainz": null
+      }
+    },
+    {
+      "rank": 2,
+      "id": "3TVXtAsR1Inumwj472S9r4",
+      "name": "Drake",
+      "type": "artist",
+      "spotifyUrl": "https://open.spotify.com/artist/3TVXtAsR1Inumwj472S9r4",
+      "uri": "spotify:artist:3TVXtAsR1Inumwj472S9r4",
+      "genres": ["hip hop", "rap", "canadian hip hop"],
+      "popularity": 97,
+      "followers": { "total": 80000000 },
+      "images": [
+        {
+          "url": "https://i.scdn.co/image/ab6761610000e5eb4293385d324db8558179afd9",
+          "width": 640,
+          "height": 640
+        },
+        {
+          "url": "https://i.scdn.co/image/ab676161000051744293385d324db8558179afd9",
+          "width": 320,
+          "height": 320
+        },
+        {
+          "url": "https://i.scdn.co/image/ab6761610000f1784293385d324db8558179afd9",
+          "width": 160,
+          "height": 160
+        }
+      ],
+      "externalIds": {
+        "isrc": null,
+        "musicbrainz": null
+      }
+    },
+    {
+      "rank": 3,
+      "id": "1Xyo4u8uXC1ZmMpatF05PJ",
+      "name": "The Weeknd",
+      "type": "artist",
+      "spotifyUrl": "https://open.spotify.com/artist/1Xyo4u8uXC1ZmMpatF05PJ",
+      "uri": "spotify:artist:1Xyo4u8uXC1ZmMpatF05PJ",
+      "genres": ["canadian contemporary r&b", "pop"],
+      "popularity": 98,
+      "followers": { "total": 90000000 },
+      "images": [
+        {
+          "url": "https://i.scdn.co/image/ab6761610000e5eb8b5f2c0a77d8c0d6e8c8d7a1",
+          "width": 640,
+          "height": 640
+        },
+        {
+          "url": "https://i.scdn.co/image/ab676161000051748b5f2c0a77d8c0d6e8c8d7a1",
+          "width": 320,
+          "height": 320
+        },
+        {
+          "url": "https://i.scdn.co/image/ab6761610000f1788b5f2c0a77d8c0d6e8c8d7a1",
+          "width": 160,
+          "height": 160
+        }
+      ],
+      "externalIds": {
+        "isrc": null,
+        "musicbrainz": null
+      }
+    },
+    {
+      "rank": 4,
+      "id": "66CXWjxzNUsdJxJ2JdwvnR",
+      "name": "Ariana Grande",
+      "type": "artist",
+      "spotifyUrl": "https://open.spotify.com/artist/66CXWjxzNUsdJxJ2JdwvnR",
+      "uri": "spotify:artist:66CXWjxzNUsdJxJ2JdwvnR",
+      "genres": ["pop", "post-teen pop"],
+      "popularity": 95,
+      "followers": { "total": 70000000 },
+      "images": [
+        {
+          "url": "https://i.scdn.co/image/ab6761610000e5ebcd3f96c8b7f3e8d9f0a0b1c2",
+          "width": 640,
+          "height": 640
+        },
+        {
+          "url": "https://i.scdn.co/image/ab67616100005174cd3f96c8b7f3e8d9f0a0b1c2",
+          "width": 320,
+          "height": 320
+        },
+        {
+          "url": "https://i.scdn.co/image/ab6761610000f178cd3f96c8b7f3e8d9f0a0b1c2",
+          "width": 160,
+          "height": 160
+        }
+      ],
+      "externalIds": {
+        "isrc": null,
+        "musicbrainz": null
+      }
+    },
+    {
+      "rank": 5,
+      "id": "6eUKZXaKkcviH0Ku9w2n3V",
+      "name": "Ed Sheeran",
+      "type": "artist",
+      "spotifyUrl": "https://open.spotify.com/artist/6eUKZXaKkcviH0Ku9w2n3V",
+      "uri": "spotify:artist:6eUKZXaKkcviH0Ku9w2n3V",
+      "genres": ["pop", "uk pop", "singer-songwriter"],
+      "popularity": 92,
+      "followers": { "total": 90000000 },
+      "images": [
+        {
+          "url": "https://i.scdn.co/image/ab6761610000e5eb6f5b2a1a3d4c5e6f7a8b9c0d",
+          "width": 640,
+          "height": 640
+        },
+        {
+          "url": "https://i.scdn.co/image/ab676161000051746f5b2a1a3d4c5e6f7a8b9c0d",
+          "width": 320,
+          "height": 320
+        },
+        {
+          "url": "https://i.scdn.co/image/ab6761610000f1786f5b2a1a3d4c5e6f7a8b9c0d",
+          "width": 160,
+          "height": 160
+        }
+      ],
+      "externalIds": {
+        "isrc": null,
+        "musicbrainz": null
+      }
+    }
+  ]
+}
