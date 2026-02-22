@@ -59,6 +59,7 @@ jobs:
           set_cache "index.html"
           set_cache "resume/index.html"
           set_cache "admin/index.html"
+          set_cache "artists/index.html"
 
       - name: Set PDF metadata (Content-Type + inline display)
         run: |
