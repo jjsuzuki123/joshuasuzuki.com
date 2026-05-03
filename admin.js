@@ -150,14 +150,15 @@ async function loadEntries() {
 }
 
 function renderEntries(items) {
-  entriesBody.innerHTML = '';
+  entriesBody.replaceChildren();
 
   if (!items.length) {
-    entriesBody.innerHTML = `
-      <tr>
-        <td colspan="5">No entries yet.</td>
-      </tr>
-    `;
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.textContent = 'No entries yet.';
+    tr.appendChild(td);
+    entriesBody.appendChild(tr);
     if (entriesCountEl) entriesCountEl.textContent = '0 entries';
     return;
   }

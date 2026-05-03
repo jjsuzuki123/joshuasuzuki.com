@@ -15,10 +15,17 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --delete \
   --exclude ".git/*" \
   --exclude ".github/*" \
+  --exclude ".cursor/*" \
   --exclude ".DS_Store" \
   --exclude "deploy.sh" \
+  --exclude "debug-pdf-fetch.sh" \
   --exclude ".env" \
   --exclude ".env.*" \
+  --exclude "*.zip" \
+  --exclude "admin-backend/*" \
+  --exclude "scripts/*" \
+  --exclude "permissions-policy.json" \
+  --exclude "trust-policy.json" \
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
 

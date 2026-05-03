@@ -237,19 +237,25 @@
             Always happy to talk ball as well.
           </p>
         </div>
-        <form id="contact-form" class="contact-form">
+        <form id="contact-form" class="contact-form" autocomplete="on" novalidate>
           <label>
             Name
-            <input type="text" name="name" required />
+            <input type="text" name="name" required maxlength="100" autocomplete="name" />
           </label>
           <label>
             Email
-            <input type="email" name="email" required />
+            <input type="email" name="email" required maxlength="200" autocomplete="email" />
           </label>
           <label>
             Message
-            <textarea name="message" rows="4" required></textarea>
+            <textarea name="message" rows="4" required maxlength="5000"></textarea>
           </label>
+          <div class="hp-field" aria-hidden="true">
+            <label>
+              Website
+              <input type="text" name="website" tabindex="-1" autocomplete="off" />
+            </label>
+          </div>
           <button type="submit">Send</button>
           <p id="contact-status" class="contact-status"></p>
         </form>
