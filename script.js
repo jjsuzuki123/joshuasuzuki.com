@@ -22,7 +22,7 @@
 
   function render() {
     rafId = null;
-    glow.style.transform = `translate(${lastX - 160}px, ${lastY - 160}px)`;
+    glow.style.transform = `translate(${lastX - 180}px, ${lastY - 180}px)`;
   }
 
   function onMove(e) {

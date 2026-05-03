@@ -21,12 +21,10 @@ body {
   line-height: 1.55;
 }
 
-.eyebrow,
 .timeline-when,
 .timeline-tag,
 .card-meta,
-.timeline-tenure-timer,
-.contact-form label {
+.timeline-tenure-timer {
   font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.02em;
 }
@@ -148,7 +146,18 @@ main {
 }
 
 .hero-highlight {
-  color: #0a0a0a;
+  background: linear-gradient(
+    135deg,
+    #6366f1 0%,
+    #a855f7 35%,
+    #ec4899 65%,
+    #f59e0b 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  font-weight: 600;
 }
 
 .hero-subtitle {
@@ -244,6 +253,32 @@ main {
   color: #111827;
 }
 
+.timeline-item[data-type="life"] .timeline-tag {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.timeline-item[data-type="education"] .timeline-tag {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.timeline-item[data-type="work"] .timeline-tag {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.timeline-item[data-type="work-cursor"] .timeline-tag {
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.18),
+    rgba(168, 85, 247, 0.18) 35%,
+    rgba(236, 72, 153, 0.18) 65%,
+    rgba(245, 158, 11, 0.18) 100%
+  );
+  color: #7c2d92;
+}
+
 .timeline-title {
   margin: 0;
   font-size: 0.95rem;
@@ -278,6 +313,68 @@ main {
   box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.10);
 }
 
+/* Cursor-specific timeline accents */
+.timeline-item[data-type="work-cursor"] .timeline-dot {
+  width: 12px;
+  height: 12px;
+  left: -1.1rem;
+  background: linear-gradient(
+    135deg,
+    #6366f1 0%,
+    #a855f7 35%,
+    #ec4899 65%,
+    #f59e0b 100%
+  );
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18);
+}
+
+.timeline-item[data-type="work-cursor"].is-active .timeline-dot {
+  box-shadow: 0 0 0 5px rgba(168, 85, 247, 0.22);
+}
+
+.timeline-item[data-type="work-cursor"] .timeline-card {
+  position: relative;
+  border-color: rgba(168, 85, 247, 0.22);
+  box-shadow: 0 10px 28px rgba(168, 85, 247, 0.10);
+}
+
+.timeline-item[data-type="work-cursor"] .timeline-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.55) 0%,
+    rgba(168, 85, 247, 0.55) 35%,
+    rgba(236, 72, 153, 0.55) 65%,
+    rgba(245, 158, 11, 0.55) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.timeline-item[data-type="work-cursor"].is-active .timeline-card {
+  border-color: transparent;
+  box-shadow: 0 16px 36px rgba(168, 85, 247, 0.18);
+}
+
+.timeline-item[data-type="work-cursor"] .timeline-tenure-timer {
+  color: #7c2d92;
+}
+
+.timeline-item[data-type="work-cursor"] .timeline-tenure-label {
+  color: #6d28d9;
+}
+
 .timeline-card .bullet-list {
   margin-top: 0.6rem;
   padding-left: 1.1rem;
@@ -294,11 +391,42 @@ main {
 }
 
 .card {
+  position: relative;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
   padding: 1rem 1.1rem;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  overflow: hidden;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    #6366f1 0%,
+    #a855f7 35%,
+    #ec4899 65%,
+    #f59e0b 100%
+  );
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(168, 85, 247, 0.25);
+  box-shadow: 0 12px 28px rgba(168, 85, 247, 0.08);
+}
+
+.card:hover::before {
+  opacity: 1;
 }
 
 .card h3 {
@@ -398,17 +526,19 @@ main {
   position: fixed;
   top: 0;
   left: 0;
-  width: 320px;
-  height: 320px;
+  width: 360px;
+  height: 360px;
   pointer-events: none;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(10, 10, 10, 0.08),
-    rgba(10, 10, 10, 0.0) 70%
+    rgba(168, 85, 247, 0.18) 0%,
+    rgba(236, 72, 153, 0.12) 40%,
+    rgba(245, 158, 11, 0.06) 65%,
+    rgba(168, 85, 247, 0) 80%
   );
   opacity: 0;
-  filter: blur(18px);
+  filter: blur(22px);
   transition: opacity 220ms ease;
   transform: translate(-999px, -999px);
   z-index: 1;
