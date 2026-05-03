@@ -14,11 +14,21 @@ html {
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont,
+  font-family: "Geist", system-ui, -apple-system, BlinkMacSystemFont,
     "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
   background: #f7f7f8;
   color: #111827;
   line-height: 1.55;
+}
+
+.eyebrow,
+.timeline-when,
+.timeline-tag,
+.card-meta,
+.timeline-tenure-timer,
+.contact-form label {
+  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
 }
 
 a {
@@ -138,7 +148,7 @@ main {
 }
 
 .hero-highlight {
-  color: #2563eb;
+  color: #0a0a0a;
 }
 
 .hero-subtitle {
@@ -199,7 +209,7 @@ main {
   top: 1rem;
   width: 10px;
   height: 10px;
-  background: #2563eb;
+  background: #0a0a0a;
   border-radius: 50%;
 }
 
@@ -230,8 +240,8 @@ main {
   letter-spacing: 0.06em;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
-  background: #eef2ff;
-  color: #3730a3;
+  background: #f3f4f6;
+  color: #111827;
 }
 
 .timeline-title {
@@ -260,12 +270,12 @@ main {
 
 /* Active highlight */
 .timeline-item.is-active .timeline-card {
-  border-color: rgba(37, 99, 235, 0.45);
-  box-shadow: 0 10px 28px rgba(37, 99, 235, 0.10);
+  border-color: rgba(10, 10, 10, 0.35);
+  box-shadow: 0 10px 28px rgba(10, 10, 10, 0.08);
 }
 
 .timeline-item.is-active .timeline-dot {
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.10);
 }
 
 .timeline-card .bullet-list {
@@ -360,12 +370,24 @@ main {
   margin-top: 0.2rem;
   padding: 0.7rem 0.9rem;
   border-radius: 999px;
-  border: 1px solid rgba(37, 99, 235, 0.25);
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  border: 1px solid #0a0a0a;
+  background: #0a0a0a;
   color: #ffffff;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.contact-form button:hover {
+  background: #1f1f1f;
+}
+
+.contact-form input:focus,
+.contact-form textarea:focus {
+  outline: none;
+  border-color: #0a0a0a;
+  box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.08);
 }
 
 /* =========================
@@ -382,8 +404,8 @@ main {
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(37, 99, 235, 0.14),
-    rgba(37, 99, 235, 0.0) 70%
+    rgba(10, 10, 10, 0.08),
+    rgba(10, 10, 10, 0.0) 70%
   );
   opacity: 0;
   filter: blur(18px);
