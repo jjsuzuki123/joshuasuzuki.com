@@ -21,6 +21,14 @@ body {
   line-height: 1.55;
 }
 
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}
+
 .timeline-when,
 .timeline-tag,
 .card-meta,
@@ -148,10 +156,9 @@ main {
 .hero-highlight {
   background: linear-gradient(
     135deg,
-    #6366f1 0%,
-    #a855f7 35%,
-    #ec4899 65%,
-    #f59e0b 100%
+    #9cb575 0%,
+    #6b8e4e 50%,
+    #3f5527 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -271,12 +278,11 @@ main {
 .timeline-item[data-type="work-cursor"] .timeline-tag {
   background: linear-gradient(
     135deg,
-    rgba(99, 102, 241, 0.18),
-    rgba(168, 85, 247, 0.18) 35%,
-    rgba(236, 72, 153, 0.18) 65%,
-    rgba(245, 158, 11, 0.18) 100%
+    rgba(156, 181, 117, 0.22),
+    rgba(107, 142, 78, 0.22) 50%,
+    rgba(63, 85, 39, 0.22) 100%
   );
-  color: #7c2d92;
+  color: #3f5527;
 }
 
 .timeline-title {
@@ -320,22 +326,21 @@ main {
   left: -1.1rem;
   background: linear-gradient(
     135deg,
-    #6366f1 0%,
-    #a855f7 35%,
-    #ec4899 65%,
-    #f59e0b 100%
+    #9cb575 0%,
+    #6b8e4e 50%,
+    #3f5527 100%
   );
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18);
+  box-shadow: 0 0 0 3px rgba(107, 142, 78, 0.20);
 }
 
 .timeline-item[data-type="work-cursor"].is-active .timeline-dot {
-  box-shadow: 0 0 0 5px rgba(168, 85, 247, 0.22);
+  box-shadow: 0 0 0 5px rgba(107, 142, 78, 0.25);
 }
 
 .timeline-item[data-type="work-cursor"] .timeline-card {
   position: relative;
-  border-color: rgba(168, 85, 247, 0.22);
-  box-shadow: 0 10px 28px rgba(168, 85, 247, 0.10);
+  border-color: rgba(107, 142, 78, 0.28);
+  box-shadow: 0 10px 28px rgba(107, 142, 78, 0.12);
 }
 
 .timeline-item[data-type="work-cursor"] .timeline-card::before {
@@ -346,10 +351,9 @@ main {
   padding: 1px;
   background: linear-gradient(
     135deg,
-    rgba(99, 102, 241, 0.55) 0%,
-    rgba(168, 85, 247, 0.55) 35%,
-    rgba(236, 72, 153, 0.55) 65%,
-    rgba(245, 158, 11, 0.55) 100%
+    rgba(156, 181, 117, 0.65) 0%,
+    rgba(107, 142, 78, 0.65) 50%,
+    rgba(63, 85, 39, 0.65) 100%
   );
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
@@ -364,15 +368,15 @@ main {
 
 .timeline-item[data-type="work-cursor"].is-active .timeline-card {
   border-color: transparent;
-  box-shadow: 0 16px 36px rgba(168, 85, 247, 0.18);
+  box-shadow: 0 16px 36px rgba(107, 142, 78, 0.20);
 }
 
 .timeline-item[data-type="work-cursor"] .timeline-tenure-timer {
-  color: #7c2d92;
+  color: #3f5527;
 }
 
 .timeline-item[data-type="work-cursor"] .timeline-tenure-label {
-  color: #6d28d9;
+  color: #4a6b30;
 }
 
 .timeline-card .bullet-list {
@@ -410,10 +414,9 @@ main {
   height: 2px;
   background: linear-gradient(
     90deg,
-    #6366f1 0%,
-    #a855f7 35%,
-    #ec4899 65%,
-    #f59e0b 100%
+    #9cb575 0%,
+    #6b8e4e 50%,
+    #3f5527 100%
   );
   opacity: 0;
   transition: opacity 160ms ease;
@@ -421,8 +424,8 @@ main {
 
 .card:hover {
   transform: translateY(-2px);
-  border-color: rgba(168, 85, 247, 0.25);
-  box-shadow: 0 12px 28px rgba(168, 85, 247, 0.08);
+  border-color: rgba(107, 142, 78, 0.30);
+  box-shadow: 0 12px 28px rgba(107, 142, 78, 0.10);
 }
 
 .card:hover::before {
@@ -546,10 +549,10 @@ main {
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(168, 85, 247, 0.18) 0%,
-    rgba(236, 72, 153, 0.12) 40%,
-    rgba(245, 158, 11, 0.06) 65%,
-    rgba(168, 85, 247, 0) 80%
+    rgba(107, 142, 78, 0.22) 0%,
+    rgba(156, 181, 117, 0.14) 40%,
+    rgba(63, 85, 39, 0.06) 65%,
+    rgba(107, 142, 78, 0) 80%
   );
   opacity: 0;
   filter: blur(22px);
