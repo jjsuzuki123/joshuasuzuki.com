@@ -493,6 +493,20 @@ main {
   min-height: 110px;
 }
 
+.hp-field {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.contact-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .contact-form button {
   width: 100%;
   margin-top: 0.2rem;

@@ -56,26 +56,54 @@
   if (!form) return;
 
   const statusEl = document.getElementById("contact-status");
+  const submitBtn = form.querySelector('button[type="submit"]');
 
   const CONTACT_ENDPOINT =
     "https://8bijlmtfmi.execute-api.us-east-1.amazonaws.com/prod/contact";
 
+  const MAX = { name: 100, email: 200, message: 5000 };
+  let inFlight = false;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    statusEl.textContent = "Sending...";
+    if (inFlight) return;
 
     const formData = new FormData(form);
-    const payload = {
-      name: (formData.get("name") || "").trim(),
-      email: (formData.get("email") || "").trim(),
-      message: (formData.get("message") || "").trim(),
-    };
+
+    // Honeypot: silently drop bot submissions that filled the hidden field.
+    const honeypot = (formData.get("website") || "").toString();
+    if (honeypot.trim() !== "") {
+      statusEl.textContent = "Message sent.";
+      form.reset();
+      return;
+    }
+
+    const name = (formData.get("name") || "").toString().trim();
+    const email = (formData.get("email") || "").toString().trim();
+    const message = (formData.get("message") || "").toString().trim();
+
+    if (!name || !email || !message) {
+      statusEl.textContent = "Please fill out all fields.";
+      return;
+    }
+    if (
+      name.length > MAX.name ||
+      email.length > MAX.email ||
+      message.length > MAX.message
+    ) {
+      statusEl.textContent = "Input too long. Please shorten and try again.";
+      return;
+    }
+
+    inFlight = true;
+    if (submitBtn) submitBtn.disabled = true;
+    statusEl.textContent = "Sending...";
 
     try {
       const res = await fetch(CONTACT_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ name, email, message }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -85,6 +113,9 @@
     } catch (err) {
       console.error(err);
       statusEl.textContent = "Something went wrong. Please try again.";
+    } finally {
+      inFlight = false;
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 })();

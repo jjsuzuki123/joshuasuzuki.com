@@ -34,10 +34,17 @@ jobs:
             --delete \
             --exclude ".git/*" \
             --exclude ".github/*" \
+            --exclude ".cursor/*" \
             --exclude ".DS_Store" \
             --exclude "deploy.sh" \
+            --exclude "debug-pdf-fetch.sh" \
             --exclude ".env" \
-            --exclude ".env.*"
+            --exclude ".env.*" \
+            --exclude "*.zip" \
+            --exclude "admin-backend/*" \
+            --exclude "scripts/*" \
+            --exclude "permissions-policy.json" \
+            --exclude "trust-policy.json"
 
       - name: Set HTML Cache-Control (only if files exist)
         run: |

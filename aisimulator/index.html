@@ -164,7 +164,7 @@
         setText("month", fmtMoney(result.cost.costPerMonth));
 
         const warnDiv = el("warnings");
-        warnDiv.innerHTML = "";
+        warnDiv.replaceChildren();
         if (result.warnings.length) {
           result.warnings.forEach((w) => {
             const p = document.createElement("p");
