@@ -90,15 +90,15 @@
 })();
 
 /* =========================
-   Fastly Tenure Timer
+   Cursor Tenure Timer
 ========================= */
 
-function initFastlyTenureTimer() {
-  const el = document.getElementById("fastly-tenure-value");
+function initCursorTenureTimer() {
+  const el = document.getElementById("cursor-tenure-value");
   if (!el) return;
 
-  // July 1, 2021 12:01am EST = 05:01 UTC (month is 0-indexed)
-  const start = new Date(Date.UTC(2021, 6, 1, 5, 1, 0, 0));
+  // Monday, March 2, 2026 9:00am PT = 17:00 UTC (month is 0-indexed)
+  const start = new Date(Date.UTC(2026, 2, 2, 17, 0, 0, 0));
   const startMs = start.getTime();
   if (Number.isNaN(startMs)) {
     el.textContent = "—";
@@ -174,7 +174,7 @@ function runWhenReady(fn) {
     fn();
   }
 }
-runWhenReady(initFastlyTenureTimer);
+runWhenReady(initCursorTenureTimer);
 
 /* =========================
    Timeline Highlight (viewport-based)
