@@ -5,6 +5,10 @@
     <title>AI System Scaling Simulator</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
 
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" />
+
     <!-- Site-wide styling (absolute paths per your rules) -->
     <link rel="stylesheet" href="/styles.css" />
 
@@ -24,11 +28,16 @@
       .sim-card h2 { margin: 0 0 10px 0; font-size: 16px; }
       label { display: block; font-size: 12px; margin-top: 12px; opacity: 0.85; }
       input[type="range"] { width: 100%; }
-      .kpi { font-size: 20px; font-weight: 650; margin-top: 10px; }
+      .kpi { font-size: 20px; font-weight: 650; margin-top: 10px; font-variant-numeric: tabular-nums; }
       .muted { font-size: 12px; opacity: 0.7; }
       .warn { color: #b45309; margin: 8px 0 0 0; }
       .bad { color: #b91c1c; margin: 8px 0 0 0; }
-      code { background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 6px; }
+      code {
+        background: rgba(0,0,0,0.06);
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
       @media (max-width: 900px) { .sim-grid { grid-template-columns: 1fr; } }
     </style>
   </head>
