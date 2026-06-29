@@ -1,4 +1,3 @@
-cat > aisimulator/simulator.js <<'EOF'
 function clamp(x, lo, hi) {
   return Math.max(lo, Math.min(hi, x));
 }
@@ -130,4 +129,3 @@ export function simulateAI(params) {
     warnings
   };
 }
-EOF
