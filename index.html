@@ -18,13 +18,14 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="cursor-glow"></div>
-
   <header>
     <div class="header-inner">
       <div class="branding">
-        <h1>Josh Suzuki</h1>
-        <p class="tagline">Currently at Cursor</p>
+        <span class="mark" aria-hidden="true">JS</span>
+        <div>
+          <h1>Josh Suzuki</h1>
+          <p class="tagline">Currently at Cursor</p>
+        </div>
       </div>
       <nav>
         <a href="#about">About</a>
@@ -41,14 +42,18 @@
     <!-- HERO -->
     <section class="hero">
       <div class="hero-text">
-        <p class="eyebrow"></p>
+        <p class="eyebrow">Go-To-Market · San Francisco</p>
         <h2>
-          I like Computers, Sports, and Cooking. Right now, I work at
-          <span class="hero-highlight">Cursor</span> in a GTM role.
+          I work on the go-to-market team at <span class="hero-highlight">Cursor</span>.
         </h2>
         <p class="hero-subtitle">
-          Before Cursor, I spent ~5 years at Fastly across Go-To-Market roles, helped build ASMI, and played college football.
+          I help developers and technical teams get the most out of their tools. Previously
+          five years at Fastly. Outside of work: sports and cooking.
         </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#contact">Get in touch</a>
+          <a class="btn btn-ghost" href="/resume/index.html">Resume</a>
+        </div>
       </div>
     </section>
 
@@ -59,21 +64,20 @@
       </div>
       <div class="section-body">
         <p>
-          I work closely with developers, engineering leaders, and platform teams to understand how
-          AI tooling actually gets adopted in practice — and where it falls short.
+          I work with developers, engineering leaders, and platform teams on how modern developer
+          tools fit into real workflows. I like the problems where technical depth and clear
+          communication both matter.
         </p>
         <p>
-          Before Cursor, I spent five years at Fastly selling and supporting CDN, edge compute, and
-          security products while contributing feedback into product decisions, tooling, and internal
-          systems. I tend to focus on areas where technical complexity creates friction for customers
-          or go-to-market teams.
+          Before Cursor, I spent five years at Fastly across go-to-market roles, working with
+          customers on CDN, edge compute, and security products.
         </p>
-        <p><strong>How I tend to be useful:</strong></p>
+        <p><strong>What I focus on:</strong></p>
         <ul class="bullet-list">
-          <li>Working with engineers to shape technically complex products based on real constraints.</li>
-          <li>Managing long, multi-stakeholder sales cycles without losing technical depth.</li>
-          <li>Building small tools and automations to reduce manual GTM work.</li>
-          <li>Owning cross-functional projects across sales, product, and operations.</li>
+          <li>Helping technical teams evaluate and adopt new tools.</li>
+          <li>Managing complex sales cycles without losing the technical details.</li>
+          <li>Building small tools and automations to cut manual work.</li>
+          <li>Working across sales, product, and engineering.</li>
         </ul>
       </div>
     </section>
@@ -86,7 +90,7 @@
 
       <div class="section-body">
         <p class="timeline-intro">
-          A short timeline of my academic and professional background.
+          A short overview of my background.
         </p>
 
         <div class="timeline-shell" aria-label="Career timeline">
@@ -178,7 +182,7 @@
               <h3 class="timeline-title">Cursor</h3>
               <p class="timeline-subtitle">Go-To-Market</p>
               <p class="timeline-subtitle">
-                Working with engineering and platform teams on adoption of AI-native developer tooling.
+                Working with engineering and platform teams on adopting AI-native developer tools.
               </p>
             </div>
           </div>
@@ -194,30 +198,29 @@
       </div>
       <div class="section-body projects-grid">
         <article class="card">
-          <h3>Full-Stack Personal Site on AWS</h3>
+          <h3>This Website</h3>
           <p class="card-meta">S3 · CloudFront · Lambda · API Gateway · DynamoDB</p>
           <p>
-            This site is built as a lightweight full-stack project using S3, CloudFront, and a small
-            serverless backend. I use it as both a personal site and a place to experiment with
-            infrastructure, deployment, and operational patterns.
+            A full-stack personal site on a small serverless backend. I use it to experiment with
+            infrastructure and deployment.
           </p>
         </article>
 
         <article class="card">
-          <h3>GTM Automation Experiments</h3>
+          <h3>GTM Automations</h3>
           <p class="card-meta">Chrome Extensions · APIs · Outreach · Enrichment</p>
           <p>
-            Ongoing experiments to reduce manual prospecting and follow-up work by wiring together
-            enrichment, sequencing, and CRM tooling.
+            Small scripts and extensions that connect enrichment, sequencing, and CRM tools to
+            reduce manual work.
           </p>
         </article>
 
         <article class="card">
-          <h3>Infra & Performance Lab</h3>
+          <h3>Infra &amp; Performance Lab</h3>
           <p class="card-meta">CDNs · WAF · Edge Compute · Cost Modeling</p>
           <p>
-            Comparative work evaluating CDN, WAF, and edge compute platforms for media and SaaS
-            companies, with a focus on performance tradeoffs and cost structure.
+            Hands-on comparisons of CDN, WAF, and edge compute platforms, focused on performance
+            and cost tradeoffs.
           </p>
         </article>
       </div>
@@ -231,24 +234,24 @@
       <div class="section-body contact-layout">
         <div class="contact-copy">
           <p>
-            If you want to talk about roles, projects, or specific problems, feel free to reach out.
+            If you'd like to talk about roles, projects, or anything else, feel free to reach out.
           </p>
           <p class="contact-note">
-            Always happy to talk ball as well.
+            Happy to talk sports too.
           </p>
         </div>
         <form id="contact-form" class="contact-form" autocomplete="on" novalidate>
           <label>
             Name
-            <input type="text" name="name" required maxlength="100" autocomplete="name" />
+            <input type="text" name="name" required maxlength="100" autocomplete="name" placeholder="Your name" />
           </label>
           <label>
             Email
-            <input type="email" name="email" required maxlength="200" autocomplete="email" />
+            <input type="email" name="email" required maxlength="200" autocomplete="email" placeholder="you@example.com" />
           </label>
           <label>
             Message
-            <textarea name="message" rows="4" required maxlength="5000"></textarea>
+            <textarea name="message" rows="4" required maxlength="5000" placeholder="Your message"></textarea>
           </label>
           <div class="hp-field" aria-hidden="true">
             <label>
