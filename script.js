@@ -8,46 +8,6 @@
 })();
 
 /* =========================
-   Cursor Glow
-========================= */
-
-(function cursorGlow() {
-  const glow = document.querySelector(".cursor-glow");
-  if (!glow) return;
-
-  let rafId = null;
-  let lastX = -9999;
-  let lastY = -9999;
-  let isActive = false;
-
-  function render() {
-    rafId = null;
-    glow.style.transform = `translate(${lastX - 180}px, ${lastY - 180}px)`;
-  }
-
-  function onMove(e) {
-    lastX = e.clientX;
-    lastY = e.clientY;
-
-    if (!isActive) {
-      isActive = true;
-      glow.style.opacity = "1";
-    }
-
-    if (!rafId) rafId = requestAnimationFrame(render);
-  }
-
-  function onLeave() {
-    isActive = false;
-    glow.style.opacity = "0";
-  }
-
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseleave", onLeave);
-  window.addEventListener("blur", onLeave);
-})();
-
-/* =========================
    Contact Form
 ========================= */
 
