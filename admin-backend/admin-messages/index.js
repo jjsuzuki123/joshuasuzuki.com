@@ -45,7 +45,9 @@ exports.handler = async (event) => {
     }
 
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
+      const payload = jwt.verify(token, JWT_SECRET, {
+        algorithms: ['HS256'],
+      });
       if (payload.role !== 'admin') {
         return errorResponse(event, 401, 'Unauthorized');
       }
