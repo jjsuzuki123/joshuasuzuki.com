@@ -38,6 +38,7 @@ exports.handler = async (event) => {
     }
 
     const token = jwt.sign({ role: 'admin' }, JWT_SECRET, {
+      algorithm: 'HS256',
       expiresIn: TOKEN_TTL_SECONDS,
     });
 
