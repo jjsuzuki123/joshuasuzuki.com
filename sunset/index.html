@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A location-based sunset quality forecast built from live cloud, visibility, moisture, precipitation, and aerosol data."
+    />
+    <meta name="theme-color" content="#130f1f" />
+    <title>Afterglow | Sunset quality forecast</title>
+
+    <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
+    <link rel="preconnect" href="https://air-quality-api.open-meteo.com" crossorigin />
+    <link rel="preconnect" href="https://geocoding-api.open-meteo.com" crossorigin />
+    <link rel="stylesheet" href="./styles.css?v=1" />
+  </head>
+
+  <body>
+    <a class="skip-link" href="#forecast">Skip to forecast</a>
+
+    <div class="page-glow page-glow-one" aria-hidden="true"></div>
+    <div class="page-glow page-glow-two" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="/sunset/" aria-label="Afterglow home">
+        <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <circle cx="18" cy="18" r="6"></circle>
+          <path d="M18 2v6M18 28v6M2 18h6M28 18h6M6.7 6.7l4.2 4.2M25.1 25.1l4.2 4.2M29.3 6.7l-4.2 4.2M10.9 25.1l-4.2 4.2"></path>
+        </svg>
+        <span>Afterglow</span>
+      </a>
+
+      <nav aria-label="Main navigation">
+        <a href="#forecast">Forecast</a>
+        <a href="#method">Method</a>
+        <a class="site-link" href="/">joshuasuzuki.com</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span aria-hidden="true"></span> Live atmospheric forecast</p>
+          <h1 id="hero-title">Know when the sky is <em>worth chasing.</em></h1>
+          <p class="hero-intro">
+            Afterglow turns real cloud layers, horizon cover, visibility, moisture,
+            rain, and airborne particles into a sunset quality score for any location.
+          </p>
+        </div>
+
+        <div class="search-panel">
+          <form id="location-form" class="location-form" role="search">
+            <label class="sr-only" for="location-input">City or place</label>
+            <div class="search-field">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="m16 16 4 4"></path>
+              </svg>
+              <input
+                id="location-input"
+                name="location"
+                type="search"
+                placeholder="Search a city or place"
+                autocomplete="off"
+                enterkeyhint="search"
+                required
+              />
+            </div>
+            <button class="search-button" type="submit">
+              <span>Check the sky</span>
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 10h12M11 5l5 5-5 5"></path>
+              </svg>
+            </button>
+            <button id="geolocate-button" class="locate-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"></circle>
+                <circle cx="12" cy="12" r="7"></circle>
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path>
+              </svg>
+              <span>Use my location</span>
+            </button>
+          </form>
+
+          <div class="quick-locations" aria-label="Quick locations">
+            <span>Try</span>
+            <button type="button" data-location="San Francisco">San Francisco</button>
+            <button type="button" data-location="New York">New York</button>
+            <button type="button" data-location="London">London</button>
+            <button type="button" data-location="Tokyo">Tokyo</button>
+          </div>
+          <p id="search-status" class="search-status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="forecast" class="forecast-section" aria-labelledby="forecast-heading" aria-busy="true">
+        <div id="forecast-loading" class="forecast-loading" aria-label="Loading sunset forecast">
+          <div class="loading-line loading-line-short"></div>
+          <div class="loading-card">
+            <div>
+              <div class="loading-line loading-line-medium"></div>
+              <div class="loading-line loading-line-wide"></div>
+              <div class="loading-line loading-line-medium"></div>
+            </div>
+            <div class="loading-orb"></div>
+          </div>
+        </div>
+
+        <div id="forecast-content" class="forecast-content" hidden>
+          <div class="forecast-heading-row">
+            <div>
+              <p id="forecast-day-label" class="section-kicker">Tonight's outlook</p>
+              <h2 id="forecast-heading">
+                <span id="location-name">San Francisco</span>
+                <span id="location-region" class="location-region"></span>
+              </h2>
+            </div>
+            <div class="forecast-meta">
+              <span id="data-freshness">Updated now</span>
+              <span class="live-pill"><i aria-hidden="true"></i> Live data</span>
+            </div>
+          </div>
+
+          <article id="quality-card" class="quality-card" data-tone="warm">
+            <div class="quality-copy">
+              <div class="score-row">
+                <div id="score-ring" class="score-ring" aria-label="Sunset quality score">
+                  <div class="score-ring-inner">
+                    <strong id="score-value">--</strong>
+                    <span>/ 100</span>
+                  </div>
+                </div>
+
+                <div class="score-verdict">
+                  <p>Sunset quality</p>
+                  <h3 id="rating-label">Calculating</h3>
+                  <div class="confidence-line">
+                    <span id="confidence-dot" aria-hidden="true"></span>
+                    <span><b id="confidence-label">--</b> confidence</span>
+                  </div>
+                </div>
+              </div>
+
+              <p id="score-summary" class="score-summary"></p>
+
+              <div class="sunset-timing">
+                <div>
+                  <span>Sunset</span>
+                  <strong id="sunset-time">--:--</strong>
+                </div>
+                <div>
+                  <span>Best viewing window</span>
+                  <strong id="viewing-window">--</strong>
+                </div>
+                <div>
+                  <span>Local zone</span>
+                  <strong id="timezone-label">--</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="sky-visual" aria-hidden="true">
+              <div class="stars"></div>
+              <div class="high-cloud cloud-one"></div>
+              <div class="high-cloud cloud-two"></div>
+              <div class="sun"></div>
+              <div class="horizon"></div>
+              <span class="visual-caption">Forecast atmosphere</span>
+            </div>
+          </article>
+
+          <div class="conditions-heading">
+            <div>
+              <p class="section-kicker">What is shaping the score</p>
+              <h3>Atmospheric ingredients</h3>
+            </div>
+            <p>Measured at the forecast sunset time. Bars show each input's favorability.</p>
+          </div>
+
+          <div id="metric-grid" class="metric-grid"></div>
+
+          <div class="outlook-heading">
+            <div>
+              <p class="section-kicker">Plan ahead</p>
+              <h3>Seven-day outlook</h3>
+            </div>
+            <p>Select a day to inspect its forecast.</p>
+          </div>
+          <div id="forecast-days" class="forecast-days" role="list"></div>
+        </div>
+
+        <div id="forecast-error" class="forecast-error" hidden>
+          <div class="error-icon" aria-hidden="true">!</div>
+          <div>
+            <h2>We could not read the sky.</h2>
+            <p id="error-message">The weather service did not respond. Try again in a moment.</p>
+            <button id="retry-button" type="button">Retry forecast</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="method" class="method-section" aria-labelledby="method-title">
+        <div class="method-intro">
+          <p class="section-kicker">A forecast you can inspect</p>
+          <h2 id="method-title">How the score works</h2>
+          <p>
+            This is a deterministic weather model, not a claim that beauty can be measured
+            perfectly. It samples the hourly forecast at the exact local sunset, then weighs
+            the atmospheric conditions that tend to produce visible color.
+          </p>
+        </div>
+
+        <div class="formula-card">
+          <div class="formula-top">
+            <span>Afterglow quality index</span>
+            <span>0 to 100</span>
+          </div>
+          <div class="formula-bar" aria-hidden="true">
+            <span style="--width: 32%; --color: #ff7b6b"></span>
+            <span style="--width: 28%; --color: #ffb45f"></span>
+            <span style="--width: 14%; --color: #d9b6ff"></span>
+            <span style="--width: 11%; --color: #8fc5ff"></span>
+            <span style="--width: 8%; --color: #79d7cf"></span>
+            <span style="--width: 7%; --color: #ffe7a5"></span>
+          </div>
+          <ol class="weight-list">
+            <li><i style="--dot: #ff7b6b"></i><span>Mid + high cloud canvas</span><b>32%</b></li>
+            <li><i style="--dot: #ffb45f"></i><span>Low-cloud horizon opening</span><b>28%</b></li>
+            <li><i style="--dot: #d9b6ff"></i><span>Visibility</span><b>14%</b></li>
+            <li><i style="--dot: #8fc5ff"></i><span>Dry sunset window</span><b>11%</b></li>
+            <li><i style="--dot: #79d7cf"></i><span>Humidity</span><b>8%</b></li>
+            <li><i style="--dot: #ffe7a5"></i><span>Aerosol balance</span><b>7%</b></li>
+          </ol>
+        </div>
+
+        <div class="method-notes">
+          <article>
+            <span>01</span>
+            <h3>Clouds need height</h3>
+            <p>
+              Mid and high clouds can stay sunlit after the ground falls into shadow. The
+              model favors partial coverage and penalizes both empty and fully overcast skies.
+            </p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>The horizon needs a gap</h3>
+            <p>
+              Low cloud and fog can cut off direct light. Their score also uses the hour-before
+              trend, so a clearing horizon gets a small lift and a closing one gets a penalty.
+            </p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Hard blockers still win</h3>
+            <p>
+              Thunderstorms, dense fog, very low visibility, or a near-solid low cloud deck cap
+              the final score. Missing aerosol data is removed and the remaining weights rebalance.
+            </p>
+          </article>
+        </div>
+
+        <div class="source-note">
+          <div>
+            <span class="source-mark" aria-hidden="true">OM</span>
+            <p>
+              Weather and air-quality forecasts come from
+              <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>,
+              using national weather models and Copernicus atmospheric data.
+            </p>
+          </div>
+          <p>Forecasts change. Recheck close to sunset before making a long trip.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Built for the hour when plans change.</p>
+      <p>Data by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a></p>
+    </footer>
+
+    <noscript>
+      <div class="noscript-message">Afterglow needs JavaScript to load live weather data.</div>
+    </noscript>
+
+    <script src="./score-engine.js?v=1" defer></script>
+    <script src="./app.js?v=1" defer></script>
+  </body>
+</html>

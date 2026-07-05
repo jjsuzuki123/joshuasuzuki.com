@@ -50,6 +50,13 @@ aws s3 cp "s3://${S3_BUCKET}/admin/index.html" "s3://${S3_BUCKET}/admin/index.ht
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
 
+aws s3 cp "s3://${S3_BUCKET}/sunset/index.html" "s3://${S3_BUCKET}/sunset/index.html" \
+  --metadata-directive REPLACE \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "text/html; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}"
+
 aws cloudfront create-invalidation \
   --distribution-id "${CF_DISTRIBUTION_ID}" \
   --paths "/*" \
