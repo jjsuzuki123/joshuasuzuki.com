@@ -508,6 +508,15 @@ main {
   background: var(--panel-hover);
 }
 
+.card-link {
+  display: block;
+}
+
+.card-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
 .card h3 {
   margin: 0 0 0.5rem;
   font-size: 1.02rem;
