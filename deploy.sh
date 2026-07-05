@@ -57,6 +57,17 @@ aws s3 cp "s3://${S3_BUCKET}/sunset/index.html" "s3://${S3_BUCKET}/sunset/index.
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
 
+for key in "sunset" "sunset/"; do
+  aws s3api put-object \
+    --bucket "${S3_BUCKET}" \
+    --key "${key}" \
+    --body "sunset/index.html" \
+    --cache-control "no-cache, no-store, must-revalidate" \
+    --content-type "text/html; charset=utf-8" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" >/dev/null
+done
+
 aws cloudfront create-invalidation \
   --distribution-id "${CF_DISTRIBUTION_ID}" \
   --paths "/*" \
