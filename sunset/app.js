@@ -598,6 +598,8 @@
 
   function locationFromUrl() {
     const parameters = new URLSearchParams(window.location.search);
+    if (!parameters.has("lat") || !parameters.has("lon")) return null;
+
     const latitude = Number(parameters.get("lat"));
     const longitude = Number(parameters.get("lon"));
     if (
