@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
     <link rel="preconnect" href="https://air-quality-api.open-meteo.com" crossorigin />
     <link rel="preconnect" href="https://geocoding-api.open-meteo.com" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=1" />
+    <link rel="stylesheet" href="/sunset/styles.css?v=2" />
   </head>
 
   <body>
@@ -94,7 +94,9 @@
         </div>
       </section>
 
-      <section id="forecast" class="forecast-section" aria-labelledby="forecast-heading" aria-busy="true">
+      <section id="forecast" class="forecast-section" aria-labelledby="forecast-label" aria-busy="true">
+        <h2 id="forecast-label" class="sr-only">Sunset forecast</h2>
+        <p id="forecast-announcement" class="sr-only" aria-live="polite"></p>
         <div id="forecast-loading" class="forecast-loading" aria-label="Loading sunset forecast">
           <div class="loading-line loading-line-short"></div>
           <div class="loading-card">
@@ -118,7 +120,7 @@
             </div>
             <div class="forecast-meta">
               <span id="data-freshness">Updated now</span>
-              <span class="live-pill"><i aria-hidden="true"></i> Live data</span>
+              <span class="live-pill"><span class="live-dot" aria-hidden="true"></span> Live data</span>
             </div>
           </div>
 
@@ -187,7 +189,7 @@
             </div>
             <p>Select a day to inspect its forecast.</p>
           </div>
-          <div id="forecast-days" class="forecast-days" role="list"></div>
+          <div id="forecast-days" class="forecast-days"></div>
         </div>
 
         <div id="forecast-error" class="forecast-error" hidden>
@@ -225,12 +227,12 @@
             <span style="--width: 7%; --color: #ffe7a5"></span>
           </div>
           <ol class="weight-list">
-            <li><i style="--dot: #ff7b6b"></i><span>Mid + high cloud canvas</span><b>32%</b></li>
-            <li><i style="--dot: #ffb45f"></i><span>Low-cloud horizon opening</span><b>28%</b></li>
-            <li><i style="--dot: #d9b6ff"></i><span>Visibility</span><b>14%</b></li>
-            <li><i style="--dot: #8fc5ff"></i><span>Dry sunset window</span><b>11%</b></li>
-            <li><i style="--dot: #79d7cf"></i><span>Humidity</span><b>8%</b></li>
-            <li><i style="--dot: #ffe7a5"></i><span>Aerosol balance</span><b>7%</b></li>
+            <li><span class="weight-dot" style="--dot: #ff7b6b" aria-hidden="true"></span><span>Mid + high cloud canvas</span><b>32%</b></li>
+            <li><span class="weight-dot" style="--dot: #ffb45f" aria-hidden="true"></span><span>Low-cloud horizon opening</span><b>28%</b></li>
+            <li><span class="weight-dot" style="--dot: #d9b6ff" aria-hidden="true"></span><span>Visibility</span><b>14%</b></li>
+            <li><span class="weight-dot" style="--dot: #8fc5ff" aria-hidden="true"></span><span>Dry sunset window</span><b>11%</b></li>
+            <li><span class="weight-dot" style="--dot: #79d7cf" aria-hidden="true"></span><span>Humidity</span><b>8%</b></li>
+            <li><span class="weight-dot" style="--dot: #ffe7a5" aria-hidden="true"></span><span>Aerosol balance</span><b>7%</b></li>
           </ol>
         </div>
 
@@ -284,7 +286,7 @@
       <div class="noscript-message">Afterglow needs JavaScript to load live weather data.</div>
     </noscript>
 
-    <script src="./score-engine.js?v=1" defer></script>
-    <script src="./app.js?v=1" defer></script>
+    <script src="/sunset/score-engine.js?v=2" defer></script>
+    <script src="/sunset/app.js?v=2" defer></script>
   </body>
 </html>

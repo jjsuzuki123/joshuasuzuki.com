@@ -3,7 +3,17 @@
 
   const scoring = window.SunsetScoring;
   if (!scoring) {
-    throw new Error("Sunset scoring engine failed to load.");
+    const loading = document.getElementById("forecast-loading");
+    const error = document.getElementById("forecast-error");
+    const message = document.getElementById("error-message");
+    if (loading) loading.hidden = true;
+    if (error) error.hidden = false;
+    if (message) {
+      message.textContent =
+        "The scoring engine did not load. Refresh the page to try again.";
+    }
+    document.getElementById("forecast")?.setAttribute("aria-busy", "false");
+    return;
   }
 
   const API = {
@@ -37,7 +47,9 @@
     form: document.getElementById("location-form"),
     input: document.getElementById("location-input"),
     geolocateButton: document.getElementById("geolocate-button"),
+    quickLocationButtons: document.querySelectorAll("[data-location]"),
     searchStatus: document.getElementById("search-status"),
+    forecastAnnouncement: document.getElementById("forecast-announcement"),
     forecastSection: document.getElementById("forecast"),
     loading: document.getElementById("forecast-loading"),
     content: document.getElementById("forecast-content"),
@@ -66,7 +78,9 @@
   let activeGeocodingController = null;
   let currentPayload = null;
   let currentLocation = null;
+  let lastAttemptedLocation = null;
   let selectedForecastIndex = 0;
+  let activeIntent = 0;
 
   function makeUrl(base, parameters) {
     const url = new URL(base);
@@ -81,7 +95,11 @@
   async function fetchJson(url, parentSignal) {
     const controller = new AbortController();
     const abortFromParent = () => controller.abort(parentSignal.reason);
-    const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, REQUEST_TIMEOUT);
 
     if (parentSignal) {
       if (parentSignal.aborted) controller.abort(parentSignal.reason);
@@ -102,6 +120,11 @@
         throw new Error(data.reason || "The weather service rejected the request.");
       }
       return data;
+    } catch (error) {
+      if (timedOut && !(parentSignal && parentSignal.aborted)) {
+        throw new Error("The data request timed out. Please try again.");
+      }
+      throw error;
     } finally {
       window.clearTimeout(timeoutId);
       if (parentSignal) {
@@ -149,6 +172,24 @@
     return new Date(key + minutes * 60000).toISOString().slice(0, 16);
   }
 
+  function timeZoneNameAt(epoch, weather) {
+    if (Number.isFinite(epoch) && weather.timezone) {
+      try {
+        const part = new Intl.DateTimeFormat(undefined, {
+          timeZone: weather.timezone,
+          timeZoneName: "short",
+        })
+          .formatToParts(new Date(epoch))
+          .find((item) => item.type === "timeZoneName");
+        if (part && part.value) return part.value;
+      } catch (error) {
+        // Use the API abbreviation when the browser lacks this time zone.
+      }
+    }
+
+    return weather.timezone_abbreviation || weather.timezone || "Local time";
+  }
+
   function buildForecasts(weather, air) {
     if (
       !weather ||
@@ -175,8 +216,9 @@
         air && air.hourly
           ? scoring.sampleHourlyAt(air.hourly, sunset, ["aerosol_optical_depth"])
           : null;
-      const sunsetEpoch = scoring.localTimeToEpoch(
+      const sunsetEpoch = scoring.zonedLocalTimeToEpoch(
         sunset,
+        weather.timezone,
         weather.utc_offset_seconds
       );
       const hoursAhead =
@@ -251,6 +293,12 @@
     if (!Number.isFinite(value)) return "Unavailable";
     const kilometers = value / 1000;
     return `${kilometers < 10 ? kilometers.toFixed(1) : Math.round(kilometers)} km`;
+  }
+
+  function formatCacheAge(fetchedAt) {
+    const ageMinutes = Math.max(0, Math.round((Date.now() - fetchedAt) / 60000));
+    if (ageMinutes < 1) return "Cached moments ago";
+    return `Cached ${ageMinutes} min ago`;
   }
 
   function toneColor(tone) {
@@ -365,12 +413,18 @@
 
     const meter = document.createElement("div");
     meter.className = "metric-meter";
+    meter.setAttribute("role", "progressbar");
+    meter.setAttribute("aria-valuemin", "0");
+    meter.setAttribute("aria-valuemax", "100");
     meter.setAttribute(
       "aria-label",
       `${metric.component.label} favorability ${
         metric.component.percent === null ? "unavailable" : `${metric.component.percent} percent`
       }`
     );
+    if (metric.component.percent !== null) {
+      meter.setAttribute("aria-valuenow", String(metric.component.percent));
+    }
 
     const fill = document.createElement("span");
     fill.style.setProperty("--value", metric.component.percent || 0);
@@ -389,7 +443,6 @@
     button.className = `day-card${index === selectedForecastIndex ? " is-active" : ""}`;
     button.type = "button";
     button.dataset.index = String(index);
-    button.setAttribute("role", "listitem");
     button.setAttribute(
       "aria-label",
       `${formatDate(forecast.date, { weekday: "long" })}, sunset score ${
@@ -438,9 +491,29 @@
     button.addEventListener("click", () => {
       selectedForecastIndex = index;
       renderSelectedForecast();
+      updateDaySelection(true);
+      elements.forecastAnnouncement.textContent = `${formatDate(forecast.date, {
+        weekday: "long",
+      })} selected. Sunset score ${forecast.result.score} out of 100, ${
+        forecast.result.rating.label
+      }.`;
     });
 
     return button;
+  }
+
+  function updateDaySelection(shouldScroll) {
+    let activeCard = null;
+    elements.forecastDays.querySelectorAll(".day-card").forEach((card, index) => {
+      const isActive = index === selectedForecastIndex;
+      card.classList.toggle("is-active", isActive);
+      card.setAttribute("aria-pressed", String(isActive));
+      if (isActive) activeCard = card;
+    });
+
+    if (shouldScroll && activeCard) {
+      activeCard.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }
 
   function renderSelectedForecast() {
@@ -466,7 +539,7 @@
 
     elements.confidenceLabel.textContent = result.confidence.label;
     elements.confidenceDot.style.background =
-      result.confidence.value >= 80
+      result.confidence.value >= 84
         ? "#7ddbd0"
         : result.confidence.value >= 62
           ? "#ffbd6f"
@@ -476,10 +549,10 @@
     elements.viewingWindow.textContent = `${formatLocalTime(
       shiftLocalTime(forecast.sunset, -25)
     )} to ${formatLocalTime(shiftLocalTime(forecast.sunset, 25))}`;
-    elements.timezoneLabel.textContent =
-      currentPayload.weather.timezone_abbreviation ||
-      currentPayload.weather.timezone ||
-      "Local time";
+    elements.timezoneLabel.textContent = timeZoneNameAt(
+      forecast.sunsetEpoch,
+      currentPayload.weather
+    );
 
     const clouds = elements.qualityCard.querySelectorAll(".high-cloud");
     const elevatedCloud =
@@ -495,9 +568,7 @@
     elements.metricGrid.replaceChildren(
       ...getMetricDetails(forecast).map(makeMetricCard)
     );
-    elements.forecastDays.replaceChildren(
-      ...currentPayload.forecasts.map(makeDayCard)
-    );
+    updateDaySelection(false);
   }
 
   function renderPayload(payload, location, fetchedAt, cached) {
@@ -514,7 +585,12 @@
     elements.locationRegion.textContent = location.region
       ? ` · ${location.region}`
       : "";
-    elements.dataFreshness.textContent = cached ? "Updating cached forecast" : "Updated now";
+    elements.dataFreshness.textContent = cached
+      ? `${formatCacheAge(fetchedAt)} · refreshing`
+      : "Updated now";
+    elements.forecastDays.replaceChildren(
+      ...forecasts.map(makeDayCard)
+    );
     renderSelectedForecast();
 
     elements.loading.hidden = true;
@@ -534,8 +610,8 @@
 
   function showError(error, preserveContent) {
     const message =
-      error && error.name === "AbortError"
-        ? "The weather request timed out. Please try again."
+      error && error.message === "Failed to fetch"
+        ? "The weather service could not be reached. Check your connection and try again."
         : error && error.message
           ? error.message
           : "The weather service did not respond. Try again in a moment.";
@@ -544,6 +620,11 @@
     elements.loading.hidden = true;
     if (preserveContent && !elements.content.hidden) {
       elements.searchStatus.textContent = `Could not refresh: ${message}`;
+      if (currentPayload) {
+        elements.dataFreshness.textContent = formatCacheAge(
+          currentPayload.fetchedAt
+        );
+      }
       return;
     }
 
@@ -555,6 +636,16 @@
   function setControlsBusy(busy) {
     elements.form.querySelector('button[type="submit"]').disabled = busy;
     elements.geolocateButton.disabled = busy;
+    elements.quickLocationButtons.forEach((button) => {
+      button.disabled = busy;
+    });
+  }
+
+  function beginIntent() {
+    activeIntent += 1;
+    if (activeForecastController) activeForecastController.abort();
+    if (activeGeocodingController) activeGeocodingController.abort();
+    return activeIntent;
   }
 
   function writeCache(location, data, fetchedAt) {
@@ -622,18 +713,26 @@
   }
 
   async function loadForecast(location, options) {
-    const settings = { preserveContent: false, updateHistory: true, ...options };
+    const settings = {
+      preserveContent: false,
+      updateHistory: true,
+      intent: null,
+      ...options,
+    };
+    const intent = settings.intent === null ? beginIntent() : settings.intent;
+    if (intent !== activeIntent) return;
     if (activeForecastController) activeForecastController.abort();
 
     const controller = new AbortController();
     activeForecastController = controller;
+    lastAttemptedLocation = location;
     showLoading(settings.preserveContent);
     setControlsBusy(true);
     elements.searchStatus.textContent = `Reading the sky above ${location.name}…`;
 
     try {
       const data = await fetchForecastData(location, controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || intent !== activeIntent) return;
 
       const fetchedAt = Date.now();
       renderPayload(data, location, fetchedAt, false);
@@ -641,10 +740,11 @@
       if (settings.updateHistory) updateUrl(location);
       elements.searchStatus.textContent = `Live forecast ready for ${location.name}.`;
     } catch (error) {
+      if (intent !== activeIntent) return;
       if (controller.signal.aborted && activeForecastController !== controller) return;
       showError(error, settings.preserveContent);
     } finally {
-      if (activeForecastController === controller) {
+      if (activeForecastController === controller && intent === activeIntent) {
         activeForecastController = null;
         setControlsBusy(false);
       }
@@ -693,17 +793,20 @@
       return;
     }
 
+    const intent = beginIntent();
     elements.searchStatus.textContent = `Finding ${normalizedQuery}…`;
     setControlsBusy(true);
     try {
       const location = await geocode(normalizedQuery);
+      if (intent !== activeIntent) return;
       elements.input.value = location.name;
-      await loadForecast(location);
+      await loadForecast(location, { intent });
     } catch (error) {
-      if (error.name !== "AbortError") {
-        elements.searchStatus.textContent =
-          error.message || "That location could not be found.";
-      }
+      if (intent !== activeIntent) return;
+      elements.searchStatus.textContent =
+        error.message === "Failed to fetch"
+          ? "The location service could not be reached. Check your connection."
+          : error.message || "That location could not be found.";
       setControlsBusy(false);
     }
   }
@@ -715,10 +818,12 @@
       return;
     }
 
+    const intent = beginIntent();
     setControlsBusy(true);
     elements.searchStatus.textContent = "Getting your location…";
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (intent !== activeIntent) return;
         const location = {
           name: "Current location",
           region: `${position.coords.latitude.toFixed(2)}, ${position.coords.longitude.toFixed(2)}`,
@@ -726,9 +831,10 @@
           longitude: position.coords.longitude,
         };
         elements.input.value = "";
-        loadForecast(location);
+        loadForecast(location, { intent });
       },
       (error) => {
+        if (intent !== activeIntent) return;
         setControlsBusy(false);
         elements.searchStatus.textContent =
           error.code === error.PERMISSION_DENIED
@@ -751,10 +857,10 @@
 
     elements.geolocateButton.addEventListener("click", handleGeolocation);
     elements.retryButton.addEventListener("click", () => {
-      loadForecast(currentLocation || DEFAULT_LOCATION);
+      loadForecast(lastAttemptedLocation || currentLocation || DEFAULT_LOCATION);
     });
 
-    document.querySelectorAll("[data-location]").forEach((button) => {
+    elements.quickLocationButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const location = button.dataset.location;
         elements.input.value = location;

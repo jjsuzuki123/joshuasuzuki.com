@@ -32,12 +32,14 @@
 html {
   scroll-behavior: smooth;
   scrollbar-color: #4f405f var(--bg-deep);
+  overflow-x: clip;
 }
 
 body {
   min-width: 320px;
   margin: 0;
   overflow-x: hidden;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 78% 8%, rgba(106, 52, 124, 0.2), transparent 32rem),
     radial-gradient(circle at 18% 20%, rgba(197, 70, 89, 0.12), transparent 28rem),
@@ -90,6 +92,7 @@ a {
   padding: 0;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
@@ -373,6 +376,13 @@ main {
   transform: translateY(-1px);
 }
 
+.search-button:focus-visible,
+.locate-button:focus-visible,
+.forecast-error button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+
 .locate-button:hover {
   border-color: var(--border-bright);
   background: rgba(255, 255, 255, 0.09);
@@ -413,6 +423,11 @@ main {
 .quick-locations button:focus-visible {
   background: var(--panel-light);
   color: var(--text);
+}
+
+.quick-locations button:disabled {
+  cursor: wait;
+  opacity: 0.45;
 }
 
 .search-status {
@@ -481,7 +496,7 @@ main {
   font-weight: 650;
 }
 
-.live-pill i {
+.live-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1100,7 +1115,8 @@ main {
   grid-template-columns: auto 1fr auto;
 }
 
-.weight-list i {
+.weight-list .weight-dot {
+  display: block;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -1108,7 +1124,7 @@ main {
   box-shadow: 0 0 10px color-mix(in srgb, var(--dot) 60%, transparent);
 }
 
-.weight-list span {
+.weight-list li > span:not(.weight-dot) {
   overflow: hidden;
   color: var(--text-soft);
   font-size: 0.72rem;
@@ -1311,6 +1327,16 @@ footer {
     padding: 0.42rem 0.62rem;
   }
 
+  .search-panel {
+    background: rgba(29, 23, 42, 0.94);
+    backdrop-filter: none;
+  }
+
+  .page-glow {
+    filter: blur(72px);
+    opacity: 0.1;
+  }
+
   .hero {
     padding: 4.8rem 0;
   }
@@ -1414,10 +1440,6 @@ footer {
     width: 22px;
     height: 22px;
     margin-right: 7px;
-  }
-
-  .topbar nav a:not(.site-link) {
-    display: none;
   }
 
   .hero {

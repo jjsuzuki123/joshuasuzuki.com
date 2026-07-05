@@ -112,6 +112,7 @@
       return { score: 38, reason: "Fog is likely to hide the horizon." };
     }
     if (
+      (weatherCode >= 51 && weatherCode <= 57) ||
       (weatherCode >= 61 && weatherCode <= 67) ||
       (weatherCode >= 71 && weatherCode <= 77) ||
       (weatherCode >= 80 && weatherCode <= 86)
@@ -145,13 +146,13 @@
         ? 0.8
         : clamp(1 - (sampleDistanceMinutes / 60) * 0.2, 0.8, 1);
 
-    const aerosolBonus = numericInputs.aerosolOpticalDepth === null ? 0 : 0.03;
+    const aerosolBonus = numericInputs.aerosolOpticalDepth === null ? 0 : 0.02;
     const value = Math.round(
-      clamp((coverage * 0.56 + horizon * 0.34 + alignment * 0.1 + aerosolBonus) * 100, 0, 94)
+      clamp((coverage * 0.5 + horizon * 0.4 + alignment * 0.1 + aerosolBonus) * 100, 0, 94)
     );
 
     let label = "Low";
-    if (value >= 80) label = "High";
+    if (value >= 84) label = "High";
     else if (value >= 62) label = "Moderate";
 
     return { value, label };
@@ -232,17 +233,17 @@
     });
 
     const available = components.filter((component) => component.value !== null);
-    const availableWeight = available.reduce(
-      (total, component) => total + component.weight,
-      0
-    );
+    const normalizationWeight =
+      100 - (componentValues.aerosol === null ? 7 : 0);
     const earnedPoints = available.reduce(
       (total, component) => total + component.points,
       0
     );
 
     let score =
-      availableWeight === 0 ? 0 : Math.round((earnedPoints / availableWeight) * 100);
+      normalizationWeight === 0
+        ? 0
+        : Math.round((earnedPoints / normalizationWeight) * 100);
     let cap = weatherCodeCap(values.weatherCode);
 
     if (values.lowCloud !== null && values.lowCloud >= 90) {
@@ -272,7 +273,7 @@
       values,
       cap,
       summary: buildSummary(score, values, cap),
-      availableWeight,
+      availableWeight: normalizationWeight,
     };
   }
 
@@ -301,8 +302,18 @@
     if (targetKey === null) return null;
 
     const keys = hourly.time.map(localTimeKey);
+    const firstKey = keys.find((key) => key !== null);
+    const lastKey = [...keys].reverse().find((key) => key !== null);
+    if (
+      firstKey === undefined ||
+      lastKey === undefined ||
+      targetKey < firstKey ||
+      targetKey > lastKey
+    ) {
+      return null;
+    }
+
     let upperIndex = keys.findIndex((key) => key !== null && key >= targetKey);
-    if (upperIndex === -1) upperIndex = keys.length - 1;
     const lowerIndex = Math.max(0, upperIndex - 1);
 
     const lowerKey = keys[lowerIndex];
@@ -337,6 +348,8 @@
         sample[field] = upperValue;
       } else if (upperValue === null) {
         sample[field] = lowerValue;
+      } else if (field === "precipitation_probability") {
+        sample[field] = upperValue;
       } else if (field === "weather_code") {
         sample[field] = amount < 0.5 ? lowerValue : upperValue;
       } else {
@@ -353,6 +366,51 @@
     return key - finiteOrNull(utcOffsetSeconds || 0) * 1000;
   }
 
+  function zonedLocalTimeToEpoch(isoLocalTime, timeZone, fallbackOffsetSeconds) {
+    const targetKey = localTimeKey(isoLocalTime);
+    if (targetKey === null) return null;
+    if (!timeZone || typeof Intl === "undefined") {
+      return localTimeToEpoch(isoLocalTime, fallbackOffsetSeconds);
+    }
+
+    try {
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      });
+
+      let guess = targetKey;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const parts = Object.fromEntries(
+          formatter
+            .formatToParts(new Date(guess))
+            .filter((part) => part.type !== "literal")
+            .map((part) => [part.type, Number(part.value)])
+        );
+        const representedLocalTime = Date.UTC(
+          parts.year,
+          parts.month - 1,
+          parts.day,
+          parts.hour,
+          parts.minute,
+          parts.second
+        );
+        const correction = targetKey - representedLocalTime;
+        guess += correction;
+        if (Math.abs(correction) < 1000) break;
+      }
+      return guess;
+    } catch (error) {
+      return localTimeToEpoch(isoLocalTime, fallbackOffsetSeconds);
+    }
+  }
+
   return {
     COMPONENTS,
     clamp,
@@ -361,5 +419,6 @@
     localTimeToEpoch,
     sampleHourlyAt,
     scoreSunset,
+    zonedLocalTimeToEpoch,
   };
 });
