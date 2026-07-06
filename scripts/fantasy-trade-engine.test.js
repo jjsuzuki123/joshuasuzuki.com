@@ -348,6 +348,23 @@ assert.equal(lopsidedTrade.valid, true);
 assert.ok(lopsidedTrade.fairness <= 50);
 assert.equal(lopsidedTrade.realistic, false);
 
+const catcherHoleTrade = evaluateTrade({
+  teamId: data.activeTeamId,
+  partnerTeamId: "northside",
+  sendingIds: ["tanner-scott"],
+  receivingIds: ["logan-ohoppe"],
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+});
+assert.ok(catcherHoleTrade.partnerRosterFitPenalty >= 10);
+assert.ok(
+  catcherHoleTrade.partnerMissingPositions.some(
+    (position) => position.position === "C"
+  )
+);
+assert.equal(catcherHoleTrade.realistic, false);
+
 const incompleteTrade = evaluateTrade({
   teamId: data.activeTeamId,
   partnerTeamId: "northside",

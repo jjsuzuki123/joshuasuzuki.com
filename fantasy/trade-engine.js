@@ -10,6 +10,16 @@
   "use strict";
 
   const VALUE_WEIGHTS = [1, 0.68, 0.45];
+  const POSITION_REQUIREMENTS = {
+    C: { minimum: 1, cost: 10 },
+    "1B": { minimum: 1, cost: 4 },
+    "2B": { minimum: 1, cost: 5 },
+    "3B": { minimum: 1, cost: 4 },
+    SS: { minimum: 1, cost: 5 },
+    OF: { minimum: 2, cost: 3 },
+    SP: { minimum: 2, cost: 3 },
+    RP: { minimum: 1, cost: 5 },
+  };
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
@@ -297,6 +307,46 @@
     return -4;
   }
 
+  function positionCount(roster, position) {
+    return roster.filter((player) =>
+      Array.isArray(player.positions)
+        ? player.positions.includes(position)
+        : false
+    ).length;
+  }
+
+  function rosterCoverage(beforeRoster, afterRoster) {
+    const missing = [];
+    let penalty = 0;
+    Object.entries(POSITION_REQUIREMENTS).forEach(
+      ([position, requirement]) => {
+        const before = positionCount(beforeRoster, position);
+        const after = positionCount(afterRoster, position);
+        const expected = Math.min(requirement.minimum, before);
+        if (after >= expected) return;
+        const shortage = expected - after;
+        const cost = shortage * requirement.cost;
+        penalty += cost;
+        missing.push({ position, shortage, penalty: cost });
+      }
+    );
+    return { penalty, missing };
+  }
+
+  function positionalScarcityBonus(player, profile) {
+    if (!profile || !Array.isArray(player?.positions)) return 0;
+    const bonuses = player.positions
+      .map((position) => {
+        const requirement = POSITION_REQUIREMENTS[position];
+        if (!requirement) return 0;
+        const count = positionCount(profile.roster, position);
+        if (count > requirement.minimum) return 0;
+        return Math.min(6, requirement.cost * 0.6);
+      })
+      .filter((value) => value > 0);
+    return bonuses.length > 0 ? Math.max(...bonuses) : 0;
+  }
+
   function qualitativeAdjustment(player) {
     const evidence = Array.isArray(player?.insights?.qualitative)
       ? player.insights.qualitative
@@ -558,7 +608,8 @@
       })
       .filter(Boolean);
     const fit = weightedMean(fitEntries) ?? 0;
-    return round(clamp(base + fit * 8, 1, 110), 1);
+    const scarcity = positionalScarcityBonus(player, profile);
+    return round(clamp(base + fit * 8 + scarcity, 1, 110), 1);
   }
 
   function ratePlayerForTeam({
@@ -917,6 +968,11 @@
       deltas.map((delta) => delta.partnerPointDelta)
     );
     const rosterSizePenalty = Math.abs(sending.length - receiving.length) * 2.5;
+    const teamCoverage = rosterCoverage(teamProfile.roster, teamAfter);
+    const partnerCoverage = rosterCoverage(
+      partnerProfile.roster,
+      partnerAfter
+    );
     const incomingTrend = mean(receiving.map((player) => player.trend || 0));
     const outgoingTrend = mean(sending.map((player) => player.trend || 0));
     const trendDelta = incomingTrend - outgoingTrend;
@@ -940,7 +996,8 @@
           teamValueDelta * 0.7 +
           rotoPointGain * 2 -
           rosterSizePenalty +
-          trendDelta * 0.2
+          trendDelta * 0.2 -
+          teamCoverage.penalty
       ),
       0,
       99
@@ -952,7 +1009,8 @@
           partnerValueDelta * 0.72 +
           partnerRotoPointGain * 2 -
           rosterSizePenalty -
-          starPremiumPenalty
+          starPremiumPenalty -
+          partnerCoverage.penalty
       ),
       0,
       99
@@ -964,8 +1022,12 @@
       (fairness - 70) * 0.018 +
       partnerRotoPointGain * 0.22 -
       rosterSizePenalty * 0.06 -
-      starPremiumPenalty * 0.1;
-    const acceptance = logisticScore(partnerDecision);
+      starPremiumPenalty * 0.1 -
+      partnerCoverage.penalty * 0.15;
+    const acceptance = Math.min(
+      logisticScore(partnerDecision),
+      Math.max(0, 100 - partnerCoverage.penalty * 4)
+    );
     const confidencePenalty = (1 - confidence) * 8;
     const score = clamp(
       Math.round(
@@ -997,6 +1059,7 @@
       acceptance >= 57 &&
       partnerValueDelta >= -8 &&
       partnerNeedGain >= -2.25 &&
+      partnerCoverage.penalty < 10 &&
       teamScore >= 48;
 
     return {
@@ -1026,6 +1089,10 @@
       partnerRotoPointGain: round(partnerRotoPointGain, 1),
       trendDelta: round(trendDelta, 1),
       dataConfidence: Math.round(confidence * 100),
+      rosterFitPenalty: teamCoverage.penalty,
+      partnerRosterFitPenalty: partnerCoverage.penalty,
+      missingPositions: teamCoverage.missing,
+      partnerMissingPositions: partnerCoverage.missing,
       realistic,
       mutualBenefit:
         teamNeedGain + teamValueDelta * 0.1 > -1 &&
@@ -1079,7 +1146,11 @@
       reason = `Adds ${categoryNames(gainDeltas)}${pointText}.`;
     }
     let partnerReason = `${partnerProfile.team.name} receives comparable model value.`;
-    if (partnerGains.length > 0) {
+    if (result.partnerRosterFitPenalty >= 8) {
+      partnerReason = `${partnerProfile.team.name} would need to replace ${
+        result.partnerMissingPositions[0]?.position || "a lineup slot"
+      }, which lowers its interest.`;
+    } else if (partnerGains.length > 0) {
       const partnerPointText =
         result.partnerRotoPointGain > 0
           ? ` with ${round(result.partnerRotoPointGain, 1)} projected standings point${
@@ -1096,7 +1167,11 @@
       )} points of roster-specific value.`;
     }
     let risk = "No major loss in a category you are competing in.";
-    if (losses.length > 0) {
+    if (result.rosterFitPenalty >= 8) {
+      risk = `The deal leaves your ${
+        result.missingPositions[0]?.position || "lineup"
+      } slot uncovered.`;
+    } else if (losses.length > 0) {
       risk = `You give back some ${categoryNames(losses)} production.`;
     } else if (result.valueDelta < -5) {
       risk = "You pay a premium in the evidence-based player values.";

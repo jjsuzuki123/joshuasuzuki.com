@@ -1027,6 +1027,16 @@
           Math.abs(right.raw) - Math.abs(left.raw)
       )
       .slice(0, 5);
+    const partnerFitText =
+      evaluation.partnerRosterFitPenalty >= 8
+        ? `The offer leaves their ${
+            evaluation.partnerMissingPositions[0]?.position || "lineup"
+          } slot uncovered, so the interest score is capped.`
+        : `Their roster changes by ${
+            evaluation.partnerValueDelta >= 0 ? "+" : ""
+          }${evaluation.partnerValueDelta} fit value and ${
+            evaluation.partnerRotoPointGain >= 0 ? "+" : ""
+          }${evaluation.partnerRotoPointGain} projected standings points.`;
     elements.labResult.innerHTML = `
       <div class="result-grade-header">
         <div class="result-grade-top">
@@ -1104,14 +1114,8 @@
           </div>
         </div>
         <div class="result-section result-mutual-fit">
-          <span>Why the other manager might listen</span>
-          <p>
-            Their roster changes by ${evaluation.partnerValueDelta >= 0 ? "+" : ""}${escapeHtml(
-              evaluation.partnerValueDelta
-            )} fit value and ${evaluation.partnerRotoPointGain >= 0 ? "+" : ""}${escapeHtml(
-              evaluation.partnerRotoPointGain
-            )} projected standings points.
-          </p>
+          <span>Partner decision factors</span>
+          <p>${escapeHtml(partnerFitText)}</p>
         </div>
         <div class="result-actions">
           <button class="button button-primary" type="button" data-action="save-current-trade">
