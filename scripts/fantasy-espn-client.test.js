@@ -368,6 +368,26 @@ assert.equal(
   false
 );
 
+const denominatorFallbackFixture = JSON.parse(
+  JSON.stringify(zeroDenominatorFixture)
+);
+const denominatorFallbackPlayer =
+  denominatorFallbackFixture.teams[1].roster.entries[0].playerPoolEntry.player;
+denominatorFallbackPlayer.stats.push({
+  statSourceId: 0,
+  statSplitTypeId: 0,
+  stats: { 56: 20, 59: 0.8 },
+});
+const denominatorFallbackLeague = parseLeague(
+  denominatorFallbackFixture,
+  { leagueId: "1", season: "2026" }
+);
+const denominatorFallbackResult = denominatorFallbackLeague.players.find(
+  (player) => player.id === "202"
+);
+assert.equal(denominatorFallbackResult.categoryValues.savePercentage, 0.8);
+assert.equal(denominatorFallbackResult.categoryWeights.savePercentage, 20);
+
 const unknownCategoryFixture = JSON.parse(JSON.stringify(customFixture));
 unknownCategoryFixture.settings.scoringSettings.scoringItems.push({
   statId: 777,

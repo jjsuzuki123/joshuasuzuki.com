@@ -296,7 +296,7 @@
       [...teamRoster, ...partnerRoster],
       category.id
     );
-    const valueChange = (beforePlayers, afterPlayers) => {
+    const aggregateMovement = (beforePlayers, afterPlayers) => {
       const before = aggregateCategory(
         beforePlayers,
         category,
@@ -307,28 +307,44 @@
         category,
         useRawValues
       );
-      return Number.isFinite(before) && Number.isFinite(after)
-        ? after - before
-        : 0;
+      if (Number.isFinite(before) && Number.isFinite(after)) {
+        const valueChange = after - before;
+        const favorableValueChange =
+          category.direction === "lower" ? -valueChange : valueChange;
+        const range =
+          Number.isFinite(category.rangeMaximum) &&
+          Number.isFinite(category.rangeMinimum)
+            ? Math.max(
+                0.0001,
+                category.rangeMaximum - category.rangeMinimum
+              )
+            : 100;
+        return {
+          valueChange,
+          normalized: useRawValues
+            ? (favorableValueChange / range) * 100
+            : favorableValueChange,
+        };
+      }
+
+      const beforeScore = aggregateCategory(
+        beforePlayers,
+        category,
+        false
+      );
+      const afterScore = aggregateCategory(afterPlayers, category, false);
+      return {
+        valueChange: null,
+        normalized: afterScore - beforeScore,
+      };
     };
-    const teamValueChange = valueChange(teamRoster, teamAfter);
-    const partnerValueChange = valueChange(partnerRoster, partnerAfter);
-    const favorableChange = (valueChange) =>
-      useRawValues && category.direction === "lower"
-        ? -valueChange
-        : valueChange;
-    const range =
-      useRawValues &&
-      Number.isFinite(category.rangeMaximum) &&
-      Number.isFinite(category.rangeMinimum)
-        ? Math.max(0.0001, category.rangeMaximum - category.rangeMinimum)
-        : 100;
-    const normalize = (valueChange) =>
-      useRawValues
-        ? (favorableChange(valueChange) / range) * 100
-        : favorableChange(valueChange);
-    const raw = normalize(teamValueChange);
-    const partnerRaw = normalize(partnerValueChange);
+    const teamMovement = aggregateMovement(teamRoster, teamAfter);
+    const partnerMovement = aggregateMovement(
+      partnerRoster,
+      partnerAfter
+    );
+    const raw = teamMovement.normalized;
+    const partnerRaw = partnerMovement.normalized;
     const teamWeighted = (raw / 10) * (0.45 + teamNeed / 100);
     const partnerWeighted =
       (partnerRaw / 10) * (0.45 + partnerNeed / 100);
@@ -340,7 +356,7 @@
       group: category.group,
       raw,
       partnerRaw,
-      valueChange: teamValueChange,
+      valueChange: teamMovement.valueChange,
       direction: category.direction || "higher",
       display:
         Math.round((useRawValues ? raw : raw / 12) * 10) / 10,

@@ -292,30 +292,46 @@ const missingRateCategory = {
   rangeMinimum: 2.1,
   rangeMaximum: 5.3,
 };
+const missingRatePlayers = [
+  {
+    id: "missing-era",
+    ownerTeamId: "a",
+    marketValue: 50,
+    trend: 0,
+    scores: {},
+    categoryValues: {},
+    categoryWeights: {},
+  },
+  {
+    id: "known-era",
+    ownerTeamId: "b",
+    marketValue: 50,
+    trend: 0,
+    scores: { era: 70 },
+    categoryValues: { era: 3.0 },
+    categoryWeights: { era: 450 },
+  },
+];
 const missingRateContext = computeLeagueContext({
-  players: [
-    {
-      id: "missing-era",
-      ownerTeamId: "a",
-      marketValue: 50,
-      scores: {},
-      categoryValues: {},
-      categoryWeights: {},
-    },
-    {
-      id: "known-era",
-      ownerTeamId: "b",
-      marketValue: 50,
-      scores: { era: 70 },
-      categoryValues: { era: 3.0 },
-      categoryWeights: { era: 450 },
-    },
-  ],
+  players: missingRatePlayers,
   teams: [{ id: "a" }, { id: "b" }],
   categories: [missingRateCategory],
 });
 assert.equal(missingRateContext.profiles.get("b").categories.era.rank, 1);
 assert.equal(missingRateContext.profiles.get("a").categories.era.rank, 2);
+const missingRateTrade = evaluateTrade({
+  teamId: "a",
+  partnerTeamId: "b",
+  sendingIds: ["missing-era"],
+  receivingIds: ["known-era"],
+  players: missingRatePlayers,
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [missingRateCategory],
+  context: missingRateContext,
+});
+assert.equal(missingRateTrade.deltas[0].valueChange, null);
+assert.equal(missingRateTrade.deltas[0].raw, 70);
+assert.equal(missingRateTrade.deltas[0].partnerRaw, -70);
 
 const lopsidedTrade = evaluateTrade({
   teamId: data.activeTeamId,

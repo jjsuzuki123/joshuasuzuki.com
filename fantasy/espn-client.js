@@ -497,10 +497,15 @@
         const group = type === "pitcher" ? "pitching" : "batting";
         if (category.group !== group) return;
         const maps = seasonStatMaps(raw);
-        if (Number.isFinite(stat(maps.projection, category.statId))) {
+        const hasUsableValue = (stats) => {
+          if (!Number.isFinite(stat(stats, category.statId))) return false;
+          if (category.aggregation !== "rate") return true;
+          return Number.isFinite(rateCategoryWeight(stats, category));
+        };
+        if (hasUsableValue(maps.projection)) {
           projectionCoverage += 1;
         }
-        if (Number.isFinite(stat(maps.season, category.statId))) {
+        if (hasUsableValue(maps.season)) {
           seasonCoverage += 1;
         }
       });
