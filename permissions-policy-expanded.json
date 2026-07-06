@@ -39,7 +39,8 @@
       ],
       "Resource": [
         "arn:aws:lambda:us-east-1:545095759709:function:admin-login",
-        "arn:aws:lambda:us-east-1:545095759709:function:admin-messages"
+        "arn:aws:lambda:us-east-1:545095759709:function:admin-messages",
+        "arn:aws:lambda:us-east-1:545095759709:function:submit-contact"
       ]
     },
     {
@@ -52,7 +53,11 @@
       "Sid": "PassLambdaExecutionRole",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::545095759709:role/REPLACE_WITH_LAMBDA_EXEC_ROLE",
+      "Resource": [
+        "arn:aws:iam::545095759709:role/service-role/admin-login-role-23ul4gf8",
+        "arn:aws:iam::545095759709:role/service-role/admin-messages-role-vxqt48ig",
+        "arn:aws:iam::545095759709:role/service-role/submit-contact-role-0xj3o330"
+      ],
       "Condition": {
         "StringEquals": { "iam:PassedToService": "lambda.amazonaws.com" }
       }
@@ -79,7 +84,8 @@
       ],
       "Resource": [
         "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/admin-login:*",
-        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/admin-messages:*"
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/admin-messages:*",
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/submit-contact:*"
       ]
     },
     {
@@ -101,8 +107,8 @@
         "dynamodb:UpdateItem"
       ],
       "Resource": [
-        "arn:aws:dynamodb:us-east-1:545095759709:table/REPLACE_WITH_MESSAGES_TABLE",
-        "arn:aws:dynamodb:us-east-1:545095759709:table/REPLACE_WITH_MESSAGES_TABLE/index/*"
+        "arn:aws:dynamodb:us-east-1:545095759709:table/portfolio-contact",
+        "arn:aws:dynamodb:us-east-1:545095759709:table/portfolio-contact/index/*"
       ]
     },
     {
@@ -116,7 +122,7 @@
         "wafv2:GetLoggingConfiguration"
       ],
       "Resource": [
-        "arn:aws:wafv2:us-east-1:545095759709:regional/webacl/REPLACE_WITH_WAF_ACL_NAME/REPLACE_WITH_WAF_ACL_ID"
+        "arn:aws:wafv2:us-east-1:545095759709:global/webacl/CreatedByCloudFront-8fdbe629/fe3783e7-3083-4b5a-bd32-178f1f813093"
       ]
     }
   ]
