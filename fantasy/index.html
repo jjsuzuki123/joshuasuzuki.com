@@ -76,16 +76,17 @@
         </div>
 
         <div class="sidebar-bottom">
-          <div class="league-switcher">
+          <label class="league-switcher" for="team-switcher">
             <span id="sidebar-team-mark" class="team-mark">FOG</span>
             <span class="league-switcher-copy">
               <strong id="sidebar-team-name">Fog City Fastballs</strong>
               <small id="sidebar-league-name">Bay Area Rotisserie</small>
             </span>
+            <select id="team-switcher" aria-label="Choose the team to analyze"></select>
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="m6 8 4-4 4 4M14 12l-4 4-4-4"></path>
             </svg>
-          </div>
+          </label>
           <a class="back-link" href="/">
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M16 10H4M9 5l-5 5 5 5"></path>
@@ -305,7 +306,7 @@
 
             <div class="results-toolbar">
               <p id="finder-results-summary" aria-live="polite">Finding matches...</p>
-              <p class="results-method">Sorted by team gain and acceptance likelihood</p>
+              <p class="results-method">Balanced across managers, then ranked by roster fit</p>
             </div>
             <div id="finder-list" class="finder-list"></div>
           </section>
@@ -321,6 +322,17 @@
                 Clear trade
               </button>
             </div>
+
+            <section id="saved-trades" class="saved-trades" aria-labelledby="saved-trades-heading" hidden>
+              <div class="saved-trades-heading">
+                <div>
+                  <p class="section-label">On this device</p>
+                  <h3 id="saved-trades-heading">Saved scenarios</h3>
+                </div>
+                <span id="saved-trades-count"></span>
+              </div>
+              <div id="saved-trades-list" class="saved-trades-list"></div>
+            </section>
 
             <div class="trade-lab-layout">
               <div class="trade-builder">
@@ -480,14 +492,14 @@
       </div>
     </div>
 
-    <dialog id="espn-dialog" class="modal">
+    <dialog id="espn-dialog" class="modal" aria-labelledby="espn-dialog-title">
       <form id="espn-form" class="modal-card">
         <div class="modal-heading">
           <div>
             <span class="modal-mark" aria-hidden="true">E</span>
             <div>
               <p class="section-label">League import</p>
-              <h2>Connect ESPN fantasy baseball</h2>
+              <h2 id="espn-dialog-title">Connect ESPN fantasy baseball</h2>
             </div>
           </div>
           <button class="icon-button" type="button" data-action="close-espn" aria-label="Close">
@@ -499,7 +511,7 @@
 
         <p class="modal-intro">
           Import team names, rosters, standings, ownership, and available ESPN projections. Your
-          league must be public for this browser connector.
+          league must be public and use standard 5x5 category scoring for this browser connector.
         </p>
 
         <div class="form-grid">
@@ -563,7 +575,7 @@
       </form>
     </dialog>
 
-    <dialog id="trade-dialog" class="modal trade-modal">
+    <dialog id="trade-dialog" class="modal trade-modal" aria-labelledby="trade-dialog-title">
       <div id="trade-dialog-content" class="modal-card"></div>
     </dialog>
 

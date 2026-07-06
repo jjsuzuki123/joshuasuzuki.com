@@ -7,7 +7,7 @@
   --sidebar-soft: #21312a;
   --ink: #19221e;
   --ink-soft: #53605a;
-  --ink-muted: #7c8781;
+  --ink-muted: #65716b;
   --line: #dfe4dc;
   --line-strong: #cbd2c8;
   --green: #246b56;
@@ -135,6 +135,7 @@ svg {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  overflow-y: auto;
   padding: 1.25rem 0.9rem 1rem;
   color: #dfe9e3;
   background: var(--sidebar);
@@ -253,6 +254,7 @@ svg {
 }
 
 .league-switcher {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -261,6 +263,25 @@ svg {
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+}
+
+.league-switcher:focus-within {
+  border-color: rgba(184, 213, 106, 0.7);
+  box-shadow: 0 0 0 3px rgba(184, 213, 106, 0.12);
+}
+
+.league-switcher select {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .team-mark {
@@ -307,6 +328,7 @@ svg {
   flex: 0 0 auto;
   margin-left: auto;
   color: #768b81;
+  pointer-events: none;
 }
 
 .back-link {
@@ -1531,6 +1553,109 @@ input:focus {
   line-height: 1.55;
 }
 
+.saved-trades {
+  margin-bottom: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.saved-trades-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.saved-trades-heading .section-label {
+  margin-bottom: 0.2rem;
+}
+
+.saved-trades-heading h3 {
+  margin: 0;
+  font-size: 0.86rem;
+  letter-spacing: -0.02em;
+}
+
+.saved-trades-heading > span {
+  color: var(--ink-muted);
+  font-size: 0.61rem;
+}
+
+.saved-trades-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.saved-trade-card {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.saved-trade-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.saved-trade-copy strong,
+.saved-trade-copy span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-trade-copy strong {
+  color: var(--ink);
+  font-size: 0.67rem;
+}
+
+.saved-trade-copy span {
+  margin-top: 0.18rem;
+  color: var(--ink-muted);
+  font-size: 0.56rem;
+}
+
+.saved-trade-actions {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.saved-trade-actions button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--ink-muted);
+  background: #fff;
+}
+
+.saved-trade-actions button:hover {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.saved-trade-actions button[data-action="delete-saved-trade"]:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.saved-trade-actions svg {
+  width: 14px;
+  height: 14px;
+}
+
 .trade-lab-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
@@ -2708,6 +2833,10 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
+  .saved-trades-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .trade-result-card {
     position: static;
   }
@@ -2755,13 +2884,21 @@ input:focus {
 @media (max-width: 760px) {
   .sidebar {
     width: min(280px, calc(100vw - 3.5rem));
+    visibility: hidden;
+    pointer-events: none;
+    overscroll-behavior: contain;
     transform: translateX(-102%);
     box-shadow: var(--shadow-raised);
-    transition: transform 220ms var(--ease);
+    transition:
+      transform 220ms var(--ease),
+      visibility 0s linear 220ms;
   }
 
   .sidebar.is-open {
+    visibility: visible;
+    pointer-events: auto;
     transform: translateX(0);
+    transition-delay: 0s;
   }
 
   .sidebar-scrim {
@@ -2857,6 +2994,10 @@ input:focus {
   }
 
   .trade-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .saved-trades-list {
     grid-template-columns: 1fr;
   }
 

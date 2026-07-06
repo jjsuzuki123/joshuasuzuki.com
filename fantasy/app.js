@@ -34,6 +34,7 @@
     sidebarTeamMark: document.getElementById("sidebar-team-mark"),
     sidebarTeamName: document.getElementById("sidebar-team-name"),
     sidebarLeagueName: document.getElementById("sidebar-league-name"),
+    teamSwitcher: document.getElementById("team-switcher"),
     navOpportunityCount: document.getElementById("nav-opportunity-count"),
     heroDate: document.getElementById("hero-date"),
     heroHeading: document.getElementById("hero-heading"),
@@ -60,6 +61,9 @@
     sendCount: document.getElementById("send-count"),
     receiveCount: document.getElementById("receive-count"),
     clearTradeButton: document.getElementById("clear-trade-button"),
+    savedTrades: document.getElementById("saved-trades"),
+    savedTradesCount: document.getElementById("saved-trades-count"),
+    savedTradesList: document.getElementById("saved-trades-list"),
     labResult: document.getElementById("lab-result"),
     marketSearch: document.getElementById("market-search"),
     marketType: document.getElementById("market-type"),
@@ -103,6 +107,11 @@
   function savedLeague() {
     const value = readJsonStorage(LEAGUE_STORAGE_KEY, null);
     return isLeagueData(value) ? value : null;
+  }
+
+  function savedTradeRecords() {
+    const value = readJsonStorage(SAVED_TRADES_STORAGE_KEY, []);
+    return Array.isArray(value) ? value : [];
   }
 
   function initialRoute() {
@@ -252,10 +261,26 @@
     }, 2800);
   }
 
-  function setSidebarOpen(open) {
-    elements.sidebar.classList.toggle("is-open", open);
-    elements.sidebarScrim.hidden = !open;
-    elements.menuButton.setAttribute("aria-expanded", String(open));
+  function setSidebarOpen(open, options) {
+    const mobile = window.matchMedia("(max-width: 760px)").matches;
+    const nextOpen = mobile && open;
+    elements.sidebar.classList.toggle("is-open", nextOpen);
+    elements.sidebarScrim.hidden = !nextOpen;
+    elements.menuButton.setAttribute("aria-expanded", String(nextOpen));
+
+    if (mobile) {
+      elements.sidebar.setAttribute("aria-hidden", String(!nextOpen));
+    } else {
+      elements.sidebar.removeAttribute("aria-hidden");
+    }
+
+    if (nextOpen) {
+      window.requestAnimationFrame(() => {
+        elements.sidebar.querySelector(".nav-item.is-active")?.focus();
+      });
+    } else if (options && options.restoreFocus) {
+      elements.menuButton.focus();
+    }
   }
 
   function activateRoute(route, options) {
@@ -322,6 +347,14 @@
     elements.sidebarTeamMark.style.background = safeColor(team.color);
     elements.sidebarTeamName.textContent = team.name;
     elements.sidebarLeagueName.textContent = state.data.league.name;
+    elements.teamSwitcher.innerHTML = state.data.teams
+      .map(
+        (leagueTeam) =>
+          `<option value="${escapeHtml(leagueTeam.id)}" ${
+            String(leagueTeam.id) === String(state.teamId) ? "selected" : ""
+          }>${escapeHtml(leagueTeam.name)}</option>`
+      )
+      .join("");
     elements.dataNotice.hidden = !isDemo;
     elements.dataStateDot.className = `status-dot ${
       isDemo ? "status-dot-demo" : "status-dot-live"
@@ -570,10 +603,10 @@
             ${escapeHtml(opportunity.partnerTeam.name)}
           </span>
           <span class="likelihood">
-            Acceptance
+            Partner fit
             <b>${escapeHtml(likelihoodLabel)} · ${escapeHtml(
               opportunity.result.acceptance
-            )}%</b>
+            )}/100</b>
           </span>
         </div>
         <div class="trade-card-body">
@@ -766,7 +799,7 @@
             <strong>${escapeHtml(evaluation.fairness)}</strong>
           </div>
           <div class="result-meter">
-            <span>Acceptance</span>
+            <span>Partner fit</span>
             <span class="result-meter-track"><i style="--meter: ${evaluation.acceptance}%"></i></span>
             <strong>${escapeHtml(evaluation.acceptance)}</strong>
           </div>
@@ -781,6 +814,72 @@
         </div>
       </div>
     `;
+  }
+
+  function currentSavedTrades() {
+    return savedTradeRecords()
+      .filter(
+        (record) =>
+          String(record.leagueId) === String(state.data.league.id) &&
+          String(record.teamId || state.teamId) === String(state.teamId)
+      )
+      .filter(
+        (record) =>
+          teamById(record.partnerTeamId) &&
+          Array.isArray(record.sendingIds) &&
+          record.sendingIds.every(playerById) &&
+          Array.isArray(record.receivingIds) &&
+          record.receivingIds.every(playerById)
+      )
+      .slice(0, 6);
+  }
+
+  function renderSavedTrades() {
+    const records = currentSavedTrades();
+    elements.savedTrades.hidden = records.length === 0;
+    elements.savedTradesCount.textContent = `${records.length} saved`;
+    elements.savedTradesList.innerHTML = records
+      .map((record) => {
+        const sending = record.sendingIds.map(playerById).filter(Boolean);
+        const receiving = record.receivingIds.map(playerById).filter(Boolean);
+        const partner = teamById(record.partnerTeamId);
+        const recordId = String(record.id || record.savedAt);
+        return `
+          <article class="saved-trade-card">
+            <div class="saved-trade-copy">
+              <strong>${escapeHtml(joinPlayerNames(sending))} for ${escapeHtml(
+                joinPlayerNames(receiving)
+              )}</strong>
+              <span>${escapeHtml(partner.name)} · Fit ${escapeHtml(
+                record.score
+              )}/100</span>
+            </div>
+            <div class="saved-trade-actions">
+              <button
+                type="button"
+                data-action="load-saved-trade"
+                data-saved-id="${escapeHtml(recordId)}"
+                aria-label="Load saved trade"
+              >
+                <svg viewBox="0 0 18 18" aria-hidden="true">
+                  <path d="M4 9h10M10 5l4 4-4 4"></path>
+                </svg>
+              </button>
+              <button
+                type="button"
+                data-action="delete-saved-trade"
+                data-saved-id="${escapeHtml(recordId)}"
+                aria-label="Delete saved trade"
+              >
+                <svg viewBox="0 0 18 18" aria-hidden="true">
+                  <path d="M4 5h10M7 5V3h4v2M6 7v7h6V7"></path>
+                </svg>
+              </button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
   }
 
   function renderLab() {
@@ -841,6 +940,7 @@
       .join("");
     elements.sendCount.textContent = `${state.lab.sending.size} selected`;
     elements.receiveCount.textContent = `${state.lab.receiving.size} selected`;
+    renderSavedTrades();
     renderLabResult();
   }
 
@@ -1034,7 +1134,9 @@
           <p class="section-label">Trade with ${escapeHtml(
             opportunity.partnerTeam.name
           )}</p>
-          <h2>${escapeHtml(joinPlayerNames(opportunity.receiving))} fits the gap</h2>
+          <h2 id="trade-dialog-title">${escapeHtml(
+            joinPlayerNames(opportunity.receiving)
+          )} fits the gap</h2>
           <p>${escapeHtml(
             engine.describeValueDelta(opportunity.result.valueDelta)
           )} · ${escapeHtml(opportunity.result.fairness)}% value fairness</p>
@@ -1122,18 +1224,23 @@
   }
 
   function saveTradeRecord(record) {
-    const saved = readJsonStorage(SAVED_TRADES_STORAGE_KEY, []);
-    const list = Array.isArray(saved) ? saved : [];
+    const list = savedTradeRecords();
     list.unshift({
       ...record,
+      id:
+        typeof window.crypto?.randomUUID === "function"
+          ? window.crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       savedAt: new Date().toISOString(),
       leagueId: state.data.league.id,
+      teamId: state.teamId,
     });
     try {
       window.localStorage.setItem(
         SAVED_TRADES_STORAGE_KEY,
         JSON.stringify(list.slice(0, 20))
       );
+      renderSavedTrades();
       showToast("Scenario saved on this device.");
     } catch (error) {
       showToast("This browser could not save the scenario.");
@@ -1170,6 +1277,43 @@
     });
   }
 
+  function loadSavedTrade(savedId) {
+    const record = savedTradeRecords().find(
+      (candidate) => String(candidate.id || candidate.savedAt) === String(savedId)
+    );
+    if (
+      !record ||
+      String(record.leagueId) !== String(state.data.league.id) ||
+      !teamById(record.partnerTeamId)
+    ) {
+      showToast("That saved scenario is no longer available in this league.");
+      return;
+    }
+
+    state.lab.partnerTeamId = String(record.partnerTeamId);
+    state.lab.sending = new Set(record.sendingIds.map(String));
+    state.lab.receiving = new Set(record.receivingIds.map(String));
+    renderLab();
+    activateRoute("lab", { focus: true });
+    showToast("Saved scenario loaded.");
+  }
+
+  function deleteSavedTrade(savedId) {
+    const records = savedTradeRecords().filter(
+      (record) => String(record.id || record.savedAt) !== String(savedId)
+    );
+    try {
+      window.localStorage.setItem(
+        SAVED_TRADES_STORAGE_KEY,
+        JSON.stringify(records)
+      );
+      renderSavedTrades();
+      showToast("Saved scenario deleted.");
+    } catch (error) {
+      showToast("This browser could not delete the scenario.");
+    }
+  }
+
   function toggleLabPlayer(side, playerId) {
     const collection = side === "send" ? state.lab.sending : state.lab.receiving;
     const key = String(playerId);
@@ -1182,6 +1326,12 @@
       collection.add(key);
     }
     renderLab();
+    window.requestAnimationFrame(() => {
+      const roster = side === "send" ? elements.sendRoster : elements.receiveRoster;
+      [...roster.querySelectorAll("[data-player-id]")]
+        .find((button) => button.dataset.playerId === key)
+        ?.focus();
+    });
   }
 
   function openEspnDialog() {
@@ -1232,7 +1382,11 @@
       renderAll();
       window.setTimeout(() => {
         if (elements.espnDialog.open) elements.espnDialog.close();
-        showToast(`${league.league.name} is now connected.`);
+        showToast(
+          league.teamSelectionRequired
+            ? `${league.league.name} imported. Choose your team in the lower-left menu.`
+            : `${league.league.name} is now connected.`
+        );
       }, 550);
     } catch (error) {
       if (error && error.name === "AbortError") return;
@@ -1254,6 +1408,35 @@
     state.lab.receiving.clear();
     renderAll();
     showToast("Demo league restored.");
+  }
+
+  function switchTeam(teamId) {
+    const nextTeam = teamById(teamId);
+    if (!nextTeam || String(nextTeam.id) === String(state.teamId)) return;
+
+    state.teamId = String(nextTeam.id);
+    if (state.data.mode === "espn") {
+      state.data = {
+        ...state.data,
+        activeTeamId: state.teamId,
+        teamSelectionRequired: false,
+      };
+    }
+    state.lab.partnerTeamId = null;
+    state.lab.sending.clear();
+    state.lab.receiving.clear();
+    if (state.data.mode === "espn") {
+      try {
+        window.localStorage.setItem(
+          LEAGUE_STORAGE_KEY,
+          JSON.stringify(state.data)
+        );
+      } catch (error) {
+        showToast("The team changed, but this browser could not save the choice.");
+      }
+    }
+    renderAll();
+    showToast(`Now analyzing ${nextTeam.name}.`);
   }
 
   function toggleWatch(playerId) {
@@ -1301,6 +1484,10 @@
       saveOpportunity(actionTarget.dataset.opportunityId);
     } else if (action === "save-current-trade") {
       saveCurrentTrade();
+    } else if (action === "load-saved-trade") {
+      loadSavedTrade(actionTarget.dataset.savedId);
+    } else if (action === "delete-saved-trade") {
+      deleteSavedTrade(actionTarget.dataset.savedId);
     } else if (action === "toggle-player") {
       toggleLabPlayer(actionTarget.dataset.side, actionTarget.dataset.playerId);
     } else if (action === "toggle-watch") {
@@ -1315,9 +1502,15 @@
   });
 
   elements.menuButton.addEventListener("click", () => {
-    setSidebarOpen(!elements.sidebar.classList.contains("is-open"));
+    const opening = !elements.sidebar.classList.contains("is-open");
+    setSidebarOpen(opening, { restoreFocus: !opening });
   });
-  elements.sidebarScrim.addEventListener("click", () => setSidebarOpen(false));
+  elements.sidebarScrim.addEventListener("click", () =>
+    setSidebarOpen(false, { restoreFocus: true })
+  );
+  elements.teamSwitcher.addEventListener("change", () => {
+    switchTeam(elements.teamSwitcher.value);
+  });
   elements.finderStrategy.addEventListener("change", () => {
     state.finder.strategy = elements.finderStrategy.value;
     renderFinder();
@@ -1360,8 +1553,47 @@
 
   [elements.espnDialog, elements.tradeDialog].forEach((dialog) => {
     dialog.addEventListener("click", (event) => {
-      if (event.target === dialog) dialog.close();
+      if (event.target !== dialog) return;
+      if (dialog === elements.espnDialog) closeEspnDialog();
+      else dialog.close();
     });
+  });
+  elements.espnDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeEspnDialog();
+  });
+  elements.espnDialog.addEventListener("close", () => {
+    if (activeImportController) {
+      activeImportController.abort();
+      activeImportController = null;
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (!elements.sidebar.classList.contains("is-open")) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSidebarOpen(false, { restoreFocus: true });
+      return;
+    }
+    if (event.key === "Tab") {
+      const focusable = [
+        ...elements.sidebar.querySelectorAll(
+          'a[href], button:not([disabled]), select:not([disabled])'
+        ),
+      ].filter((item) => item.offsetParent !== null);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!window.matchMedia("(max-width: 760px)").matches) setSidebarOpen(false);
   });
   window.addEventListener("hashchange", () => {
     activateRoute(initialRoute(), { fromHash: true });
