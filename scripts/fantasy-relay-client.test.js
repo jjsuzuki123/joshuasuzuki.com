@@ -80,9 +80,17 @@ async function run() {
   assert.equal(relayRequest.options.method, "POST");
   const requestBody = JSON.parse(relayRequest.options.body);
   assert.equal(requestBody.espnS2, "one-time-session");
+  assert.equal(
+    requestBody.swid,
+    "{11111111-2222-3333-4444-555555555555}"
+  );
   assert.equal(requestBody.teamId, "1");
   assert.equal(league.league.name, "Private Test League");
   assert.equal(league.activeTeamId, "1");
+  assert.doesNotMatch(
+    JSON.stringify(league),
+    /one-time-session|11111111-2222/
+  );
 
   global.fetch = async () =>
     new Response(JSON.stringify({ message: "ESPN rejected these values." }), {
@@ -97,7 +105,9 @@ async function run() {
         espnS2: "expired",
         swid: "{11111111-2222-3333-4444-555555555555}",
       }),
-    /ESPN rejected these values/
+    (error) =>
+      error.message === "ESPN rejected these values." &&
+      error.code === "IMPORT_FAILED"
   );
 
   delete global.RosterLabConfig;

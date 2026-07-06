@@ -2599,12 +2599,13 @@ input:focus {
 }
 
 .connection-mode label > span {
+  position: relative;
   min-height: 62px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 0.15rem;
-  padding: 0.75rem;
+  padding: 0.75rem 2.2rem 0.75rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: 11px;
   background: var(--surface-soft);
@@ -2612,6 +2613,19 @@ input:focus {
     border-color 130ms ease,
     background 130ms ease,
     box-shadow 130ms ease;
+}
+
+.connection-mode label > span::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #fff;
+  transform: translateY(-50%);
 }
 
 .connection-mode strong {
@@ -2628,6 +2642,17 @@ input:focus {
   border-color: var(--green);
   background: var(--green-soft);
   box-shadow: 0 0 0 2px rgba(36, 107, 86, 0.08);
+}
+
+.connection-mode input:checked + span::after {
+  border-color: var(--green);
+  background: var(--green);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.connection-mode input:disabled + span {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .connection-mode input:focus-visible + span {

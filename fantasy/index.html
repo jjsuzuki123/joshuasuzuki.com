@@ -574,7 +574,7 @@
             <input type="radio" name="leagueVisibility" value="private" />
             <span>
               <strong>Private league</strong>
-              <small>Use your ESPN session once</small>
+              <small id="private-mode-caption">Use your ESPN session for one request</small>
             </span>
           </label>
         </fieldset>
@@ -623,10 +623,10 @@
         <div id="private-credentials" class="private-credentials" hidden>
           <div class="private-credentials-heading">
             <div>
-              <p class="section-label">One-time ESPN session</p>
-              <h3>Connect without sharing your password</h3>
+              <p class="section-label">One-request ESPN session</p>
+              <h3>Connect using your existing ESPN session</h3>
             </div>
-            <span>Never saved</span>
+            <span>Not saved by RosterLab</span>
           </div>
           <div class="form-grid">
             <label class="field field-wide">
@@ -661,7 +661,6 @@
               <li>Open browser developer tools, then Application or Storage.</li>
               <li>Under Cookies for <code>espn.com</code>, copy <code>espn_s2</code> and <code>SWID</code>.</li>
             </ol>
-            <p>These session values can access your ESPN account. Use them only on a device you trust.</p>
           </details>
         </div>
 
@@ -672,7 +671,8 @@
           </svg>
           <p>
             RosterLab never asks for your ESPN password. Private session values go once to the
-            import relay over HTTPS, are excluded from logs, and are discarded after the request.
+            import relay over HTTPS and are not saved by RosterLab. ESPN may keep them valid after
+            import, so treat them like passwords and use them only on a device you trust.
           </p>
         </div>
 

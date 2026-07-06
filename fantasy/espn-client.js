@@ -15,6 +15,14 @@
     typeof config.importEndpoint === "string"
       ? config.importEndpoint.trim()
       : "";
+
+  class LeagueImportError extends Error {
+    constructor(message, code) {
+      super(message);
+      this.name = "LeagueImportError";
+      this.code = code;
+    }
+  }
   const LINEUP_POSITION_BY_ID = {
     0: "C",
     1: "1B",
@@ -612,10 +620,11 @@
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(
+        throw new LeagueImportError(
           typeof body.message === "string"
             ? body.message
-            : `League import returned ${response.status}.`
+            : `League import returned ${response.status}.`,
+          typeof body.code === "string" ? body.code : "IMPORT_FAILED"
         );
       }
       if (!body.payload) {
@@ -664,8 +673,9 @@
         signal: controller.signal,
       });
       if (response.status === 401 || response.status === 403) {
-        throw new Error(
-          "This league appears to be private. Choose Private league to connect it."
+        throw new LeagueImportError(
+          "This league appears to be private. Choose Private league to connect it.",
+          "PRIVATE_LEAGUE"
         );
       }
       if (!response.ok) {
@@ -711,8 +721,9 @@
       });
     }
     if (espnS2 || swid) {
-      throw new Error(
-        "Private league import is not configured in this environment."
+      throw new LeagueImportError(
+        "Private league import is not configured in this environment.",
+        "RELAY_NOT_CONFIGURED"
       );
     }
     return fetchLeagueDirect({
@@ -728,6 +739,7 @@
     buildLeagueUrl,
     fetchLeague,
     hasImportRelay: Boolean(IMPORT_ENDPOINT),
+    LeagueImportError,
     parseLeagueReference,
     parseLeague,
   };

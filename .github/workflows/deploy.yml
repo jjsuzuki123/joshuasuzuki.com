@@ -9,6 +9,10 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -18,19 +22,20 @@ jobs:
       CF_DISTRIBUTION_ID: E3LDS3FK17E3JF
       AWS_REGION: us-east-1
       FANTASY_IMPORT_STACK: rosterlab-fantasy-import-production
+      SAM_ARTIFACT_BUCKET: rosterlab-deploy-artifacts-545095759709-us-east-1
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@f84ec7d548307efafe33230528756de3c5841a17 # v2
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: arn:aws:iam::545095759709:role/GitHubActionsDeployPersonalSite
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Set up AWS SAM
-        uses: aws-actions/setup-sam@v2
 
       - name: Test fantasy import relay
         run: |
@@ -38,7 +43,9 @@ jobs:
           node scripts/fantasy-relay-client.test.js
 
       - name: Validate fantasy import infrastructure
-        run: sam validate --lint --template-file fantasy-backend/template.yaml
+        run: |
+          sam validate --lint --template-file fantasy-backend/bootstrap-template.yaml
+          sam validate --lint --template-file fantasy-backend/template.yaml
 
       - name: Build and package fantasy import relay
         run: |
@@ -46,8 +53,8 @@ jobs:
           sam build --template-file fantasy-backend/template.yaml
           sam package \
             --template-file .aws-sam/build/template.yaml \
-            --s3-bucket "${S3_BUCKET}" \
-            --s3-prefix "_deploy/rosterlab" \
+            --s3-bucket "${SAM_ARTIFACT_BUCKET}" \
+            --s3-prefix "rosterlab" \
             --output-template-file fantasy-backend/packaged.yaml
 
       - name: Deploy fantasy import relay
@@ -55,7 +62,6 @@ jobs:
           sam deploy \
             --template-file fantasy-backend/packaged.yaml \
             --stack-name "${FANTASY_IMPORT_STACK}" \
-            --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides Environment=production \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset

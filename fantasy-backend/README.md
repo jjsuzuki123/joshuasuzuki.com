@@ -5,7 +5,8 @@ the `espn_s2` and `SWID` values from an active ESPN browser session.
 
 This relay accepts those values for one request, calls a fixed ESPN fantasy
 baseball endpoint, and returns the league payload to RosterLab. It does not
-store credentials or league data.
+store credentials or league data. ESPN may continue accepting the same session
+values after the request, so users must still treat them like passwords.
 
 ## Security controls
 
@@ -24,18 +25,32 @@ local storage. Users should still treat both values like passwords.
 ## Deploy
 
 The SAM stack creates an HTTP API, one arm64 Lambda function, a least-privilege
-execution role, and a seven-day log group.
+seven-day function and API log groups, and CloudWatch error alarms.
+
+An AWS administrator must run the bootstrap stack once. It creates the
+log-only Lambda execution role and a private, encrypted artifact bucket with a
+14-day lifecycle. The day-to-day GitHub role can pass that fixed role to Lambda
+but cannot create or modify IAM roles.
+
+```sh
+aws cloudformation deploy \
+  --template-file fantasy-backend/bootstrap-template.yaml \
+  --stack-name rosterlab-fantasy-import-bootstrap \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
+Then apply the repository's updated `permissions-policy.json` to
+`GitHubActionsDeployPersonalSite`.
 
 ```sh
 sam build --template-file fantasy-backend/template.yaml
 sam package \
-  --s3-bucket josh-personal-site-1 \
-  --s3-prefix _deploy/rosterlab \
+  --s3-bucket rosterlab-deploy-artifacts-545095759709-us-east-1 \
+  --s3-prefix rosterlab \
   --output-template-file fantasy-backend/packaged.yaml
 sam deploy \
   --template-file fantasy-backend/packaged.yaml \
   --stack-name rosterlab-fantasy-import-production \
-  --capabilities CAPABILITY_NAMED_IAM \
   --no-confirm-changeset \
   --no-fail-on-empty-changeset
 ```
@@ -43,11 +58,6 @@ sam deploy \
 After deployment, write the `ImportEndpoint` stack output to
 `fantasy/config.js`. The site deployment workflow performs these steps before
 uploading the static site.
-
-Before the first deployment, apply the repository's updated
-`permissions-policy.json` to the `GitHubActionsDeployPersonalSite` role. The
-policy limits backend deployment access to the RosterLab stack, function, role,
-API, and log group.
 
 At low traffic, Lambda and API Gateway normally remain inside their free
 tiers. Outside the free tier, HTTP API requests cost about $1 per million plus

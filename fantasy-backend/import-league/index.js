@@ -7,13 +7,18 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://www.joshuasuzuki.com",
 ];
 const MAX_BODY_BYTES = 12 * 1024;
-const MAX_ESPN_RESPONSE_BYTES = 7 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 10_000;
+const MAX_ESPN_RESPONSE_BYTES = 4 * 1024 * 1024;
+const MAX_LAMBDA_RESPONSE_BYTES = 5_500_000;
+const FETCH_TIMEOUT_MS = 8_000;
 
 exports.handler = async function handler(event) {
   const origin = requestOrigin(event);
   if (!allowedOrigins().has(origin)) {
-    return response(403, { message: "Origin not allowed." }, null);
+    return response(
+      403,
+      { code: "ORIGIN_NOT_ALLOWED", message: "Origin not allowed." },
+      null
+    );
   }
 
   const method =
@@ -22,19 +27,42 @@ exports.handler = async function handler(event) {
     return response(204, null, origin);
   }
   if (method !== "POST") {
-    return response(405, { message: "Method not allowed." }, origin);
+    return response(
+      405,
+      { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." },
+      origin
+    );
   }
 
   const rawBody = decodeBody(event);
   if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
-    return response(413, { message: "Request is too large." }, origin);
+    return response(
+      413,
+      { code: "REQUEST_TOO_LARGE", message: "Request is too large." },
+      origin
+    );
   }
 
   let body;
   try {
     body = JSON.parse(rawBody || "{}");
   } catch (error) {
-    return response(400, { message: "Request body must be valid JSON." }, origin);
+    return response(
+      400,
+      { code: "INVALID_JSON", message: "Request body must be valid JSON." },
+      origin
+    );
+  }
+  if (
+    body === null ||
+    typeof body !== "object" ||
+    Array.isArray(body)
+  ) {
+    return response(
+      400,
+      { code: "INVALID_BODY", message: "Request body must be a JSON object." },
+      origin
+    );
   }
 
   const leagueId = normalizedDigits(body.leagueId);
@@ -43,7 +71,10 @@ exports.handler = async function handler(event) {
   if (!leagueId || !season || season.length !== 4 || (body.teamId && !teamId)) {
     return response(
       400,
-      { message: "League, season, or team ID is invalid." },
+      {
+        code: "INVALID_IDS",
+        message: "League, season, or team ID is invalid.",
+      },
       origin
     );
   }
@@ -54,7 +85,10 @@ exports.handler = async function handler(event) {
   if (hasPrivateCredentials && (!espnS2 || !swid)) {
     return response(
       400,
-      { message: "Private leagues require both espn_s2 and SWID." },
+      {
+        code: "MISSING_SESSION",
+        message: "Private leagues require both espn_s2 and SWID.",
+      },
       origin
     );
   }
@@ -64,7 +98,10 @@ exports.handler = async function handler(event) {
   ) {
     return response(
       400,
-      { message: "The ESPN session values are malformed." },
+      {
+        code: "INVALID_SESSION",
+        message: "The ESPN session values are malformed.",
+      },
       origin
     );
   }
@@ -100,6 +137,9 @@ exports.handler = async function handler(event) {
           message: hasPrivateCredentials
             ? "ESPN rejected these session values. Sign in to ESPN again and copy fresh values."
             : "This league is private. Choose Private league and add your ESPN session values.",
+          code: hasPrivateCredentials
+            ? "INVALID_SESSION"
+            : "PRIVATE_LEAGUE",
         },
         origin
       );
@@ -107,21 +147,30 @@ exports.handler = async function handler(event) {
     if (espnResponse.status === 404) {
       return response(
         404,
-        { message: "ESPN could not find that league and season." },
+        {
+          code: "LEAGUE_NOT_FOUND",
+          message: "ESPN could not find that league and season.",
+        },
         origin
       );
     }
     if (espnResponse.status === 429) {
       return response(
         429,
-        { message: "ESPN is rate limiting imports. Try again shortly." },
+        {
+          code: "ESPN_RATE_LIMITED",
+          message: "ESPN is rate limiting imports. Try again shortly.",
+        },
         origin
       );
     }
     if (!espnResponse.ok) {
       return response(
         502,
-        { message: `ESPN returned ${espnResponse.status}.` },
+        {
+          code: "ESPN_ERROR",
+          message: `ESPN returned ${espnResponse.status}.`,
+        },
         origin
       );
     }
@@ -131,12 +180,31 @@ exports.handler = async function handler(event) {
       Number.isFinite(contentLength) &&
       contentLength > MAX_ESPN_RESPONSE_BYTES
     ) {
-      return response(502, { message: "ESPN returned too much data." }, origin);
+      return response(
+        502,
+        { code: "ESPN_RESPONSE_TOO_LARGE", message: "ESPN returned too much data." },
+        origin
+      );
     }
 
-    const responseText = await espnResponse.text();
-    if (Buffer.byteLength(responseText, "utf8") > MAX_ESPN_RESPONSE_BYTES) {
-      return response(502, { message: "ESPN returned too much data." }, origin);
+    let responseText;
+    try {
+      responseText = await readTextWithLimit(
+        espnResponse,
+        MAX_ESPN_RESPONSE_BYTES
+      );
+    } catch (error) {
+      if (error?.name === "ResponseTooLargeError") {
+        return response(
+          502,
+          {
+            code: "ESPN_RESPONSE_TOO_LARGE",
+            message: "ESPN returned too much data.",
+          },
+          origin
+        );
+      }
+      throw error;
     }
 
     let payload;
@@ -145,23 +213,52 @@ exports.handler = async function handler(event) {
     } catch (error) {
       return response(
         502,
-        { message: "ESPN returned an unreadable response." },
+        {
+          code: "INVALID_ESPN_RESPONSE",
+          message: "ESPN returned an unreadable response.",
+        },
         origin
       );
     }
 
-    return response(200, { payload, teamId }, origin);
+    const responseBody = JSON.stringify({ payload, teamId });
+    if (Buffer.byteLength(responseBody, "utf8") > MAX_LAMBDA_RESPONSE_BYTES) {
+      return response(
+        502,
+        {
+          code: "ESPN_RESPONSE_TOO_LARGE",
+          message: "ESPN returned too much data.",
+        },
+        origin
+      );
+    }
+
+    return serializedResponse(200, responseBody, origin);
   } catch (error) {
     if (timedOut) {
-      return response(504, { message: "ESPN took too long to respond." }, origin);
+      return response(
+        504,
+        {
+          code: "ESPN_TIMEOUT",
+          message: "ESPN took too long to respond.",
+        },
+        origin
+      );
     }
     if (error?.name === "AbortError") {
-      return response(499, { message: "Import cancelled." }, origin);
+      return response(
+        499,
+        { code: "IMPORT_CANCELLED", message: "Import cancelled." },
+        origin
+      );
     }
     console.error("RosterLab ESPN relay failed", error?.name || "Error");
     return response(
       502,
-      { message: "The ESPN import service could not complete the request." },
+      {
+        code: "RELAY_ERROR",
+        message: "The ESPN import service could not complete the request.",
+      },
       origin
     );
   } finally {
@@ -177,6 +274,38 @@ function leagueUrl({ leagueId, season }) {
     url.searchParams.append("view", view);
   });
   return url;
+}
+
+async function readTextWithLimit(upstreamResponse, maximumBytes) {
+  if (!upstreamResponse.body?.getReader) {
+    const text = await upstreamResponse.text();
+    if (Buffer.byteLength(text, "utf8") > maximumBytes) {
+      const error = new Error("Response too large");
+      error.name = "ResponseTooLargeError";
+      throw error;
+    }
+    return text;
+  }
+
+  const reader = upstreamResponse.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maximumBytes) {
+      await reader.cancel("Response too large");
+      const error = new Error("Response too large");
+      error.name = "ResponseTooLargeError";
+      throw error;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+
+  return text + decoder.decode();
 }
 
 function decodeBody(event) {
@@ -211,6 +340,14 @@ function requestOrigin(event) {
 }
 
 function response(statusCode, body, origin) {
+  return serializedResponse(
+    statusCode,
+    body === null ? "" : JSON.stringify(body),
+    origin
+  );
+}
+
+function serializedResponse(statusCode, body, origin) {
   const headers = {
     "Cache-Control": "no-store, max-age=0",
     Pragma: "no-cache",
@@ -227,6 +364,6 @@ function response(statusCode, body, origin) {
   return {
     statusCode,
     headers,
-    body: body === null ? "" : JSON.stringify(body),
+    body,
   };
 }

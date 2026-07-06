@@ -26,9 +26,10 @@ RosterLab routes imports through a fixed-purpose Lambda relay. Private users
 provide `espn_s2` and `SWID` for one request; the app and relay do not store or
 log them. The browser clears both fields after every attempt.
 
-ESPN has no OAuth flow for fantasy leagues, so a one-time session handoff is the
-only practical web connection today. Users should treat both values like
-passwords and use them only on a trusted device.
+ESPN has no OAuth flow for fantasy leagues, so handing an existing session to a
+relay is the only practical web connection today. RosterLab uses the values
+once, but ESPN may continue accepting them afterward. Users should treat both
+values like passwords and use them only on a trusted device.
 
 The importer accepts standard 5x5 rotisserie and head-to-head category leagues.
 It rejects points leagues and custom category sets instead of grading them with
