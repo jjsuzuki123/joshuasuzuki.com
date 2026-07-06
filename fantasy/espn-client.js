@@ -11,7 +11,7 @@
 
   const ESPN_BASE =
     "https://lm-api-reads.fantasy.espn.com/apis/v3/games/flb";
-  const POSITION_BY_ID = {
+  const LINEUP_POSITION_BY_ID = {
     0: "C",
     1: "1B",
     2: "2B",
@@ -23,10 +23,60 @@
     8: "LF",
     9: "CF",
     10: "RF",
-    11: "UTIL",
+    11: "DH",
+    12: "UTIL",
     13: "P",
     14: "SP",
     15: "RP",
+    16: "BE",
+    17: "IL",
+    19: "IF",
+  };
+  const DEFAULT_POSITION_BY_ID = {
+    1: "SP",
+    2: "C",
+    3: "1B",
+    4: "2B",
+    5: "3B",
+    6: "SS",
+    7: "LF",
+    8: "CF",
+    9: "RF",
+    10: "DH",
+    11: "RP",
+  };
+  const PRO_TEAM_BY_ID = {
+    0: "FA",
+    1: "BAL",
+    2: "BOS",
+    3: "LAA",
+    4: "CWS",
+    5: "CLE",
+    6: "DET",
+    7: "KC",
+    8: "MIL",
+    9: "MIN",
+    10: "NYY",
+    11: "ATH",
+    12: "SEA",
+    13: "TEX",
+    14: "TOR",
+    15: "ATL",
+    16: "CHC",
+    17: "CIN",
+    18: "HOU",
+    19: "LAD",
+    20: "WSH",
+    21: "NYM",
+    22: "PHI",
+    23: "PIT",
+    24: "STL",
+    25: "SD",
+    26: "SF",
+    27: "COL",
+    28: "MIA",
+    29: "ARI",
+    30: "TB",
   };
   const TEAM_COLORS = [
     "#1f6f5f",
@@ -41,17 +91,18 @@
     "#59636f",
   ];
   const CATEGORIES = [
-    { id: "runs", label: "R", name: "Runs", group: "batting" },
-    { id: "homeRuns", label: "HR", name: "Home runs", group: "batting" },
-    { id: "rbi", label: "RBI", name: "Runs batted in", group: "batting" },
-    { id: "stolenBases", label: "SB", name: "Stolen bases", group: "batting" },
-    { id: "average", label: "AVG", name: "Batting average", group: "batting" },
-    { id: "wins", label: "W", name: "Wins", group: "pitching" },
-    { id: "saves", label: "SV", name: "Saves", group: "pitching" },
-    { id: "strikeouts", label: "K", name: "Strikeouts", group: "pitching" },
-    { id: "era", label: "ERA", name: "Earned run average", group: "pitching" },
-    { id: "whip", label: "WHIP", name: "Walks and hits per inning", group: "pitching" },
+    { id: "runs", label: "R", name: "Runs", group: "batting", aggregation: "count" },
+    { id: "homeRuns", label: "HR", name: "Home runs", group: "batting", aggregation: "count" },
+    { id: "rbi", label: "RBI", name: "Runs batted in", group: "batting", aggregation: "count" },
+    { id: "stolenBases", label: "SB", name: "Stolen bases", group: "batting", aggregation: "count" },
+    { id: "average", label: "AVG", name: "Batting average", group: "batting", aggregation: "rate" },
+    { id: "wins", label: "W", name: "Wins", group: "pitching", aggregation: "count" },
+    { id: "saves", label: "SV", name: "Saves", group: "pitching", aggregation: "count" },
+    { id: "strikeouts", label: "K", name: "Strikeouts", group: "pitching", aggregation: "count" },
+    { id: "era", label: "ERA", name: "Earned run average", group: "pitching", aggregation: "rate" },
+    { id: "whip", label: "WHIP", name: "Walks and hits per inning", group: "pitching", aggregation: "rate" },
   ];
+  const SUPPORTED_STAT_IDS = new Set([2, 5, 20, 21, 23, 41, 47, 48, 53, 57]);
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
@@ -106,16 +157,18 @@
 
   function projectionStats(player) {
     if (!Array.isArray(player.stats)) return {};
-    const candidates = player.stats.filter((entry) => entry && entry.stats);
+    const candidates = player.stats.filter(
+      (entry) => entry && (entry.stats || entry.appliedStats)
+    );
     if (candidates.length === 0) return {};
 
     const preferred =
       candidates.find(
-        (entry) => entry.statSourceId === 1 && entry.statSplitTypeId === 1
+        (entry) => entry.statSourceId === 1 && entry.statSplitTypeId === 0
       ) ||
       candidates.find((entry) => entry.statSourceId === 1) ||
       candidates[0];
-    return preferred.stats || {};
+    return preferred.stats || preferred.appliedStats || {};
   }
 
   function stat(stats, id) {
@@ -172,14 +225,22 @@
   }
 
   function positionsFor(player) {
-    const ids = [
-      ...(Array.isArray(player.eligibleSlots) ? player.eligibleSlots : []),
-      player.defaultPositionId,
-    ];
-    const positions = ids
-      .map((id) => POSITION_BY_ID[id])
+    const positions = (Array.isArray(player.eligibleSlots)
+      ? player.eligibleSlots
+      : []
+    )
+      .map((id) => LINEUP_POSITION_BY_ID[id])
       .filter(Boolean)
-      .filter((position) => position !== "P");
+      .filter(
+        (position) =>
+          position !== "P" &&
+          position !== "BE" &&
+          position !== "IL" &&
+          position !== "UTIL" &&
+          position !== "IF"
+      );
+    const naturalPosition = DEFAULT_POSITION_BY_ID[player.defaultPositionId];
+    if (positions.length === 0 && naturalPosition) positions.push(naturalPosition);
     return [...new Set(positions)].slice(0, 3);
   }
 
@@ -187,8 +248,8 @@
     return (
       positions.includes("SP") ||
       positions.includes("RP") ||
-      player.defaultPositionId === 14 ||
-      player.defaultPositionId === 15
+      player.defaultPositionId === 1 ||
+      player.defaultPositionId === 11
     );
   }
 
@@ -221,10 +282,10 @@
 
   function projectionLabel(type, stats, rank, ownership) {
     if (type === "hitter") {
-      const runs = stat(stats, 13);
+      const runs = stat(stats, 20);
       const homeRuns = stat(stats, 5);
-      const runsBattedIn = stat(stats, 12);
-      const stolenBases = stat(stats, 14);
+      const runsBattedIn = stat(stats, 21);
+      const stolenBases = stat(stats, 23);
       if ([runs, homeRuns, runsBattedIn, stolenBases].some(Number.isFinite)) {
         return [
           Number.isFinite(runs) ? `${Math.round(runs)} R` : null,
@@ -236,10 +297,10 @@
           .join(" · ");
       }
     } else {
-      const wins = stat(stats, 39);
-      const saves = stat(stats, 37);
-      const strikeouts = stat(stats, 34);
-      const era = stat(stats, 32);
+      const wins = stat(stats, 53);
+      const saves = stat(stats, 57);
+      const strikeouts = stat(stats, 48);
+      const era = stat(stats, 47);
       if ([wins, saves, strikeouts, era].some(Number.isFinite)) {
         return [
           Number.isFinite(wins) ? `${Math.round(wins)} W` : null,
@@ -270,24 +331,22 @@
     const seed = hashNumber(raw.id || raw.fullName);
     const ownership = numeric(raw.ownership && raw.ownership.percentOwned);
     const trend =
-      numeric(raw.ownership && raw.ownership.percentChange) ||
-      numeric(poolEntry.ratings && poolEntry.ratings[0] && poolEntry.ratings[0].positionalRanking) ||
-      0;
+      numeric(raw.ownership && raw.ownership.percentChange) ?? 0;
     const rank = playerRank(raw);
     const partialScores =
       type === "pitcher"
         ? {
-            wins: scale(stat(stats, 39), 1, 18),
-            saves: scale(stat(stats, 37), 0, 45),
-            strikeouts: scale(stat(stats, 34), 35, 260),
-            era: invertScale(stat(stats, 32), 2.1, 5.3),
-            whip: invertScale(stat(stats, 33), 0.9, 1.55),
+            wins: scale(stat(stats, 53), 1, 18),
+            saves: scale(stat(stats, 57), 0, 45),
+            strikeouts: scale(stat(stats, 48), 35, 260),
+            era: invertScale(stat(stats, 47), 2.1, 5.3),
+            whip: invertScale(stat(stats, 41), 0.9, 1.55),
           }
         : {
-            runs: scale(stat(stats, 13), 25, 115),
+            runs: scale(stat(stats, 20), 25, 115),
             homeRuns: scale(stat(stats, 5), 3, 48),
-            rbi: scale(stat(stats, 12), 25, 125),
-            stolenBases: scale(stat(stats, 14), 0, 50),
+            rbi: scale(stat(stats, 21), 25, 125),
+            stolenBases: scale(stat(stats, 23), 0, 50),
             average: scale(stat(stats, 2), 0.21, 0.325),
           };
     const scores = fillScores(partialScores, value, seed, type, positions);
@@ -299,7 +358,7 @@
     return {
       id: String(raw.id || `${ownerTeamId}-${seed}`),
       name: raw.fullName || raw.displayName || "Unknown player",
-      mlbTeam: raw.proTeamId ? `MLB ${raw.proTeamId}` : "FA",
+      mlbTeam: PRO_TEAM_BY_ID[raw.proTeamId] || "FA",
       positions: positions.length > 0 ? positions : [type === "pitcher" ? "SP" : "UTIL"],
       ownerTeamId,
       type,
@@ -309,6 +368,10 @@
       status: rawStatus === "ACTIVE" ? "Healthy" : rawStatus,
       projection: projectionLabel(type, stats, rank, ownership),
       scores,
+      rateWeight:
+        type === "pitcher"
+          ? stat(stats, 34) || clamp(Math.round(230 + value * 3.2), 260, 560)
+          : stat(stats, 0) || clamp(Math.round(430 + value * 1.8), 450, 620),
       signals: {
         projection: clamp(Math.round(value + jitter(seed, 5, 6)), 1, 99),
         underlying: clamp(Math.round(skillAverage), 1, 99),
@@ -318,11 +381,47 @@
     };
   }
 
+  function validateScoringSettings(scoringSettings) {
+    const scoringType = String(scoringSettings.scoringType || "").toUpperCase();
+    if (!["ROTO", "H2H_CATEGORY"].includes(scoringType)) {
+      throw new Error(
+        "RosterLab currently supports standard 5x5 category leagues, not ESPN points leagues."
+      );
+    }
+
+    const scoringItems = Array.isArray(scoringSettings.scoringItems)
+      ? scoringSettings.scoringItems
+      : [];
+    if (scoringItems.length === 0) return scoringType;
+
+    const configuredIds = new Set(
+      scoringItems
+        .map((item) => numeric(item && item.statId))
+        .filter(Number.isFinite)
+    );
+    const hasEverySupportedCategory = [...SUPPORTED_STAT_IDS].every((statId) =>
+      configuredIds.has(statId)
+    );
+    const hasUnsupportedCategory = [...configuredIds].some(
+      (statId) => !SUPPORTED_STAT_IDS.has(statId)
+    );
+    if (!hasEverySupportedCategory || hasUnsupportedCategory) {
+      throw new Error(
+        "This league uses custom categories. RosterLab currently supports standard 5x5 scoring only."
+      );
+    }
+
+    return scoringType;
+  }
+
   function parseLeague(payload, options) {
     if (!payload || !Array.isArray(payload.teams) || payload.teams.length < 2) {
       throw new Error("ESPN did not return a readable league with at least two teams.");
     }
 
+    const scoringSettings =
+      (payload.settings && payload.settings.scoringSettings) || {};
+    const scoringType = validateScoringSettings(scoringSettings);
     const sortedRawTeams = [...payload.teams].sort((left, right) => {
       const leftSeed = numeric(left.playoffSeed) || 999;
       const rightSeed = numeric(right.playoffSeed) || 999;
@@ -355,13 +454,10 @@
     }
 
     const requestedTeamId = String((options && options.teamId) || "");
-    const activeTeamId = teams.some((team) => team.id === requestedTeamId)
+    const hasRequestedTeam = teams.some((team) => team.id === requestedTeamId);
+    const activeTeamId = hasRequestedTeam
       ? requestedTeamId
       : teams[0].id;
-    const scoringType =
-      payload.settings &&
-      payload.settings.scoringSettings &&
-      payload.settings.scoringSettings.scoringType;
     const season =
       numeric(options && options.season) ||
       numeric(payload.seasonId) ||
@@ -372,6 +468,7 @@
     return {
       mode: "espn",
       activeTeamId,
+      teamSelectionRequired: !hasRequestedTeam,
       league: {
         id: String(leagueId),
         name:
@@ -380,7 +477,7 @@
           "ESPN fantasy baseball",
         season,
         size: teams.length,
-        scoring: scoringType ? String(scoringType).toLowerCase() : "ESPN scoring",
+        scoring: scoringType === "ROTO" ? "5x5 rotisserie" : "5x5 categories",
         sourceLabel: "ESPN league",
         updatedAt: new Date().toISOString(),
       },

@@ -8,7 +8,7 @@ illustrative six-team league so every workflow is usable without an account.
 - Team category ranks and priority needs for standard 5x5 roto scoring
 - One-for-one trade matches scored for roster fit, value fairness, and likely
   partner interest
-- A multi-player trade lab with category impact and acceptance estimates
+- A multi-player trade lab with category impact and partner-fit estimates
 - A searchable league-wide player market and local watchlist
 - Public ESPN league import for rosters, standings, ownership, and available
   projections
@@ -24,6 +24,10 @@ cross-origin browser requests, and private leagues require ESPN cookies. This
 prototype intentionally does not ask for or store those cookies. A production
 version needs a server-side connector with authenticated secret storage,
 request retries, caching, and monitoring.
+
+The importer accepts standard 5x5 rotisserie and head-to-head category leagues.
+It rejects points leagues and custom category sets instead of grading them with
+the wrong model.
 
 FanGraphs, Baseball Savant, and RotoWire appear as modeled source adapters in
 the demo. Their displayed values are fixtures, not live claims. Production use

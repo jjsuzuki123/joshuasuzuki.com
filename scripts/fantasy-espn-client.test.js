@@ -19,7 +19,12 @@ const fixture = {
   seasonId: 2026,
   settings: {
     name: "Test League",
-    scoringSettings: { scoringType: "ROTO" },
+    scoringSettings: {
+      scoringType: "ROTO",
+      scoringItems: [2, 5, 20, 21, 23, 41, 47, 48, 53, 57].map(
+        (statId) => ({ statId })
+      ),
+    },
   },
   teams: [
     {
@@ -37,23 +42,24 @@ const fixture = {
                 id: 101,
                 fullName: "Test Hitter",
                 proTeamId: 10,
-                defaultPositionId: 5,
+                defaultPositionId: 9,
                 eligibleSlots: [5, 11],
                 injuryStatus: "ACTIVE",
-                ownership: { percentOwned: 93, percentChange: 2.4 },
+                ownership: { percentOwned: 93, percentChange: 0 },
                 draftRanksByRankType: {
                   STANDARD: { overallRank: 31 },
                 },
                 stats: [
                   {
                     statSourceId: 1,
-                    statSplitTypeId: 1,
+                    statSplitTypeId: 0,
                     stats: {
+                      0: 545,
                       2: 0.286,
                       5: 28,
-                      12: 82,
-                      13: 91,
-                      14: 17,
+                      20: 91,
+                      21: 82,
+                      23: 17,
                     },
                   },
                 ],
@@ -79,7 +85,7 @@ const fixture = {
                 id: 202,
                 fullName: "Test Pitcher",
                 proTeamId: 20,
-                defaultPositionId: 14,
+                defaultPositionId: 1,
                 eligibleSlots: [13, 14],
                 injuryStatus: "ACTIVE",
                 ownership: { percentOwned: 97, percentChange: 1.1 },
@@ -89,13 +95,14 @@ const fixture = {
                 stats: [
                   {
                     statSourceId: 1,
-                    statSplitTypeId: 1,
+                    statSplitTypeId: 0,
                     stats: {
-                      32: 2.92,
-                      33: 1.03,
-                      34: 184,
-                      37: 0,
-                      39: 12,
+                      34: 510,
+                      41: 1.03,
+                      47: 2.92,
+                      48: 184,
+                      53: 12,
+                      57: 0,
                     },
                   },
                 ],
@@ -122,12 +129,33 @@ const hitter = league.players.find((player) => player.id === "101");
 const pitcher = league.players.find((player) => player.id === "202");
 assert.equal(hitter.type, "hitter");
 assert.equal(pitcher.type, "pitcher");
+assert.deepEqual(hitter.positions, ["OF", "DH"]);
+assert.deepEqual(pitcher.positions, ["SP"]);
+assert.equal(hitter.mlbTeam, "NYY");
+assert.equal(pitcher.mlbTeam, "WSH");
+assert.equal(hitter.trend, 0);
+assert.equal(hitter.rateWeight, 545);
+assert.equal(pitcher.rateWeight, 510);
 assert.ok(hitter.scores.homeRuns > 50);
 assert.ok(hitter.scores.stolenBases > 20);
 assert.ok(pitcher.scores.era > 60);
 assert.ok(pitcher.scores.strikeouts > 50);
 assert.match(hitter.projection, /HR/);
 assert.match(pitcher.projection, /ERA/);
+
+const pointsFixture = JSON.parse(JSON.stringify(fixture));
+pointsFixture.settings.scoringSettings.scoringType = "H2H_POINTS";
+assert.throws(
+  () => parseLeague(pointsFixture, { leagueId: "1", season: "2026" }),
+  /standard 5x5 category leagues/
+);
+
+const customFixture = JSON.parse(JSON.stringify(fixture));
+customFixture.settings.scoringSettings.scoringItems.push({ statId: 60 });
+assert.throws(
+  () => parseLeague(customFixture, { leagueId: "1", season: "2026" }),
+  /custom categories/
+);
 
 assert.throws(
   () => parseLeague({ teams: [] }, { leagueId: "1", season: "2026" }),

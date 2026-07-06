@@ -29,6 +29,32 @@
     return Number.isFinite(score) ? score : null;
   }
 
+  function weightedRateScore(players, categoryId) {
+    const scoredPlayers = players.filter((player) =>
+      Number.isFinite(scoreFor(player, categoryId))
+    );
+    if (scoredPlayers.length === 0) return 0;
+
+    const totalWeight = sum(
+      scoredPlayers.map((player) =>
+        Number.isFinite(player.rateWeight) && player.rateWeight > 0
+          ? player.rateWeight
+          : 1
+      )
+    );
+    return (
+      sum(
+        scoredPlayers.map((player) => {
+          const weight =
+            Number.isFinite(player.rateWeight) && player.rateWeight > 0
+              ? player.rateWeight
+              : 1;
+          return scoreFor(player, categoryId) * weight;
+        })
+      ) / totalWeight
+    );
+  }
+
   function playersForTeam(players, teamId) {
     return players.filter((player) => player.ownerTeamId === teamId);
   }
@@ -41,9 +67,10 @@
       const scores = {};
 
       categories.forEach((category) => {
-        scores[category.id] = mean(
-          roster.map((player) => scoreFor(player, category.id))
-        );
+        scores[category.id] =
+          category.aggregation === "rate"
+            ? weightedRateScore(roster, category.id)
+            : mean(roster.map((player) => scoreFor(player, category.id)));
       });
 
       rawProfiles.set(team.id, {
@@ -151,8 +178,14 @@
     teamNeed,
     partnerNeed,
   }) {
-    const sent = sum(sending.map((player) => scoreFor(player, category.id)));
-    const received = sum(receiving.map((player) => scoreFor(player, category.id)));
+    const sent =
+      category.aggregation === "rate"
+        ? weightedRateScore(sending, category.id)
+        : sum(sending.map((player) => scoreFor(player, category.id)));
+    const received =
+      category.aggregation === "rate"
+        ? weightedRateScore(receiving, category.id)
+        : sum(receiving.map((player) => scoreFor(player, category.id)));
     const raw = received - sent;
     const teamWeighted = (raw / 10) * (0.45 + teamNeed / 100);
     const partnerWeighted = (-raw / 10) * (0.45 + partnerNeed / 100);

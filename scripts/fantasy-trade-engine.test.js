@@ -64,6 +64,26 @@ assert.ok(speedTrade.fairness >= 90);
 assert.ok(speedTrade.gains.some((category) => category.id === "stolenBases"));
 assert.ok(speedTrade.losses.some((category) => category.id === "homeRuns"));
 
+const multiPlayerTrade = evaluateTrade({
+  teamId: data.activeTeamId,
+  partnerTeamId: "northside",
+  sendingIds: ["matt-olson", "teoscar-hernandez"],
+  receivingIds: ["brice-turang"],
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+  context,
+});
+const averageImpact = multiPlayerTrade.deltas.find(
+  (category) => category.id === "average"
+);
+assert.ok(averageImpact.raw > 0);
+assert.ok(
+  multiPlayerTrade.deltas
+    .filter((category) => ["average", "era", "whip"].includes(category.id))
+    .every((category) => Math.abs(category.raw) <= 100)
+);
+
 const lopsidedTrade = evaluateTrade({
   teamId: data.activeTeamId,
   partnerTeamId: "northside",

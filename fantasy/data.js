@@ -10,16 +10,16 @@
   "use strict";
 
   const categories = [
-    { id: "runs", label: "R", name: "Runs", group: "batting" },
-    { id: "homeRuns", label: "HR", name: "Home runs", group: "batting" },
-    { id: "rbi", label: "RBI", name: "Runs batted in", group: "batting" },
-    { id: "stolenBases", label: "SB", name: "Stolen bases", group: "batting" },
-    { id: "average", label: "AVG", name: "Batting average", group: "batting" },
-    { id: "wins", label: "W", name: "Wins", group: "pitching" },
-    { id: "saves", label: "SV", name: "Saves", group: "pitching" },
-    { id: "strikeouts", label: "K", name: "Strikeouts", group: "pitching" },
-    { id: "era", label: "ERA", name: "Earned run average", group: "pitching" },
-    { id: "whip", label: "WHIP", name: "Walks and hits per inning", group: "pitching" },
+    { id: "runs", label: "R", name: "Runs", group: "batting", aggregation: "count" },
+    { id: "homeRuns", label: "HR", name: "Home runs", group: "batting", aggregation: "count" },
+    { id: "rbi", label: "RBI", name: "Runs batted in", group: "batting", aggregation: "count" },
+    { id: "stolenBases", label: "SB", name: "Stolen bases", group: "batting", aggregation: "count" },
+    { id: "average", label: "AVG", name: "Batting average", group: "batting", aggregation: "rate" },
+    { id: "wins", label: "W", name: "Wins", group: "pitching", aggregation: "count" },
+    { id: "saves", label: "SV", name: "Saves", group: "pitching", aggregation: "count" },
+    { id: "strikeouts", label: "K", name: "Strikeouts", group: "pitching", aggregation: "count" },
+    { id: "era", label: "ERA", name: "Earned run average", group: "pitching", aggregation: "rate" },
+    { id: "whip", label: "WHIP", name: "Walks and hits per inning", group: "pitching", aggregation: "rate" },
   ];
 
   const teams = [
@@ -129,6 +129,8 @@
       status: settings.status || "Healthy",
       projection,
       scores,
+      rateWeight:
+        settings.rateWeight || clamp(Math.round(430 + value * 1.8), 450, 620),
       signals: signalSet(value, scores, trend, settings.projectionAdjustment || 0),
       news: settings.news || null,
     };
@@ -168,6 +170,8 @@
       status: settings.status || "Healthy",
       projection,
       scores,
+      rateWeight:
+        settings.rateWeight || clamp(Math.round(230 + value * 3.2), 260, 560),
       signals: signalSet(value, scores, trend, settings.projectionAdjustment || 0),
       news: settings.news || null,
     };
