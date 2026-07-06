@@ -83,18 +83,11 @@
     {
       "Sid": "RosterLabApiGatewayDeployment",
       "Effect": "Allow",
-      "Action": [
-        "apigateway:DELETE",
-        "apigateway:GET",
-        "apigateway:PATCH",
-        "apigateway:POST",
-        "apigateway:PUT",
-        "apigateway:TagResource",
-        "apigateway:UntagResource"
-      ],
+      "Action": "apigateway:*",
       "Resource": [
-        "arn:aws:apigateway:us-east-1::/apis*",
-        "arn:aws:apigateway:us-east-1::/tags*"
+        "arn:aws:apigateway:us-east-1::/apis",
+        "arn:aws:apigateway:us-east-1::/apis/*",
+        "arn:aws:apigateway:us-east-1::/tags/*"
       ]
     },
     {
