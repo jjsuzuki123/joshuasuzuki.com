@@ -16,6 +16,7 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude ".git/*" \
   --exclude ".github/*" \
   --exclude ".cursor/*" \
+  --exclude ".aws-sam/*" \
   --exclude ".DS_Store" \
   --exclude "deploy.sh" \
   --exclude "debug-pdf-fetch.sh" \
@@ -23,6 +24,9 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude ".env.*" \
   --exclude "*.zip" \
   --exclude "admin-backend/*" \
+  --exclude "fantasy-backend/*" \
+  --exclude "fantasy/config.js" \
+  --exclude "_deploy/*" \
   --exclude "scripts/*" \
   --exclude "permissions-policy.json" \
   --exclude "trust-policy.json" \

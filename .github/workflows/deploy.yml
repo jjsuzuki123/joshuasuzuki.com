@@ -17,6 +17,7 @@ jobs:
       S3_BUCKET: josh-personal-site-1
       CF_DISTRIBUTION_ID: E3LDS3FK17E3JF
       AWS_REGION: us-east-1
+      FANTASY_IMPORT_STACK: rosterlab-fantasy-import-production
 
     steps:
       - name: Checkout
@@ -28,6 +29,46 @@ jobs:
           role-to-assume: arn:aws:iam::545095759709:role/GitHubActionsDeployPersonalSite
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@v2
+
+      - name: Test fantasy import relay
+        run: |
+          node scripts/fantasy-private-import.test.js
+          node scripts/fantasy-relay-client.test.js
+
+      - name: Validate fantasy import infrastructure
+        run: sam validate --lint --template-file fantasy-backend/template.yaml
+
+      - name: Build and package fantasy import relay
+        run: |
+          set -euo pipefail
+          sam build --template-file fantasy-backend/template.yaml
+          sam package \
+            --template-file .aws-sam/build/template.yaml \
+            --s3-bucket "${S3_BUCKET}" \
+            --s3-prefix "_deploy/rosterlab" \
+            --output-template-file fantasy-backend/packaged.yaml
+
+      - name: Deploy fantasy import relay
+        run: |
+          sam deploy \
+            --template-file fantasy-backend/packaged.yaml \
+            --stack-name "${FANTASY_IMPORT_STACK}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides Environment=production \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Configure fantasy import endpoint
+        run: |
+          set -euo pipefail
+          IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
+            --stack-name "${FANTASY_IMPORT_STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
+            --output text)"
+          IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" node scripts/write-fantasy-config.js
+
       - name: Sync to S3
         run: |
           aws s3 sync . s3://${S3_BUCKET} \
@@ -35,6 +76,7 @@ jobs:
             --exclude ".git/*" \
             --exclude ".github/*" \
             --exclude ".cursor/*" \
+            --exclude ".aws-sam/*" \
             --exclude ".DS_Store" \
             --exclude "deploy.sh" \
             --exclude "debug-pdf-fetch.sh" \
@@ -42,6 +84,8 @@ jobs:
             --exclude ".env.*" \
             --exclude "*.zip" \
             --exclude "admin-backend/*" \
+            --exclude "fantasy-backend/*" \
+            --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
             --exclude "trust-policy.json"
@@ -68,6 +112,13 @@ jobs:
           set_cache "admin/index.html"
           set_cache "sunset/index.html"
           set_cache "fantasy/index.html"
+
+      - name: Disable caching for runtime configuration
+        run: |
+          aws s3 cp "s3://${S3_BUCKET}/fantasy/config.js" "s3://${S3_BUCKET}/fantasy/config.js" \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "application/javascript; charset=utf-8"
         
       - name: Set PDF metadata (Content-Type + inline display)
         run: |

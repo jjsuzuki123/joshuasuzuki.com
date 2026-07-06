@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Stateless ESPN fantasy league import relay for RosterLab
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+  AllowedOrigins:
+    Type: String
+    Default: https://joshuasuzuki.com,https://www.joshuasuzuki.com
+
+Resources:
+  ImportApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins:
+          - https://joshuasuzuki.com
+          - https://www.joshuasuzuki.com
+        AllowHeaders:
+          - Content-Type
+        AllowMethods:
+          - POST
+          - OPTIONS
+        MaxAge: 300
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 5
+
+  ImportFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub rosterlab-espn-import-${Environment}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: WriteFunctionLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub
+                  - arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroupName}:*
+                  - LogGroupName: !Sub /aws/lambda/rosterlab-espn-import-${Environment}
+
+  ImportFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - ImportFunctionLogGroup
+    Properties:
+      FunctionName: !Sub rosterlab-espn-import-${Environment}
+      Description: Fetches one ESPN league without storing session values
+      CodeUri: import-league/
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      MemorySize: 256
+      Timeout: 15
+      ReservedConcurrentExecutions: 10
+      Role: !GetAtt ImportFunctionRole.Arn
+      Environment:
+        Variables:
+          ALLOWED_ORIGINS: !Ref AllowedOrigins
+      LoggingConfig:
+        ApplicationLogLevel: ERROR
+        LogFormat: JSON
+        SystemLogLevel: WARN
+      Events:
+        ImportLeague:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ImportApi
+            Path: /league/import
+            Method: POST
+
+  ImportFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/rosterlab-espn-import-${Environment}
+      RetentionInDays: 7
+
+Outputs:
+  ImportEndpoint:
+    Description: RosterLab league import endpoint
+    Value: !Sub https://${ImportApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}/league/import

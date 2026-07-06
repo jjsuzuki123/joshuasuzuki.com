@@ -4,7 +4,7 @@
     {
       "Sid": "S3SyncToBucket",
       "Effect": "Allow",
-      "Action": ["s3:ListBucket"],
+      "Action": ["s3:GetBucketLocation","s3:ListBucket"],
       "Resource": "arn:aws:s3:::josh-personal-site-1"
     },
     {
@@ -17,6 +17,96 @@
       "Sid": "CloudFrontInvalidate",
       "Effect": "Allow",
       "Action": ["cloudfront:CreateInvalidation","cloudfront:GetInvalidation","cloudfront:ListInvalidations"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RosterLabCloudFormation",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:DescribeStacks",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:GetTemplate",
+        "cloudformation:GetTemplateSummary",
+        "cloudformation:ListStackResources"
+      ],
+      "Resource": "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-*/*"
+    },
+    {
+      "Sid": "RosterLabLambdaDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:AddPermission",
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:DeleteFunctionConcurrency",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetPolicy",
+        "lambda:ListTags",
+        "lambda:PutFunctionConcurrency",
+        "lambda:RemovePermission",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-espn-import-*"
+    },
+    {
+      "Sid": "RosterLabApiGatewayDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:DELETE",
+        "apigateway:GET",
+        "apigateway:PATCH",
+        "apigateway:POST",
+        "apigateway:PUT"
+      ],
+      "Resource": [
+        "arn:aws:apigateway:us-east-1::/apis*",
+        "arn:aws:apigateway:us-east-1::/tags*"
+      ]
+    },
+    {
+      "Sid": "RosterLabExecutionRoleDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:PassRole",
+        "iam:PutRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::545095759709:role/rosterlab-espn-import-*"
+    },
+    {
+      "Sid": "RosterLabLogGroupDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:ListTagsForResource",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/rosterlab-espn-import-*"
+    },
+    {
+      "Sid": "RosterLabDescribeLogGroups",
+      "Effect": "Allow",
+      "Action": ["logs:DescribeLogGroups"],
       "Resource": "*"
     }
   ]
