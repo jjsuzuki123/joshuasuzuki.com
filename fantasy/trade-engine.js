@@ -70,7 +70,7 @@
     const valuedPlayers = players.filter((player) =>
       Number.isFinite(categoryValueFor(player, categoryId))
     );
-    if (valuedPlayers.length === 0) return 0;
+    if (valuedPlayers.length === 0) return null;
 
     const weightFor = (player) => {
       const categoryWeight = player.categoryWeights?.[categoryId];
@@ -97,9 +97,10 @@
       if (category.aggregation === "rate") {
         return weightedRateValue(players, category.id);
       }
-      return sum(
-        players.map((player) => categoryValueFor(player, category.id))
-      );
+      const values = players
+        .map((player) => categoryValueFor(player, category.id))
+        .filter(Number.isFinite);
+      return values.length > 0 ? sum(values) : null;
     }
     if (category.aggregation === "rate") {
       return weightedRateScore(players, category.id);
@@ -149,6 +150,14 @@
         }))
         .sort((left, right) => {
           if (
+            !Number.isFinite(left.score) &&
+            !Number.isFinite(right.score)
+          ) {
+            return 0;
+          }
+          if (!Number.isFinite(left.score)) return 1;
+          if (!Number.isFinite(right.score)) return -1;
+          if (
             rawCategoryModes[category.id] &&
             category.direction === "lower"
           ) {
@@ -167,14 +176,20 @@
         const ordered = categoryRanks[category.id];
         const teamScore = raw.scores[category.id];
         const betterCount = ordered.filter(
-          (entry) =>
-            rawCategoryModes[category.id] &&
-            category.direction === "lower"
+          (entry) => {
+            if (!Number.isFinite(entry.score)) return false;
+            if (!Number.isFinite(teamScore)) return true;
+            return rawCategoryModes[category.id] &&
+              category.direction === "lower"
               ? entry.score < teamScore
-              : entry.score > teamScore
+              : entry.score > teamScore;
+          }
         ).length;
         const tieCount = ordered.filter(
-          (entry) => entry.score === teamScore
+          (entry) =>
+            Number.isFinite(teamScore)
+              ? entry.score === teamScore
+              : !Number.isFinite(entry.score)
         ).length;
         const rank = betterCount + 1;
         const percentile =
@@ -187,7 +202,9 @@
               );
 
         categoryProfile[category.id] = {
-          score: Math.round(raw.scores[category.id]),
+          score: Number.isFinite(raw.scores[category.id])
+            ? Math.round(raw.scores[category.id])
+            : null,
           rank,
           percentile,
           need: 100 - percentile,
@@ -279,12 +296,23 @@
       [...teamRoster, ...partnerRoster],
       category.id
     );
-    const teamValueChange =
-      aggregateCategory(teamAfter, category, useRawValues) -
-      aggregateCategory(teamRoster, category, useRawValues);
-    const partnerValueChange =
-      aggregateCategory(partnerAfter, category, useRawValues) -
-      aggregateCategory(partnerRoster, category, useRawValues);
+    const valueChange = (beforePlayers, afterPlayers) => {
+      const before = aggregateCategory(
+        beforePlayers,
+        category,
+        useRawValues
+      );
+      const after = aggregateCategory(
+        afterPlayers,
+        category,
+        useRawValues
+      );
+      return Number.isFinite(before) && Number.isFinite(after)
+        ? after - before
+        : 0;
+    };
+    const teamValueChange = valueChange(teamRoster, teamAfter);
+    const partnerValueChange = valueChange(partnerRoster, partnerAfter);
     const favorableChange = (valueChange) =>
       useRawValues && category.direction === "lower"
         ? -valueChange

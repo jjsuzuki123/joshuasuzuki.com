@@ -214,14 +214,15 @@ assert.equal(unselectedLeague.teamSelectionRequired, true);
 
 const recentOnlyFixture = JSON.parse(JSON.stringify(fixture));
 recentOnlyFixture.teams[0].roster.entries[0].playerPoolEntry.player.stats[0].statSplitTypeId = 1;
-const recentOnlyLeague = parseLeague(recentOnlyFixture, {
-  leagueId: "123456",
-  season: "2026",
-  teamId: "1",
-});
-assert.match(
-  recentOnlyLeague.players.find((player) => player.id === "101").projection,
-  /ESPN rank/
+recentOnlyFixture.teams[1].roster.entries[0].playerPoolEntry.player.stats[0].statSplitTypeId = 1;
+assert.throws(
+  () =>
+    parseLeague(recentOnlyFixture, {
+      leagueId: "123456",
+      season: "2026",
+      teamId: "1",
+    }),
+  /usable data/
 );
 
 const pointsFixture = JSON.parse(JSON.stringify(fixture));
@@ -309,6 +310,25 @@ assert.match(
   /OBP/
 );
 
+const mixedSourceFixture = JSON.parse(JSON.stringify(customFixture));
+const mixedSourcePitcher =
+  mixedSourceFixture.teams[1].roster.entries[0].playerPoolEntry.player;
+delete mixedSourcePitcher.stats[0].stats[60];
+mixedSourcePitcher.stats.push({
+  statSourceId: 0,
+  statSplitTypeId: 0,
+  stats: { 34: 300, 60: 18 },
+});
+const mixedSourceLeague = parseLeague(mixedSourceFixture, {
+  leagueId: "1",
+  season: "2026",
+});
+const mixedSourcePlayer = mixedSourceLeague.players.find(
+  (player) => player.id === "202"
+);
+assert.equal(mixedSourcePlayer.categoryValues.holds, 18);
+assert.equal(mixedSourcePlayer.statSource, "mixed");
+
 const missingDataFixture = JSON.parse(JSON.stringify(customFixture));
 missingDataFixture.settings.scoringSettings.scoringItems.push({ statId: 63 });
 const missingDataLeague = parseLeague(missingDataFixture, {
@@ -326,6 +346,26 @@ assert.match(
     (category) => category.id === "qualityStarts"
   ).reason,
   /no season or projection data/
+);
+
+const zeroDenominatorFixture = JSON.parse(JSON.stringify(customFixture));
+zeroDenominatorFixture.settings.scoringSettings.scoringItems.push({
+  statId: 59,
+});
+const zeroDenominatorStats =
+  zeroDenominatorFixture.teams[1].roster.entries[0].playerPoolEntry.player
+    .stats[0].stats;
+zeroDenominatorStats[56] = 0;
+zeroDenominatorStats[59] = 0.9;
+const zeroDenominatorLeague = parseLeague(zeroDenominatorFixture, {
+  leagueId: "1",
+  season: "2026",
+});
+assert.equal(
+  zeroDenominatorLeague.categories.some(
+    (category) => category.id === "savePercentage"
+  ),
+  false
 );
 
 const unknownCategoryFixture = JSON.parse(JSON.stringify(customFixture));
@@ -347,6 +387,13 @@ assert.match(unknownCategory.reason, /does not recognize/);
 assert.equal(
   unknownCategoryLeague.categories.some((category) => category.statId === 777),
   false
+);
+
+const allUnknownFixture = JSON.parse(JSON.stringify(fixture));
+allUnknownFixture.settings.scoringSettings.scoringItems = [{ statId: 777 }];
+assert.throws(
+  () => parseLeague(allUnknownFixture, { leagueId: "1", season: "2026" }),
+  /all active categories have unknown ESPN stat IDs/
 );
 
 assert.throws(

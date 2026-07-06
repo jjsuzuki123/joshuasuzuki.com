@@ -282,6 +282,41 @@ assert.equal(reverseTrade.deltas[0].valueChange, 9);
 assert.equal(reverseTrade.deltas[0].raw, -50);
 assert.equal(reverseTrade.deltas[0].partnerRaw, 50);
 
+const missingRateCategory = {
+  id: "era",
+  label: "ERA",
+  name: "Earned run average",
+  group: "pitching",
+  aggregation: "rate",
+  direction: "lower",
+  rangeMinimum: 2.1,
+  rangeMaximum: 5.3,
+};
+const missingRateContext = computeLeagueContext({
+  players: [
+    {
+      id: "missing-era",
+      ownerTeamId: "a",
+      marketValue: 50,
+      scores: {},
+      categoryValues: {},
+      categoryWeights: {},
+    },
+    {
+      id: "known-era",
+      ownerTeamId: "b",
+      marketValue: 50,
+      scores: { era: 70 },
+      categoryValues: { era: 3.0 },
+      categoryWeights: { era: 450 },
+    },
+  ],
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [missingRateCategory],
+});
+assert.equal(missingRateContext.profiles.get("b").categories.era.rank, 1);
+assert.equal(missingRateContext.profiles.get("a").categories.era.rank, 2);
+
 const lopsidedTrade = evaluateTrade({
   teamId: data.activeTeamId,
   partnerTeamId: "northside",

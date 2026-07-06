@@ -261,7 +261,7 @@
       else unsupportedCategories.push(category);
     });
 
-    if (categories.length === 0) {
+    if (scoringItems.length === 0) {
       return {
         scoringType,
         categories: DEFAULT_CATEGORY_STAT_IDS.map((statId) =>
@@ -372,36 +372,25 @@
     return ties > 0 ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`;
   }
 
-  function seasonStatLine(player) {
+  function seasonStatMaps(player) {
     if (!Array.isArray(player.stats)) {
-      return { stats: {}, source: "estimate" };
+      return { projection: {}, season: {} };
     }
     const candidates = player.stats.filter(
       (entry) => entry && (entry.stats || entry.appliedStats)
     );
-    if (candidates.length === 0) {
-      return { stats: {}, source: "estimate" };
-    }
-
     const projection = candidates.find(
       (entry) => entry.statSourceId === 1 && entry.statSplitTypeId === 0
     );
-    if (projection) {
-      return {
-        stats: projection.stats || projection.appliedStats || {},
-        source: "projection",
-      };
-    }
-
     const actual = candidates.find(
       (entry) => entry.statSourceId === 0 && entry.statSplitTypeId === 0
     );
-    return actual
-      ? {
-          stats: actual.stats || actual.appliedStats || {},
-          source: "season",
-        }
-      : { stats: {}, source: "estimate" };
+    return {
+      projection: projection
+        ? projection.stats || projection.appliedStats || {}
+        : {},
+      season: actual ? actual.stats || actual.appliedStats || {} : {},
+    };
   }
 
   function stat(stats, id) {
@@ -495,23 +484,38 @@
     );
   }
 
-  function scoresForCategories({
-    categories,
-    stats,
-    type,
-  }) {
-    const result = {};
-    const group = type === "pitcher" ? "pitching" : "batting";
-    categories
-      .filter((category) => category.group === group)
-      .forEach((category) => {
-        const provided = categoryScore(stat(stats, category.statId), category);
-        if (Number.isFinite(provided)) result[category.id] = provided;
+  function chooseCategorySources(entries, categories) {
+    const sources = {};
+    categories.forEach((category) => {
+      let projectionCoverage = 0;
+      let seasonCoverage = 0;
+      entries.forEach((entry) => {
+        const raw = entry?.playerPoolEntry?.player;
+        if (!raw) return;
+        const positions = positionsFor(raw);
+        const type = isPitcher(raw, positions) ? "pitcher" : "hitter";
+        const group = type === "pitcher" ? "pitching" : "batting";
+        if (category.group !== group) return;
+        const maps = seasonStatMaps(raw);
+        if (Number.isFinite(stat(maps.projection, category.statId))) {
+          projectionCoverage += 1;
+        }
+        if (Number.isFinite(stat(maps.season, category.statId))) {
+          seasonCoverage += 1;
+        }
       });
-    return result;
+
+      if (projectionCoverage === 0 && seasonCoverage === 0) {
+        sources[category.id] = null;
+      } else {
+        sources[category.id] =
+          projectionCoverage >= seasonCoverage ? "projection" : "season";
+      }
+    });
+    return sources;
   }
 
-  function rateCategoryWeight(stats, category, fallbackWeight) {
+  function rateCategoryWeight(stats, category) {
     const atBats = stat(stats, 0);
     const plateAppearances = stat(stats, 16);
     const outs = stat(stats, 34);
@@ -539,41 +543,46 @@
       82: stat(stats, 39),
     };
     const weight = weightsByStatId[category.statId];
-    return Number.isFinite(weight) && weight > 0 ? weight : fallbackWeight;
+    return Number.isFinite(weight) && weight > 0 ? weight : null;
   }
 
   function categoryDataForPlayer({
     categories,
-    stats,
+    statMaps,
+    categorySources,
     type,
-    fallbackRateWeight,
   }) {
     const group = type === "pitcher" ? "pitching" : "batting";
+    const scores = {};
     const values = {};
     const weights = {};
+    const sources = new Set();
     categories
       .filter((category) => category.group === group)
       .forEach((category) => {
+        const source = categorySources[category.id];
+        if (!source) return;
+        const stats = statMaps[source];
         const value = stat(stats, category.statId);
         if (!Number.isFinite(value)) return;
-        values[category.id] = value;
         if (category.aggregation === "rate") {
-          weights[category.id] = rateCategoryWeight(
-            stats,
-            category,
-            fallbackRateWeight
-          );
+          const weight = rateCategoryWeight(stats, category);
+          if (!Number.isFinite(weight) || weight <= 0) return;
+          weights[category.id] = weight;
         }
+        values[category.id] = value;
+        scores[category.id] = categoryScore(value, category);
+        sources.add(source);
       });
-    return { values, weights };
+    return { scores, values, weights, sources: [...sources] };
   }
 
-  function projectionLabel(type, stats, rank, ownership, categories) {
+  function projectionLabel(type, values, rank, ownership, categories) {
     const group = type === "pitcher" ? "pitching" : "batting";
     const categoryValues = categories
       .filter((category) => category.group === group)
       .map((category) => {
-        const value = stat(stats, category.statId);
+        const value = values[category.id];
         if (!Number.isFinite(value)) return null;
         if (category.statId === 34) {
           return `${(value / 3).toFixed(1)} ${category.label}`;
@@ -596,24 +605,25 @@
       .join(" · ") || "Imported from ESPN";
   }
 
-  function parsePlayer(entry, ownerTeamId, categories) {
+  function parsePlayer(entry, ownerTeamId, categories, categorySources) {
     const poolEntry = entry.playerPoolEntry || {};
     const raw = poolEntry.player || {};
     const positions = positionsFor(raw);
     const type = isPitcher(raw, positions) ? "pitcher" : "hitter";
     const value = marketValue(raw);
-    const statLine = seasonStatLine(raw);
-    const stats = statLine.stats;
+    const statMaps = seasonStatMaps(raw);
     const seed = hashNumber(raw.id || raw.fullName);
     const ownership = numeric(raw.ownership && raw.ownership.percentOwned);
     const trend =
       numeric(raw.ownership && raw.ownership.percentChange) ?? 0;
     const rank = playerRank(raw);
-    const scores = scoresForCategories({
+    const categoryData = categoryDataForPlayer({
       categories,
-      stats,
+      statMaps,
+      categorySources,
       type,
     });
+    const scores = categoryData.scores;
     const scoreValues = Object.values(scores);
     const skillAverage =
       scoreValues.length > 0
@@ -621,16 +631,22 @@
           scoreValues.length
         : value;
     const rawStatus = String(raw.injuryStatus || "ACTIVE").replaceAll("_", " ");
+    const preferredStats =
+      Object.keys(statMaps.projection).length > 0
+        ? statMaps.projection
+        : statMaps.season;
     const rateWeight =
       type === "pitcher"
-        ? stat(stats, 34) || clamp(Math.round(230 + value * 3.2), 260, 560)
-        : stat(stats, 0) || clamp(Math.round(430 + value * 1.8), 450, 620);
-    const categoryData = categoryDataForPlayer({
-      categories,
-      stats,
-      type,
-      fallbackRateWeight: rateWeight,
-    });
+        ? stat(preferredStats, 34) ||
+          clamp(Math.round(230 + value * 3.2), 260, 560)
+        : stat(preferredStats, 0) ||
+          clamp(Math.round(430 + value * 1.8), 450, 620);
+    const statSource =
+      categoryData.sources.length === 1
+        ? categoryData.sources[0]
+        : categoryData.sources.length > 1
+          ? "mixed"
+          : "estimate";
 
     return {
       id: String(raw.id || `${ownerTeamId}-${seed}`),
@@ -643,8 +659,14 @@
       trend: clamp(Math.round(trend * 10) / 10, -12, 12),
       ownership: ownership === null ? value : Math.round(ownership),
       status: rawStatus === "ACTIVE" ? "Healthy" : rawStatus,
-      projection: projectionLabel(type, stats, rank, ownership, categories),
-      statSource: statLine.source,
+      projection: projectionLabel(
+        type,
+        categoryData.values,
+        rank,
+        ownership,
+        categories
+      ),
+      statSource,
       scores,
       categoryValues: categoryData.values,
       categoryWeights: categoryData.weights,
@@ -667,6 +689,16 @@
       (payload.settings && payload.settings.scoringSettings) || {};
     const { scoringType, categories, unsupportedCategories } =
       categoriesForScoring(scoringSettings);
+    if (categories.length === 0) {
+      const labels = unsupportedCategories
+        .map((category) => category.label)
+        .join(", ");
+      throw new Error(
+        `RosterLab cannot model this league because all active categories have unknown ESPN stat IDs${
+          labels ? `: ${labels}` : "."
+        }`
+      );
+    }
     const sortedRawTeams = [...payload.teams].sort((left, right) => {
       const leftSeed = numeric(left.playoffSeed) || 999;
       const rightSeed = numeric(right.playoffSeed) || 999;
@@ -681,7 +713,7 @@
       record: teamRecord(team),
       color: TEAM_COLORS[index % TEAM_COLORS.length],
     }));
-    const players = [];
+    const rosterEntries = [];
     payload.teams.forEach((team) => {
       const entries =
         team.roster && Array.isArray(team.roster.entries)
@@ -689,10 +721,17 @@
           : [];
       entries.forEach((entry) => {
         if (entry && entry.playerPoolEntry && entry.playerPoolEntry.player) {
-          players.push(parsePlayer(entry, String(team.id), categories));
+          rosterEntries.push({ entry, ownerTeamId: String(team.id) });
         }
       });
     });
+    const categorySources = chooseCategorySources(
+      rosterEntries.map(({ entry }) => entry),
+      categories
+    );
+    const players = rosterEntries.map(({ entry, ownerTeamId }) =>
+      parsePlayer(entry, ownerTeamId, categories, categorySources)
+    );
 
     if (players.length === 0) {
       throw new Error("ESPN returned the league, but no roster entries were available.");
