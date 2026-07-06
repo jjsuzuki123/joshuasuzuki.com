@@ -21,10 +21,14 @@ watchlists, and imported public-league data stay in local storage.
 ## ESPN limits
 
 ESPN does not publish a supported fantasy API. Its web endpoints may block
-cross-origin browser requests, and private leagues require ESPN cookies. This
-prototype intentionally does not ask for or store those cookies. A production
-version needs a server-side connector with authenticated secret storage,
-request retries, caching, and monitoring.
+cross-origin browser requests, and private leagues require ESPN session values.
+RosterLab routes imports through a fixed-purpose Lambda relay. Private users
+provide `espn_s2` and `SWID` for one request; the app and relay do not store or
+log them. The browser clears both fields after every attempt.
+
+ESPN has no OAuth flow for fantasy leagues, so a one-time session handoff is the
+only practical web connection today. Users should treat both values like
+passwords and use them only on a trusted device.
 
 The importer accepts standard 5x5 rotisserie and head-to-head category leagues.
 It rejects points leagues and custom category sets instead of grading them with
@@ -55,4 +59,6 @@ Run the engine and ESPN parser tests from the repository root:
 ```sh
 node scripts/fantasy-trade-engine.test.js
 node scripts/fantasy-espn-client.test.js
+node scripts/fantasy-private-import.test.js
+node scripts/fantasy-relay-client.test.js
 ```

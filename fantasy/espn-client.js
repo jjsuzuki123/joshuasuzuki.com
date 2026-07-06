@@ -1,16 +1,20 @@
 (function initEspnClient(root, factory) {
-  const api = factory();
+  const api = factory(root.RosterLabConfig || {});
 
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   }
 
   root.EspnFantasyClient = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function createEspnClient() {
+})(typeof globalThis !== "undefined" ? globalThis : this, function createEspnClient(config) {
   "use strict";
 
   const ESPN_BASE =
     "https://lm-api-reads.fantasy.espn.com/apis/v3/games/flb";
+  const IMPORT_ENDPOINT =
+    typeof config.importEndpoint === "string"
+      ? config.importEndpoint.trim()
+      : "";
   const LINEUP_POSITION_BY_ID = {
     0: "C",
     1: "1B",
@@ -568,7 +572,78 @@
     };
   }
 
-  async function fetchLeague({ leagueId, season, teamId, signal, timeout = 10000 }) {
+  async function fetchLeagueThroughRelay({
+    leagueId,
+    season,
+    teamId,
+    espnS2,
+    swid,
+    signal,
+    timeout,
+  }) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const abortFromParent = () => controller.abort(signal.reason);
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeout);
+
+    if (signal) {
+      if (signal.aborted) controller.abort(signal.reason);
+      else signal.addEventListener("abort", abortFromParent, { once: true });
+    }
+
+    try {
+      const response = await fetch(IMPORT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          leagueId,
+          season,
+          teamId: teamId || undefined,
+          espnS2: espnS2 || undefined,
+          swid: swid || undefined,
+        }),
+        signal: controller.signal,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.message === "string"
+            ? body.message
+            : `League import returned ${response.status}.`
+        );
+      }
+      if (!body.payload) {
+        throw new Error("The league import returned no ESPN data.");
+      }
+      return parseLeague(body.payload, { leagueId, season, teamId });
+    } catch (error) {
+      if (timedOut) {
+        throw new Error("The league import timed out. Try again.");
+      }
+      if (error && error.name === "AbortError") throw error;
+      if (error instanceof TypeError) {
+        throw new Error("The secure league import service is unavailable.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener("abort", abortFromParent);
+    }
+  }
+
+  async function fetchLeagueDirect({
+    leagueId,
+    season,
+    teamId,
+    signal,
+    timeout,
+  }) {
     const url = buildLeagueUrl({ leagueId, season });
     const controller = new AbortController();
     let timedOut = false;
@@ -590,7 +665,7 @@
       });
       if (response.status === 401 || response.status === 403) {
         throw new Error(
-          "This league appears to be private. The browser connector supports public leagues only."
+          "This league appears to be private. Choose Private league to connect it."
         );
       }
       if (!response.ok) {
@@ -600,7 +675,7 @@
       return parseLeague(payload, { leagueId, season, teamId });
     } catch (error) {
       if (timedOut) {
-        throw new Error("ESPN did not respond within 10 seconds.");
+        throw new Error("ESPN did not respond in time.");
       }
       if (error && error.name === "AbortError") throw error;
       if (error instanceof TypeError) {
@@ -615,9 +690,44 @@
     }
   }
 
+  async function fetchLeague({
+    leagueId,
+    season,
+    teamId,
+    espnS2,
+    swid,
+    signal,
+    timeout = 12000,
+  }) {
+    if (IMPORT_ENDPOINT) {
+      return fetchLeagueThroughRelay({
+        leagueId,
+        season,
+        teamId,
+        espnS2,
+        swid,
+        signal,
+        timeout,
+      });
+    }
+    if (espnS2 || swid) {
+      throw new Error(
+        "Private league import is not configured in this environment."
+      );
+    }
+    return fetchLeagueDirect({
+      leagueId,
+      season,
+      teamId,
+      signal,
+      timeout,
+    });
+  }
+
   return {
     buildLeagueUrl,
     fetchLeague,
+    hasImportRelay: Boolean(IMPORT_ENDPOINT),
     parseLeagueReference,
     parseLeague,
   };

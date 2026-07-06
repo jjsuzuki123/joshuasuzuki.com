@@ -79,9 +79,15 @@
     modelWeights: document.getElementById("model-weights"),
     espnDialog: document.getElementById("espn-dialog"),
     espnForm: document.getElementById("espn-form"),
+    leagueVisibilityOptions: document.querySelectorAll(
+      'input[name="leagueVisibility"]'
+    ),
+    privateCredentials: document.getElementById("private-credentials"),
     espnLeagueId: document.getElementById("espn-league-id"),
     espnSeason: document.getElementById("espn-season"),
     espnTeamId: document.getElementById("espn-team-id"),
+    espnS2: document.getElementById("espn-s2"),
+    espnSwid: document.getElementById("espn-swid"),
     espnStatus: document.getElementById("espn-status"),
     espnSubmit: document.getElementById("espn-submit"),
     tradeDialog: document.getElementById("trade-dialog"),
@@ -1432,9 +1438,42 @@
     }
   }
 
+  function selectedLeagueVisibility() {
+    return (
+      [...elements.leagueVisibilityOptions].find((option) => option.checked)
+        ?.value || "public"
+    );
+  }
+
+  function setLeagueVisibility(visibility, options) {
+    elements.leagueVisibilityOptions.forEach((option) => {
+      option.checked = option.value === visibility;
+    });
+    const isPrivate = visibility === "private";
+    elements.privateCredentials.hidden = !isPrivate;
+    elements.espnS2.required = isPrivate;
+    elements.espnSwid.required = isPrivate;
+
+    if (!isPrivate) {
+      elements.espnS2.value = "";
+      elements.espnSwid.value = "";
+    } else if (!espnClient.hasImportRelay) {
+      elements.espnStatus.className = "form-status is-error";
+      elements.espnStatus.textContent =
+        "Private import is not configured in this environment yet.";
+    }
+
+    if (isPrivate && options?.focus) {
+      window.setTimeout(() => elements.espnS2.focus(), 0);
+    }
+  }
+
   function openEspnDialog() {
     elements.espnStatus.textContent = "";
     elements.espnStatus.className = "form-status";
+    elements.espnS2.value = "";
+    elements.espnSwid.value = "";
+    setLeagueVisibility("public");
     elements.espnLeagueId.value =
       state.data.mode === "espn" ? state.data.league.id : "";
     elements.espnSeason.value = String(
@@ -1451,6 +1490,8 @@
       activeImportController.abort();
       activeImportController = null;
     }
+    elements.espnS2.value = "";
+    elements.espnSwid.value = "";
     if (elements.espnDialog.open) elements.espnDialog.close();
   }
 
@@ -1460,6 +1501,15 @@
     const leagueReference = String(formData.get("leagueId") || "").trim();
     const season = String(formData.get("season") || "").trim();
     const teamId = String(formData.get("teamId") || "").trim();
+    const visibility = selectedLeagueVisibility();
+    const espnS2 =
+      visibility === "private"
+        ? String(formData.get("espnS2") || "").trim()
+        : "";
+    const swid =
+      visibility === "private"
+        ? String(formData.get("swid") || "").trim()
+        : "";
 
     elements.espnStatus.className = "form-status";
     let leagueId;
@@ -1472,7 +1522,17 @@
       return;
     }
 
-    elements.espnStatus.textContent = "Contacting ESPN...";
+    if (visibility === "private" && !espnClient.hasImportRelay) {
+      elements.espnStatus.className = "form-status is-error";
+      elements.espnStatus.textContent =
+        "Private import is not configured in this environment yet.";
+      return;
+    }
+
+    elements.espnStatus.textContent =
+      visibility === "private"
+        ? "Connecting to your private league..."
+        : "Importing your league...";
     elements.espnSubmit.disabled = true;
     activeImportController = new AbortController();
 
@@ -1481,6 +1541,8 @@
         leagueId,
         season,
         teamId,
+        espnS2,
+        swid,
         signal: activeImportController.signal,
       });
       window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(league));
@@ -1503,12 +1565,18 @@
       }, 550);
     } catch (error) {
       if (error && error.name === "AbortError") return;
-      elements.espnStatus.className = "form-status is-error";
-      elements.espnStatus.textContent =
+      const message =
         error instanceof Error ? error.message : "The ESPN import failed.";
+      if (visibility === "public" && /league is private|appears to be private/i.test(message)) {
+        setLeagueVisibility("private", { focus: true });
+      }
+      elements.espnStatus.className = "form-status is-error";
+      elements.espnStatus.textContent = message;
     } finally {
       activeImportController = null;
       elements.espnSubmit.disabled = false;
+      elements.espnS2.value = "";
+      elements.espnSwid.value = "";
     }
   }
 
@@ -1688,6 +1756,14 @@
   elements.marketSort.addEventListener("change", () => {
     state.market.sort = elements.marketSort.value;
     renderMarket();
+  });
+  elements.leagueVisibilityOptions.forEach((option) => {
+    option.addEventListener("change", () => {
+      if (!option.checked) return;
+      elements.espnStatus.className = "form-status";
+      elements.espnStatus.textContent = "";
+      setLeagueVisibility(option.value, { focus: option.value === "private" });
+    });
   });
   elements.espnLeagueId.addEventListener("input", applyEspnReferenceDetails);
   elements.espnForm.addEventListener("submit", importEspnLeague);

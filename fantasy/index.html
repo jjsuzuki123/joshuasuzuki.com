@@ -518,15 +518,15 @@
 
               <section class="panel connector-panel" aria-labelledby="connector-heading">
                 <p class="section-label">Production boundary</p>
-                <h3 id="connector-heading">What still needs a server</h3>
+                <h3 id="connector-heading">How connections are handled</h3>
                 <ul>
-                  <li>Private ESPN leagues require authenticated server requests.</li>
+                  <li>Private ESPN requests pass through a stateless, rate-limited relay.</li>
                   <li>Media and projection feeds need approved API access or licenses.</li>
                   <li>Scheduled refreshes need storage, retries, and source health monitoring.</li>
                 </ul>
                 <p>
-                  This browser build stores imported public-league data only on your device. It
-                  never asks for ESPN cookies or passwords.
+                  Imported league data stays on your device. Private ESPN session values are used
+                  for one request and are never written to application storage or logs.
                 </p>
                 <button class="button button-secondary" type="button" data-action="reset-demo">
                   Restore demo league
@@ -557,8 +557,27 @@
 
         <p class="modal-intro">
           Import team names, rosters, standings, ownership, and available ESPN projections. Your
-          league must be public and use standard 5x5 category scoring for this browser connector.
+          league must use standard 5x5 category scoring. Public leagues need only a URL; private
+          leagues also use one-time ESPN session values.
         </p>
+
+        <fieldset class="connection-mode">
+          <legend class="sr-only">ESPN league visibility</legend>
+          <label>
+            <input type="radio" name="leagueVisibility" value="public" checked />
+            <span>
+              <strong>Public league</strong>
+              <small>No ESPN session values needed</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="leagueVisibility" value="private" />
+            <span>
+              <strong>Private league</strong>
+              <small>Use your ESPN session once</small>
+            </span>
+          </label>
+        </fieldset>
 
         <div class="form-grid">
           <label class="field field-wide">
@@ -601,14 +620,59 @@
           </label>
         </div>
 
+        <div id="private-credentials" class="private-credentials" hidden>
+          <div class="private-credentials-heading">
+            <div>
+              <p class="section-label">One-time ESPN session</p>
+              <h3>Connect without sharing your password</h3>
+            </div>
+            <span>Never saved</span>
+          </div>
+          <div class="form-grid">
+            <label class="field field-wide">
+              espn_s2
+              <input
+                id="espn-s2"
+                name="espnS2"
+                type="password"
+                maxlength="8192"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Paste the espn_s2 cookie value"
+              />
+            </label>
+            <label class="field field-wide">
+              SWID
+              <input
+                id="espn-swid"
+                name="swid"
+                type="password"
+                maxlength="160"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}"
+              />
+            </label>
+          </div>
+          <details class="credential-help">
+            <summary>Where do I find these values?</summary>
+            <ol>
+              <li>Sign in at ESPN and open your fantasy league.</li>
+              <li>Open browser developer tools, then Application or Storage.</li>
+              <li>Under Cookies for <code>espn.com</code>, copy <code>espn_s2</code> and <code>SWID</code>.</li>
+            </ol>
+            <p>These session values can access your ESPN account. Use them only on a device you trust.</p>
+          </details>
+        </div>
+
         <div class="privacy-note">
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <rect x="4" y="8" width="12" height="9" rx="2"></rect>
             <path d="M7 8V6a3 3 0 0 1 6 0v2"></path>
           </svg>
           <p>
-            No passwords or private-league cookies. Imported data stays in this browser's local
-            storage.
+            RosterLab never asks for your ESPN password. Private session values go once to the
+            import relay over HTTPS, are excluded from logs, and are discarded after the request.
           </p>
         </div>
 
@@ -637,6 +701,7 @@
       </div>
     </noscript>
 
+    <script src="/fantasy/config.js?v=1" defer></script>
     <script src="/fantasy/data.js?v=1" defer></script>
     <script src="/fantasy/trade-engine.js?v=1" defer></script>
     <script src="/fantasy/espn-client.js?v=1" defer></script>
