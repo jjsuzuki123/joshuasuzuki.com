@@ -25,6 +25,7 @@
   const elements = {
     sidebar: document.getElementById("sidebar"),
     sidebarScrim: document.getElementById("sidebar-scrim"),
+    workspace: document.querySelector(".workspace"),
     menuButton: document.getElementById("menu-button"),
     pageTitle: document.getElementById("page-title"),
     pageKicker: document.getElementById("page-kicker"),
@@ -75,7 +76,9 @@
     modelWeights: document.getElementById("model-weights"),
     espnDialog: document.getElementById("espn-dialog"),
     espnForm: document.getElementById("espn-form"),
+    espnLeagueId: document.getElementById("espn-league-id"),
     espnSeason: document.getElementById("espn-season"),
+    espnTeamId: document.getElementById("espn-team-id"),
     espnStatus: document.getElementById("espn-status"),
     espnSubmit: document.getElementById("espn-submit"),
     tradeDialog: document.getElementById("trade-dialog"),
@@ -267,6 +270,9 @@
     elements.sidebar.classList.toggle("is-open", nextOpen);
     elements.sidebarScrim.hidden = !nextOpen;
     elements.menuButton.setAttribute("aria-expanded", String(nextOpen));
+    elements.workspace.inert = nextOpen;
+    if (nextOpen) elements.workspace.setAttribute("aria-hidden", "true");
+    else elements.workspace.removeAttribute("aria-hidden");
 
     if (mobile) {
       elements.sidebar.setAttribute("aria-hidden", String(!nextOpen));
@@ -278,7 +284,7 @@
       window.requestAnimationFrame(() => {
         elements.sidebar.querySelector(".nav-item.is-active")?.focus();
       });
-    } else if (options && options.restoreFocus) {
+    } else if (mobile && options && options.restoreFocus) {
       elements.menuButton.focus();
     }
   }
@@ -453,7 +459,7 @@
       elements.overviewOpportunities.innerHTML = `
         <div class="empty-list">
           <h3>No clean matches yet</h3>
-          <p>Open the finder and include lower-likelihood offers to widen the board.</p>
+          <p>Open the finder and include lower partner-fit offers to widen the board.</p>
         </div>
       `;
       return;
@@ -667,7 +673,7 @@
       elements.finderList.innerHTML = `
         <div class="empty-list">
           <h3>No trades pass these filters</h3>
-          <p>Try another position or include lower-likelihood offers. The model will still show fairness and partner fit.</p>
+          <p>Try another position or include lower partner-fit offers. The model will still show fairness and roster fit.</p>
           ${
             state.finder.realisticOnly
               ? '<button class="button button-secondary" type="button" data-action="show-all-trades">Show every fair match</button>'
@@ -827,9 +833,21 @@
         (record) =>
           teamById(record.partnerTeamId) &&
           Array.isArray(record.sendingIds) &&
-          record.sendingIds.every(playerById) &&
+          record.sendingIds.every((playerId) => {
+            const player = playerById(playerId);
+            return (
+              player &&
+              String(player.ownerTeamId) === String(state.teamId)
+            );
+          }) &&
           Array.isArray(record.receivingIds) &&
-          record.receivingIds.every(playerById)
+          record.receivingIds.every((playerId) => {
+            const player = playerById(playerId);
+            return (
+              player &&
+              String(player.ownerTeamId) === String(record.partnerTeamId)
+            );
+          })
       )
       .slice(0, 6);
   }
@@ -844,6 +862,15 @@
         const receiving = record.receivingIds.map(playerById).filter(Boolean);
         const partner = teamById(record.partnerTeamId);
         const recordId = String(record.id || record.savedAt);
+        const evaluation = engine.evaluateTrade({
+          teamId: state.teamId,
+          partnerTeamId: record.partnerTeamId,
+          sendingIds: record.sendingIds,
+          receivingIds: record.receivingIds,
+          players: state.data.players,
+          teams: state.data.teams,
+          categories: state.data.categories,
+        });
         return `
           <article class="saved-trade-card">
             <div class="saved-trade-copy">
@@ -851,7 +878,7 @@
                 joinPlayerNames(receiving)
               )}</strong>
               <span>${escapeHtml(partner.name)} · Fit ${escapeHtml(
-                record.score
+                evaluation.score
               )}/100</span>
             </div>
             <div class="saved-trade-actions">
@@ -1278,7 +1305,7 @@
   }
 
   function loadSavedTrade(savedId) {
-    const record = savedTradeRecords().find(
+    const record = currentSavedTrades().find(
       (candidate) => String(candidate.id || candidate.savedAt) === String(savedId)
     );
     if (
@@ -1308,6 +1335,12 @@
         JSON.stringify(records)
       );
       renderSavedTrades();
+      window.requestAnimationFrame(() => {
+        const nextControl = elements.savedTrades.querySelector(
+          '[data-action="load-saved-trade"]'
+        );
+        (nextControl || elements.clearTradeButton).focus();
+      });
       showToast("Saved scenario deleted.");
     } catch (error) {
       showToast("This browser could not delete the scenario.");
@@ -1337,11 +1370,15 @@
   function openEspnDialog() {
     elements.espnStatus.textContent = "";
     elements.espnStatus.className = "form-status";
+    elements.espnLeagueId.value =
+      state.data.mode === "espn" ? state.data.league.id : "";
     elements.espnSeason.value = String(
       Number(state.data.league.season) || new Date().getFullYear()
     );
+    elements.espnTeamId.value =
+      state.data.mode === "espn" ? state.teamId : "";
     elements.espnDialog.showModal();
-    window.setTimeout(() => document.getElementById("espn-league-id").focus(), 0);
+    window.setTimeout(() => elements.espnLeagueId.focus(), 0);
   }
 
   function closeEspnDialog() {
@@ -1436,6 +1473,7 @@
       }
     }
     renderAll();
+    setSidebarOpen(false, { restoreFocus: true });
     showToast(`Now analyzing ${nextTeam.name}.`);
   }
 
@@ -1459,6 +1497,11 @@
       showToast("The watchlist changed, but this browser could not save it.");
     }
     renderMarket();
+    window.requestAnimationFrame(() => {
+      [...elements.marketTableBody.querySelectorAll("[data-player-id]")]
+        .find((button) => button.dataset.playerId === key)
+        ?.focus();
+    });
   }
 
   document.addEventListener("click", (event) => {
