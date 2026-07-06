@@ -49,6 +49,12 @@
       "Resource": "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-*/*"
     },
     {
+      "Sid": "RosterLabSamTransform",
+      "Effect": "Allow",
+      "Action": ["cloudformation:CreateChangeSet"],
+      "Resource": "arn:aws:cloudformation:us-east-1:aws:transform/Serverless-2016-10-31"
+    },
+    {
       "Sid": "RosterLabLambdaDeployment",
       "Effect": "Allow",
       "Action": [

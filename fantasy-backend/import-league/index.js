@@ -8,7 +8,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 const MAX_BODY_BYTES = 12 * 1024;
 const MAX_ESPN_RESPONSE_BYTES = 4 * 1024 * 1024;
-const MAX_LAMBDA_RESPONSE_BYTES = 5_500_000;
+const MAX_LAMBDA_PAYLOAD_BYTES = 6 * 1024 * 1024 - 64 * 1024;
 const FETCH_TIMEOUT_MS = 8_000;
 
 exports.handler = async function handler(event) {
@@ -221,8 +221,15 @@ exports.handler = async function handler(event) {
       );
     }
 
-    const responseBody = JSON.stringify({ payload, teamId });
-    if (Buffer.byteLength(responseBody, "utf8") > MAX_LAMBDA_RESPONSE_BYTES) {
+    const successResponse = serializedResponse(
+      200,
+      JSON.stringify({ payload, teamId }),
+      origin
+    );
+    if (
+      Buffer.byteLength(JSON.stringify(successResponse), "utf8") >
+      MAX_LAMBDA_PAYLOAD_BYTES
+    ) {
       return response(
         502,
         {
@@ -233,7 +240,7 @@ exports.handler = async function handler(event) {
       );
     }
 
-    return serializedResponse(200, responseBody, origin);
+    return successResponse;
   } catch (error) {
     if (timedOut) {
       return response(

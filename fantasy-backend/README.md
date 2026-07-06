@@ -28,9 +28,10 @@ The SAM stack creates an HTTP API, one arm64 Lambda function, a least-privilege
 seven-day function and API log groups, and CloudWatch error alarms.
 
 An AWS administrator must run the bootstrap stack once. It creates the
-log-only Lambda execution role and a private, encrypted artifact bucket with a
-14-day lifecycle. The day-to-day GitHub role can pass that fixed role to Lambda
-but cannot create or modify IAM roles.
+log-only Lambda execution role and a private, encrypted, versioned artifact
+bucket. The day-to-day GitHub role can pass that fixed role to Lambda but cannot
+create or modify IAM roles. Artifacts are retained so CloudFormation can always
+roll back to a previously deployed function package.
 
 ```sh
 aws cloudformation deploy \

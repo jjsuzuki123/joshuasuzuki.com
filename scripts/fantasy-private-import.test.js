@@ -184,6 +184,24 @@ async function run() {
     "ESPN_RESPONSE_TOO_LARGE"
   );
 
+  const expansionHeavyJson = JSON.stringify({
+    data: Array(1_040_000).fill("x"),
+  });
+  assert.ok(Buffer.byteLength(expansionHeavyJson) < 4 * 1024 * 1024);
+  global.fetch = async () =>
+    new Response(expansionHeavyJson, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  const oversizedLambdaPayload = await handler(
+    event({ leagueId: "123456", season: "2026" })
+  );
+  assert.equal(oversizedLambdaPayload.statusCode, 502);
+  assert.equal(
+    JSON.parse(oversizedLambdaPayload.body).code,
+    "ESPN_RESPONSE_TOO_LARGE"
+  );
+
   console.log("Fantasy private import relay tests passed.");
 }
 

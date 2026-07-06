@@ -20,13 +20,6 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-      LifecycleConfiguration:
-        Rules:
-          - Id: DeleteOldArtifacts
-            Status: Enabled
-            ExpirationInDays: 14
-            NoncurrentVersionExpiration:
-              NoncurrentDays: 7
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
