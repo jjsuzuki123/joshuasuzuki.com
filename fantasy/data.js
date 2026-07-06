@@ -188,6 +188,7 @@
         headline: "Back in the heart of the order",
         impact: "positive",
         updated: "Demo note",
+        fixture: true,
       },
     }),
     hitter("aaron-judge", "Aaron Judge", "NYY", ["OF"], "fog-city", 99, 3.1, [100, 100, 100, 14, 84], "69 R · 34 HR · 81 RBI · .291", {
@@ -204,6 +205,7 @@
         headline: "Save chances remain volatile",
         impact: "negative",
         updated: "Demo note",
+        fixture: true,
       },
     }),
 
@@ -282,6 +284,18 @@
     categories,
     teams,
     players,
+    teamStrategies: {
+      "fog-city": {
+        puntCategories: ["stolenBases"],
+        focusCategories: ["saves"],
+      },
+    },
+    sourceSnapshot: {
+      schemaVersion: 1,
+      generatedAt: null,
+      matchedPlayers: 0,
+      fixture: true,
+    },
     sources: [
       {
         id: "espn",
@@ -289,6 +303,7 @@
         url: "https://www.espn.com/fantasy/baseball/",
         coverage: "League settings, rosters, standings, ownership",
         status: "demo",
+        kind: "quantitative",
         cadence: "On sync",
       },
       {
@@ -297,7 +312,8 @@
         url: "https://www.fangraphs.com/projections",
         coverage: "Rest-of-season projection signal",
         status: "fixture",
-        cadence: "Adapter planned",
+        kind: "quantitative",
+        cadence: "Illustrative values only",
       },
       {
         id: "savant",
@@ -305,7 +321,8 @@
         url: "https://baseballsavant.mlb.com/",
         coverage: "Expected outcomes and quality of contact",
         status: "fixture",
-        cadence: "Adapter planned",
+        kind: "quantitative",
+        cadence: "Illustrative values only",
       },
       {
         id: "rotowire",
@@ -313,17 +330,18 @@
         url: "https://www.rotowire.com/baseball/",
         coverage: "Injury, lineup, and role news",
         status: "fixture",
+        kind: "qualitative",
         cadence: "Licensed feed needed",
       },
     ],
     model: {
-      version: "0.1 demo",
+      version: "2.0 demo evidence model",
       weights: [
-        { label: "Rest-of-season projection", value: 40 },
-        { label: "League market and ownership", value: 30 },
-        { label: "Underlying performance", value: 20 },
-        { label: "Role and health news", value: 10 },
+        { label: "Market and rank anchor", value: 50 },
+        { label: "Category production", value: 30 },
+        { label: "Projection and skill evidence", value: 20 },
       ],
+      adjustments: ["Availability", "Role news", "Team category strategy"],
     },
   };
 });

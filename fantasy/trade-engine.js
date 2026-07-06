@@ -434,9 +434,13 @@
         roster,
         scores,
         listedValue: sum(roster.map((player) => player.marketValue)),
-        totalValue: bundleValue(
-          roster,
-          (player) => playerRatings.get(String(player.id))?.value
+        totalValue: round(
+          sum(
+            roster.map(
+              (player) => playerRatings.get(String(player.id))?.value
+            )
+          ),
+          1
         ),
       });
     });
