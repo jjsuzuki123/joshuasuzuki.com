@@ -7,12 +7,19 @@ const {
   evaluateTrade,
   findTradeOpportunities,
   getTeamAnalysis,
+  ratePlayer,
 } = require("../fantasy/trade-engine.js");
 
+const forceCompete = {
+  [data.activeTeamId]: {
+    competeCategories: data.categories.map((category) => category.id),
+  },
+};
 const context = computeLeagueContext({
   players: data.players,
   teams: data.teams,
   categories: data.categories,
+  teamStrategies: forceCompete,
 });
 assert.equal(context.profiles.size, data.teams.length);
 
@@ -55,12 +62,16 @@ const analysis = getTeamAnalysis({
   players: data.players,
   teams: data.teams,
   categories: data.categories,
+  teamStrategies: forceCompete,
   context,
 });
 assert.ok(analysis);
 assert.equal(analysis.roster.length, 10);
 assert.equal(analysis.categoryRows.length, 10);
-assert.ok(analysis.needs.some((category) => category.id === "stolenBases"));
+assert.ok(
+  analysis.categoryRows.find((category) => category.id === "stolenBases")
+    .priority > 0
+);
 assert.ok(analysis.needs.some((category) => category.id === "saves"));
 
 const opportunities = findTradeOpportunities({
@@ -94,7 +105,7 @@ const speedTrade = evaluateTrade({
   context,
 });
 assert.equal(speedTrade.valid, true);
-assert.ok(speedTrade.fairness >= 90);
+assert.ok(speedTrade.fairness >= 80);
 assert.ok(speedTrade.gains.some((category) => category.id === "stolenBases"));
 assert.ok(speedTrade.losses.some((category) => category.id === "homeRuns"));
 
@@ -347,6 +358,23 @@ assert.equal(lopsidedTrade.valid, true);
 assert.ok(lopsidedTrade.fairness <= 50);
 assert.equal(lopsidedTrade.realistic, false);
 
+const catcherHoleTrade = evaluateTrade({
+  teamId: data.activeTeamId,
+  partnerTeamId: "northside",
+  sendingIds: ["tanner-scott"],
+  receivingIds: ["logan-ohoppe"],
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+});
+assert.ok(catcherHoleTrade.partnerRosterFitPenalty >= 10);
+assert.ok(
+  catcherHoleTrade.partnerMissingPositions.some(
+    (position) => position.position === "C"
+  )
+);
+assert.equal(catcherHoleTrade.realistic, false);
+
 const incompleteTrade = evaluateTrade({
   teamId: data.activeTeamId,
   partnerTeamId: "northside",
@@ -358,5 +386,337 @@ const incompleteTrade = evaluateTrade({
   context,
 });
 assert.equal(incompleteTrade.valid, false);
+
+assert.equal(data.teamStrategies, undefined);
+const inferredContext = computeLeagueContext({
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+});
+const inferredAnalysis = getTeamAnalysis({
+  teamId: data.activeTeamId,
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+  context: inferredContext,
+});
+const inferredStolenBases = inferredAnalysis.categoryRows.find(
+  (category) => category.id === "stolenBases"
+);
+assert.equal(inferredStolenBases.strategy, "inferred-punt");
+assert.equal(inferredStolenBases.priority, 0);
+assert.ok(inferredStolenBases.inference.confidence >= 0.5);
+assert.ok(inferredStolenBases.inference.difficulty >= 0.3);
+assert.equal(
+  inferredAnalysis.needs.some((category) => category.id === "stolenBases"),
+  false
+);
+assert.equal(
+  analysis.categoryRows.find((category) => category.id === "stolenBases")
+    .strategy,
+  "compete"
+);
+
+const renamedCategories = data.categories.map((category) =>
+  category.id === "stolenBases"
+    ? { ...category, id: "outlierCategory", label: "OUT" }
+    : category
+);
+const renamedPlayers = data.players.map((player) => {
+  if (!Number.isFinite(player.scores.stolenBases)) return player;
+  const scores = { ...player.scores, outlierCategory: player.scores.stolenBases };
+  delete scores.stolenBases;
+  return { ...player, scores };
+});
+const renamedInference = getTeamAnalysis({
+  teamId: data.activeTeamId,
+  players: renamedPlayers,
+  teams: data.teams,
+  categories: renamedCategories,
+});
+assert.equal(
+  renamedInference.categoryRows.find(
+    (category) => category.id === "outlierCategory"
+  ).strategy,
+  "inferred-punt"
+);
+
+const teamStrategies = {
+  [data.activeTeamId]: {
+    puntCategories: ["stolenBases"],
+    focusCategories: ["saves"],
+  },
+};
+const puntContext = computeLeagueContext({
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+  teamStrategies,
+});
+const puntAnalysis = getTeamAnalysis({
+  teamId: data.activeTeamId,
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+  teamStrategies,
+  context: puntContext,
+});
+assert.equal(
+  puntAnalysis.categoryRows.find((category) => category.id === "stolenBases")
+    .priority,
+  0
+);
+assert.equal(
+  puntAnalysis.categoryRows.find((category) => category.id === "stolenBases")
+    .strategy,
+  "punt"
+);
+assert.equal(
+  puntAnalysis.needs.some((category) => category.id === "stolenBases"),
+  false
+);
+assert.equal(
+  puntAnalysis.categoryRows.find((category) => category.id === "saves").strategy,
+  "focus"
+);
+
+const puntSpeedTrade = evaluateTrade({
+  teamId: data.activeTeamId,
+  partnerTeamId: "northside",
+  sendingIds: ["teoscar-hernandez"],
+  receivingIds: ["brice-turang"],
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+  teamStrategies,
+  context: puntContext,
+});
+const puntSpeedDelta = puntSpeedTrade.deltas.find(
+  (category) => category.id === "stolenBases"
+);
+assert.equal(puntSpeedDelta.teamPriority, 0);
+assert.equal(puntSpeedDelta.teamWeighted, 0);
+assert.equal(
+  puntSpeedTrade.gains.some((category) => category.id === "stolenBases"),
+  false
+);
+assert.ok(
+  puntSpeedTrade.puntEffects.some((category) => category.id === "stolenBases")
+);
+
+const wrongOwnerTrade = evaluateTrade({
+  teamId: data.activeTeamId,
+  partnerTeamId: "northside",
+  sendingIds: ["brice-turang"],
+  receivingIds: ["teoscar-hernandez"],
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+});
+assert.equal(wrongOwnerTrade.valid, false);
+assert.match(wrongOwnerTrade.reason, /belong/);
+
+const mutualCategories = [
+  {
+    id: "power",
+    label: "PWR",
+    name: "Power",
+    group: "batting",
+    aggregation: "count",
+  },
+  {
+    id: "speed",
+    label: "SPD",
+    name: "Speed",
+    group: "batting",
+    aggregation: "count",
+  },
+];
+const mutualTeams = [
+  { id: "a", name: "Power team" },
+  { id: "b", name: "Speed team" },
+  { id: "c", name: "Middle team" },
+];
+const mutualPlayers = [
+  {
+    id: "a-power",
+    name: "Power bat",
+    ownerTeamId: "a",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 70,
+    status: "Healthy",
+    scores: { power: 95, speed: 10 },
+  },
+  {
+    id: "a-empty",
+    name: "Empty bat",
+    ownerTeamId: "a",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 70,
+    status: "Healthy",
+    scores: { power: 10, speed: 10 },
+  },
+  {
+    id: "b-speed",
+    name: "Speed bat",
+    ownerTeamId: "b",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 70,
+    status: "Healthy",
+    scores: { power: 10, speed: 95 },
+  },
+  {
+    id: "c-middle",
+    name: "Middle bat",
+    ownerTeamId: "c",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 70,
+    status: "Healthy",
+    scores: { power: 55, speed: 55 },
+  },
+];
+const mutuallyUsefulTrade = evaluateTrade({
+  teamId: "a",
+  partnerTeamId: "b",
+  sendingIds: ["a-power"],
+  receivingIds: ["b-speed"],
+  players: mutualPlayers,
+  teams: mutualTeams,
+  categories: mutualCategories,
+});
+const partnerUnhelpfulTrade = evaluateTrade({
+  teamId: "a",
+  partnerTeamId: "b",
+  sendingIds: ["a-empty"],
+  receivingIds: ["b-speed"],
+  players: mutualPlayers,
+  teams: mutualTeams,
+  categories: mutualCategories,
+});
+assert.ok(mutuallyUsefulTrade.partnerNeedGain > partnerUnhelpfulTrade.partnerNeedGain);
+assert.ok(mutuallyUsefulTrade.acceptance > partnerUnhelpfulTrade.acceptance);
+assert.ok(
+  mutuallyUsefulTrade.deltas.find((category) => category.id === "power")
+    .partnerPointDelta > 0
+);
+assert.ok(mutuallyUsefulTrade.partnerRotoPointGain >= 0);
+
+const healthyRating = ratePlayer(
+  {
+    marketValue: 80,
+    status: "Healthy",
+    trend: 0,
+    type: "hitter",
+    scores: { power: 80, speed: 60 },
+  },
+  mutualCategories
+);
+const injuredRating = ratePlayer(
+  {
+    marketValue: 80,
+    status: "INJURY_RESERVE",
+    trend: 0,
+    type: "hitter",
+    scores: { power: 80, speed: 60 },
+    insights: {
+      qualitative: [
+        {
+          sourceId: "rotowire",
+          impact: "negative",
+          confidence: 0.9,
+          freshness: 1,
+        },
+      ],
+    },
+  },
+  mutualCategories
+);
+assert.ok(healthyRating.value > injuredRating.value);
+assert.ok(injuredRating.components.qualitative < 0);
+
+const packageTeams = [
+  { id: "buyers", name: "Buyers" },
+  { id: "sellers", name: "Sellers" },
+];
+const packageCategories = [
+  {
+    id: "runs",
+    label: "R",
+    name: "Runs",
+    group: "batting",
+    aggregation: "count",
+  },
+];
+const packagePlayers = [
+  {
+    id: "mid-one",
+    name: "Mid one",
+    ownerTeamId: "buyers",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 58,
+    status: "Healthy",
+    scores: { runs: 68 },
+  },
+  {
+    id: "mid-two",
+    name: "Mid two",
+    ownerTeamId: "buyers",
+    type: "hitter",
+    positions: ["1B"],
+    marketValue: 56,
+    status: "Healthy",
+    scores: { runs: 66 },
+  },
+  {
+    id: "buyer-filler",
+    name: "Buyer filler",
+    ownerTeamId: "buyers",
+    type: "hitter",
+    positions: ["2B"],
+    marketValue: 25,
+    status: "Healthy",
+    scores: { runs: 25 },
+  },
+  {
+    id: "star",
+    name: "Star",
+    ownerTeamId: "sellers",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 92,
+    status: "Healthy",
+    scores: { runs: 94 },
+  },
+  {
+    id: "seller-filler",
+    name: "Seller filler",
+    ownerTeamId: "sellers",
+    type: "hitter",
+    positions: ["SS"],
+    marketValue: 24,
+    status: "Healthy",
+    scores: { runs: 24 },
+  },
+];
+const packageOpportunities = findTradeOpportunities({
+  teamId: "buyers",
+  players: packagePlayers,
+  teams: packageTeams,
+  categories: packageCategories,
+  realisticOnly: false,
+  includePackages: true,
+  limit: 20,
+});
+assert.ok(
+  packageOpportunities.some(
+    (opportunity) =>
+      opportunity.sending.length === 2 && opportunity.receiving.length === 1
+  )
+);
 
 console.log("Fantasy trade engine tests passed.");

@@ -6,6 +6,7 @@ CF_DISTRIBUTION_ID="E3LDS3FK17E3JF"
 FANTASY_IMPORT_STACK="rosterlab-fantasy-import-production"
 AWS_PROFILE="${AWS_PROFILE:-default}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
+SOURCE_ENDPOINT="${SOURCE_ENDPOINT:-}"
 
 if [[ ! -f "index.html" ]]; then
   echo "ERROR: index.html not found. Run from repo root."
@@ -22,9 +23,14 @@ if IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
     --profile "${AWS_PROFILE}" \
     --region "${AWS_REGION}" 2>/dev/null)" &&
     [[ "${IMPORT_ENDPOINT}" == https://* ]]; then
-  IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
+  IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" \
+    SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
+    node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
 else
   echo "Fantasy backend is not ready; deploying the static app without private import."
+  IMPORT_ENDPOINT="" \
+    SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
+    node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
 fi
 
 aws s3 sync . "s3://${S3_BUCKET}" \
