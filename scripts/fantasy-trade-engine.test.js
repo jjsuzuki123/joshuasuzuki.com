@@ -16,6 +16,40 @@ const context = computeLeagueContext({
 });
 assert.equal(context.profiles.size, data.teams.length);
 
+const countCategory = {
+  id: "runs",
+  label: "R",
+  name: "Runs",
+  group: "batting",
+  aggregation: "count",
+};
+const countContext = computeLeagueContext({
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [countCategory],
+  players: [
+    { id: "a1", ownerTeamId: "a", marketValue: 1, scores: { runs: 60 } },
+    { id: "a2", ownerTeamId: "a", marketValue: 1, scores: { runs: 60 } },
+    { id: "b1", ownerTeamId: "b", marketValue: 1, scores: { runs: 100 } },
+  ],
+});
+assert.equal(countContext.profiles.get("a").categories.runs.score, 120);
+assert.equal(countContext.profiles.get("a").categories.runs.rank, 1);
+
+const tiedContext = computeLeagueContext({
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [countCategory],
+  players: [
+    { id: "a1", ownerTeamId: "a", marketValue: 1, scores: { runs: 100 } },
+    { id: "b1", ownerTeamId: "b", marketValue: 1, scores: { runs: 100 } },
+  ],
+});
+assert.equal(tiedContext.profiles.get("a").categories.runs.rank, 1);
+assert.equal(tiedContext.profiles.get("b").categories.runs.rank, 1);
+assert.equal(
+  tiedContext.profiles.get("a").categories.runs.need,
+  tiedContext.profiles.get("b").categories.runs.need
+);
+
 const analysis = getTeamAnalysis({
   teamId: data.activeTeamId,
   players: data.players,
@@ -83,6 +117,59 @@ assert.ok(
     .filter((category) => ["average", "era", "whip"].includes(category.id))
     .every((category) => Math.abs(category.raw) <= 100)
 );
+
+const rateCategory = {
+  id: "average",
+  label: "AVG",
+  name: "Batting average",
+  group: "batting",
+  aggregation: "rate",
+};
+const ratePlayers = [
+  {
+    id: "a-core",
+    ownerTeamId: "a",
+    marketValue: 50,
+    trend: 0,
+    rateWeight: 100,
+    scores: { average: 100 },
+  },
+  {
+    id: "a-send",
+    ownerTeamId: "a",
+    marketValue: 50,
+    trend: 0,
+    rateWeight: 100,
+    scores: { average: 20 },
+  },
+  {
+    id: "b-core",
+    ownerTeamId: "b",
+    marketValue: 50,
+    trend: 0,
+    rateWeight: 100,
+    scores: { average: 40 },
+  },
+  {
+    id: "b-receive",
+    ownerTeamId: "b",
+    marketValue: 50,
+    trend: 0,
+    rateWeight: 100,
+    scores: { average: 60 },
+  },
+];
+const fullRosterRateTrade = evaluateTrade({
+  teamId: "a",
+  partnerTeamId: "b",
+  sendingIds: ["a-send"],
+  receivingIds: ["b-receive"],
+  players: ratePlayers,
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [rateCategory],
+});
+assert.equal(fullRosterRateTrade.deltas[0].raw, 20);
+assert.equal(fullRosterRateTrade.deltas[0].partnerRaw, -20);
 
 const lopsidedTrade = evaluateTrade({
   teamId: data.activeTeamId,

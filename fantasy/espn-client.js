@@ -162,13 +162,12 @@
     );
     if (candidates.length === 0) return {};
 
-    const preferred =
-      candidates.find(
-        (entry) => entry.statSourceId === 1 && entry.statSplitTypeId === 0
-      ) ||
-      candidates.find((entry) => entry.statSourceId === 1) ||
-      candidates[0];
-    return preferred.stats || preferred.appliedStats || {};
+    const preferred = candidates.find(
+      (entry) => entry.statSourceId === 1 && entry.statSplitTypeId === 0
+    );
+    return preferred
+      ? preferred.stats || preferred.appliedStats || {}
+      : {};
   }
 
   function stat(stats, id) {
@@ -521,7 +520,7 @@
       model: {
         version: "0.1 ESPN import",
         weights: [
-          { label: "ESPN projection and rank", value: 55 },
+          { label: "ESPN projection or draft rank", value: 55 },
           { label: "League market and ownership", value: 35 },
           { label: "Role and availability", value: 10 },
         ],

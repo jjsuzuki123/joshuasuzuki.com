@@ -122,6 +122,7 @@ const league = parseLeague(fixture, {
 });
 assert.equal(league.mode, "espn");
 assert.equal(league.activeTeamId, "1");
+assert.equal(league.teamSelectionRequired, false);
 assert.equal(league.teams.length, 2);
 assert.equal(league.players.length, 2);
 
@@ -142,6 +143,24 @@ assert.ok(pitcher.scores.era > 60);
 assert.ok(pitcher.scores.strikeouts > 50);
 assert.match(hitter.projection, /HR/);
 assert.match(pitcher.projection, /ERA/);
+
+const unselectedLeague = parseLeague(fixture, {
+  leagueId: "123456",
+  season: "2026",
+});
+assert.equal(unselectedLeague.teamSelectionRequired, true);
+
+const recentOnlyFixture = JSON.parse(JSON.stringify(fixture));
+recentOnlyFixture.teams[0].roster.entries[0].playerPoolEntry.player.stats[0].statSplitTypeId = 1;
+const recentOnlyLeague = parseLeague(recentOnlyFixture, {
+  leagueId: "123456",
+  season: "2026",
+  teamId: "1",
+});
+assert.match(
+  recentOnlyLeague.players.find((player) => player.id === "101").projection,
+  /ESPN rank/
+);
 
 const pointsFixture = JSON.parse(JSON.stringify(fixture));
 pointsFixture.settings.scoringSettings.scoringType = "H2H_POINTS";

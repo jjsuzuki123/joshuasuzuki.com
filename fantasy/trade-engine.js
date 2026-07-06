@@ -55,6 +55,13 @@
     );
   }
 
+  function aggregateCategory(players, category) {
+    if (category.aggregation === "rate") {
+      return weightedRateScore(players, category.id);
+    }
+    return sum(players.map((player) => scoreFor(player, category.id)));
+  }
+
   function playersForTeam(players, teamId) {
     return players.filter((player) => player.ownerTeamId === teamId);
   }
@@ -67,10 +74,7 @@
       const scores = {};
 
       categories.forEach((category) => {
-        scores[category.id] =
-          category.aggregation === "rate"
-            ? weightedRateScore(roster, category.id)
-            : mean(roster.map((player) => scoreFor(player, category.id)));
+        scores[category.id] = aggregateCategory(roster, category);
       });
 
       rawProfiles.set(team.id, {
@@ -97,11 +101,22 @@
 
       categories.forEach((category) => {
         const ordered = categoryRanks[category.id];
-        const rank = ordered.findIndex((entry) => entry.teamId === team.id) + 1;
+        const teamScore = raw.scores[category.id];
+        const betterCount = ordered.filter(
+          (entry) => entry.score > teamScore
+        ).length;
+        const tieCount = ordered.filter(
+          (entry) => entry.score === teamScore
+        ).length;
+        const rank = betterCount + 1;
         const percentile =
           teams.length <= 1
             ? 100
-            : Math.round(((teams.length - rank) / (teams.length - 1)) * 100);
+            : Math.round(
+                (1 -
+                  (betterCount + (tieCount - 1) / 2) / (teams.length - 1)) *
+                  100
+              );
 
         categoryProfile[category.id] = {
           score: Math.round(raw.scores[category.id]),
@@ -175,20 +190,32 @@
     category,
     sending,
     receiving,
+    teamRoster,
+    partnerRoster,
     teamNeed,
     partnerNeed,
   }) {
-    const sent =
-      category.aggregation === "rate"
-        ? weightedRateScore(sending, category.id)
-        : sum(sending.map((player) => scoreFor(player, category.id)));
-    const received =
-      category.aggregation === "rate"
-        ? weightedRateScore(receiving, category.id)
-        : sum(receiving.map((player) => scoreFor(player, category.id)));
-    const raw = received - sent;
+    const sentIds = new Set(sending.map((player) => String(player.id)));
+    const receivedIds = new Set(receiving.map((player) => String(player.id)));
+    const teamAfter = [
+      ...teamRoster.filter((player) => !sentIds.has(String(player.id))),
+      ...receiving,
+    ];
+    const partnerAfter = [
+      ...partnerRoster.filter(
+        (player) => !receivedIds.has(String(player.id))
+      ),
+      ...sending,
+    ];
+    const raw =
+      aggregateCategory(teamAfter, category) -
+      aggregateCategory(teamRoster, category);
+    const partnerRaw =
+      aggregateCategory(partnerAfter, category) -
+      aggregateCategory(partnerRoster, category);
     const teamWeighted = (raw / 10) * (0.45 + teamNeed / 100);
-    const partnerWeighted = (-raw / 10) * (0.45 + partnerNeed / 100);
+    const partnerWeighted =
+      (partnerRaw / 10) * (0.45 + partnerNeed / 100);
 
     return {
       id: category.id,
@@ -196,6 +223,7 @@
       name: category.name,
       group: category.group,
       raw,
+      partnerRaw,
       display: Math.round((raw / 12) * 10) / 10,
       teamWeighted,
       partnerWeighted,
@@ -261,6 +289,8 @@
         category,
         sending,
         receiving,
+        teamRoster: teamProfile.roster,
+        partnerRoster: partnerProfile.roster,
         teamNeed: teamProfile.categories[category.id].need,
         partnerNeed: partnerProfile.categories[category.id].need,
       })
@@ -354,7 +384,7 @@
       .slice(0, 1)
       .map((delta) => delta.label);
     const partnerGains = [...result.deltas]
-      .filter((delta) => delta.raw < -3)
+      .filter((delta) => delta.partnerRaw > 3)
       .sort((left, right) => right.partnerWeighted - left.partnerWeighted)
       .slice(0, 2)
       .map((delta) => delta.label);
