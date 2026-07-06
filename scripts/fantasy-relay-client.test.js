@@ -24,7 +24,20 @@ const player = (id, name) => ({
       injuryStatus: "ACTIVE",
       ownership: { percentOwned: 80, percentChange: 0 },
       draftRanksByRankType: { STANDARD: { overallRank: 50 } },
-      stats: [],
+      stats: [
+        {
+          statSourceId: 1,
+          statSplitTypeId: 0,
+          stats: {
+            0: 500,
+            2: 0.275,
+            5: 20,
+            20: 80,
+            21: 75,
+            23: 10,
+          },
+        },
+      ],
     },
   },
 });
