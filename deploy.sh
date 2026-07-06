@@ -23,11 +23,39 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude ".env.*" \
   --exclude "*.zip" \
   --exclude "admin-backend/*" \
+  --exclude "extensions/*" \
   --exclude "scripts/*" \
   --exclude "permissions-policy.json" \
   --exclude "trust-policy.json" \
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
+
+aws s3api put-object \
+  --bucket "${S3_BUCKET}" \
+  --key "fantasy/" \
+  --body "fantasy/index.html" \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "text/html; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}" >/dev/null
+
+aws s3 cp "s3://${S3_BUCKET}/fantasy/config.js" "s3://${S3_BUCKET}/fantasy/config.js" \
+  --metadata-directive REPLACE \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "application/javascript; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}"
+
+for key in \
+  "fantasy/index.html" \
+  "fantasy/connector/privacy.html"; do
+  aws s3 cp "s3://${S3_BUCKET}/${key}" "s3://${S3_BUCKET}/${key}" \
+    --metadata-directive REPLACE \
+    --cache-control "no-cache, no-store, must-revalidate" \
+    --content-type "text/html; charset=utf-8" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}"
+done
 
 aws s3 cp "s3://${S3_BUCKET}/index.html" "s3://${S3_BUCKET}/index.html" \
   --metadata-directive REPLACE \

@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="RosterLab analyzes fantasy baseball rosters, category needs, player values, and realistic trade opportunities."
+    />
+    <meta name="theme-color" content="#f6f7f2" />
+    <title>RosterLab | Fantasy baseball trade analysis</title>
+    <link rel="stylesheet" href="/fantasy/styles.css?v=2" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <div class="app-shell">
+      <aside id="sidebar" class="sidebar" aria-label="RosterLab navigation">
+        <div class="sidebar-top">
+          <a class="brand" href="/fantasy/index.html" aria-label="RosterLab home">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32">
+                <path d="M6 7.5h20v17H6z"></path>
+                <path d="m9 20 5-5 3 3 6-7"></path>
+                <circle cx="23" cy="11" r="1.6"></circle>
+              </svg>
+            </span>
+            <span>
+              <strong>RosterLab</strong>
+              <small>Fantasy intelligence</small>
+            </span>
+          </a>
+
+          <nav class="primary-nav" aria-label="App sections">
+            <p class="nav-label">Workspace</p>
+            <button class="nav-item is-active" type="button" data-route="overview">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="7" rx="2"></rect>
+                <rect x="14" y="3" width="7" height="7" rx="2"></rect>
+                <rect x="3" y="14" width="7" height="7" rx="2"></rect>
+                <rect x="14" y="14" width="7" height="7" rx="2"></rect>
+              </svg>
+              <span>Overview</span>
+            </button>
+            <button class="nav-item" type="button" data-route="finder">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h12M4 17h12M16 4l4 3-4 3M16 14l4 3-4 3"></path>
+              </svg>
+              <span>Trade finder</span>
+              <span id="nav-opportunity-count" class="nav-count">0</span>
+            </button>
+            <button class="nav-item" type="button" data-route="lab">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 3h6M10 3v5l-5 9a2.5 2.5 0 0 0 2.2 3.7h9.6A2.5 2.5 0 0 0 19 17l-5-9V3"></path>
+                <path d="M7.5 15h9"></path>
+              </svg>
+              <span>Trade lab</span>
+            </button>
+            <button class="nav-item" type="button" data-route="market">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 19V9M10 19V5M16 19v-7M22 19V3"></path>
+              </svg>
+              <span>Player market</span>
+            </button>
+
+            <p class="nav-label nav-label-secondary">Data</p>
+            <button class="nav-item" type="button" data-route="sources">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
+                <path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path>
+                <path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"></path>
+              </svg>
+              <span>Sources & model</span>
+            </button>
+          </nav>
+        </div>
+
+        <div class="sidebar-bottom">
+          <label class="league-switcher" for="team-switcher">
+            <span id="sidebar-team-mark" class="team-mark">FOG</span>
+            <span class="league-switcher-copy">
+              <strong id="sidebar-team-name">Fog City Fastballs</strong>
+              <small id="sidebar-league-name">Bay Area Rotisserie</small>
+            </span>
+            <select id="team-switcher" aria-label="Choose the team to analyze"></select>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m6 8 4-4 4 4M14 12l-4 4-4-4"></path>
+            </svg>
+          </label>
+          <a class="back-link" href="/">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M16 10H4M9 5l-5 5 5 5"></path>
+            </svg>
+            joshuasuzuki.com
+          </a>
+        </div>
+      </aside>
+
+      <button
+        id="sidebar-scrim"
+        class="sidebar-scrim"
+        type="button"
+        aria-label="Close navigation"
+        hidden
+      ></button>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div class="topbar-title">
+            <button
+              id="menu-button"
+              class="icon-button menu-button"
+              type="button"
+              aria-label="Open navigation"
+              aria-controls="sidebar"
+              aria-expanded="false"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16"></path>
+              </svg>
+            </button>
+            <div>
+              <p id="page-kicker">Your league</p>
+              <h1 id="page-title">Overview</h1>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <button class="data-state-button" type="button" data-route="sources">
+              <span id="data-state-dot" class="status-dot status-dot-demo"></span>
+              <span id="data-state-label">Demo data</span>
+            </button>
+            <button
+              class="button button-secondary sync-button"
+              type="button"
+              data-action="open-espn"
+              data-direct-espn-sync
+              data-espn-connector-trigger
+              aria-label="Sync ESPN fantasy league"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M16 7a6 6 0 1 0 .4 5M16 3v4h-4"></path>
+              </svg>
+              <span>Sync ESPN</span>
+            </button>
+          </div>
+        </header>
+
+        <div
+          id="data-notice"
+          class="data-notice"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <div>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="10" r="8"></circle>
+              <path d="M10 9v5M10 6.5v.1"></path>
+            </svg>
+            <p id="data-notice-message">
+              You are viewing an illustrative league. Values and news are demo fixtures, not live
+              fantasy advice.
+            </p>
+          </div>
+          <button id="data-notice-action" type="button" data-action="open-espn">
+            Connect an ESPN league
+          </button>
+        </div>
+
+        <main id="main-content" class="main-content" tabindex="-1">
+          <section class="page is-active" data-page="overview" aria-labelledby="overview-heading">
+            <h2 id="overview-heading" class="sr-only">Team overview</h2>
+
+            <div class="overview-hero">
+              <div class="hero-copy">
+                <p id="hero-date" class="eyebrow">Fantasy baseball</p>
+                <h2 id="hero-heading">Your power is bankable. Saves are the opening.</h2>
+                <p id="hero-summary">
+                  Move one mid-tier bat for a stable closer and protect your strongest categories.
+                </p>
+                <div class="hero-actions">
+                  <button class="button button-primary" type="button" data-route="finder">
+                    See trade opportunities
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M4 10h12M11 5l5 5-5 5"></path>
+                    </svg>
+                  </button>
+                  <button class="button button-quiet" type="button" data-route="lab">
+                    Build a trade
+                  </button>
+                </div>
+              </div>
+              <div class="outlook-card">
+                <div id="outlook-ring" class="outlook-ring" style="--score: 72">
+                  <div>
+                    <strong id="outlook-score">72</strong>
+                    <span>/100</span>
+                  </div>
+                </div>
+                <div>
+                  <p>Roster outlook</p>
+                  <strong id="outlook-label">Contender</strong>
+                  <span id="outlook-detail">Projected 3rd of 6</span>
+                </div>
+              </div>
+            </div>
+
+            <div id="summary-metrics" class="summary-metrics" aria-label="Team summary"></div>
+
+            <div class="dashboard-grid">
+              <section class="panel category-panel" aria-labelledby="category-heading">
+                <div class="panel-heading">
+                  <div>
+                    <p class="section-label">Roster shape</p>
+                    <h3 id="category-heading">Category position</h3>
+                  </div>
+                  <span id="category-format" class="subtle-badge">5x5 roto</span>
+                </div>
+                <div id="category-list" class="category-list"></div>
+              </section>
+
+              <section class="panel opportunities-panel" aria-labelledby="opportunities-heading">
+                <div class="panel-heading">
+                  <div>
+                    <p class="section-label">Best matches</p>
+                    <h3 id="opportunities-heading">Trade opportunities</h3>
+                  </div>
+                  <button class="text-button" type="button" data-route="finder">
+                    View all
+                    <svg viewBox="0 0 18 18" aria-hidden="true">
+                      <path d="M4 9h10M10 5l4 4-4 4"></path>
+                    </svg>
+                  </button>
+                </div>
+                <div id="overview-opportunities" class="overview-opportunities"></div>
+              </section>
+            </div>
+
+            <div class="dashboard-lower-grid">
+              <section class="panel needs-panel" aria-labelledby="needs-heading">
+                <div class="panel-heading">
+                  <div>
+                    <p class="section-label">What to shop for</p>
+                    <h3 id="needs-heading">Priority needs</h3>
+                  </div>
+                </div>
+                <div id="priority-needs" class="priority-needs"></div>
+              </section>
+
+              <section class="panel signal-panel" aria-labelledby="signals-heading">
+                <div class="panel-heading">
+                  <div>
+                    <p class="section-label">Source blend</p>
+                    <h3 id="signals-heading">Market signals</h3>
+                  </div>
+                  <button class="text-button" type="button" data-route="sources">Inspect model</button>
+                </div>
+                <div id="market-signals" class="market-signals"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="page" data-page="finder" aria-labelledby="finder-heading" hidden>
+            <div class="page-heading-row">
+              <div>
+                <p class="section-label">Ranked for your roster</p>
+                <h2 id="finder-heading">Trade finder</h2>
+                <p>Every result balances category gain, market value, and the other manager's needs.</p>
+              </div>
+              <button class="button button-secondary" type="button" data-route="lab">
+                Open trade lab
+              </button>
+            </div>
+
+            <div class="finder-controls" aria-label="Trade finder filters">
+              <label class="finder-search-control">
+                Player
+                <span class="compact-search-field">
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5"></circle>
+                    <path d="m12.5 12.5 4 4"></path>
+                  </svg>
+                  <input
+                    id="finder-player-search"
+                    type="search"
+                    placeholder="Search either side"
+                    autocomplete="off"
+                  />
+                </span>
+              </label>
+              <label>
+                Strategy
+                <select id="finder-strategy">
+                  <option value="balanced">Balanced</option>
+                  <option value="win-now">Win now</option>
+                  <option value="upside">Chase upside</option>
+                  <option value="category">Category fit</option>
+                </select>
+              </label>
+              <label>
+                Target position
+                <select id="finder-position">
+                  <option value="ALL">All positions</option>
+                  <option value="C">Catcher</option>
+                  <option value="1B">First base</option>
+                  <option value="2B">Second base</option>
+                  <option value="3B">Third base</option>
+                  <option value="SS">Shortstop</option>
+                  <option value="OF">Outfield</option>
+                  <option value="SP">Starting pitcher</option>
+                  <option value="RP">Relief pitcher</option>
+                </select>
+              </label>
+              <label>
+                Category
+                <select id="finder-category">
+                  <option value="ALL">Any category</option>
+                </select>
+              </label>
+              <label class="toggle-control">
+                <input id="finder-realistic" type="checkbox" checked />
+                <span class="toggle-track" aria-hidden="true"></span>
+                <span>Realistic offers only</span>
+              </label>
+            </div>
+
+            <div class="results-toolbar">
+              <p id="finder-results-summary" aria-live="polite">Finding matches...</p>
+              <p class="results-method">Balanced across managers, then ranked by roster fit</p>
+            </div>
+            <div id="finder-list" class="finder-list"></div>
+          </section>
+
+          <section class="page" data-page="lab" aria-labelledby="lab-heading" hidden>
+            <div class="page-heading-row">
+              <div>
+                <p class="section-label">Build any scenario</p>
+                <h2 id="lab-heading">Trade lab</h2>
+                <p>Compare market value and the categories that move your standings.</p>
+              </div>
+              <button id="clear-trade-button" class="button button-secondary" type="button">
+                Clear trade
+              </button>
+            </div>
+
+            <section id="saved-trades" class="saved-trades" aria-labelledby="saved-trades-heading" hidden>
+              <div class="saved-trades-heading">
+                <div>
+                  <p class="section-label">On this device</p>
+                  <h3 id="saved-trades-heading">Saved scenarios</h3>
+                </div>
+                <span id="saved-trades-count"></span>
+              </div>
+              <div id="saved-trades-list" class="saved-trades-list"></div>
+            </section>
+
+            <div class="trade-lab-layout">
+              <div class="trade-builder">
+                <section class="roster-column" aria-labelledby="your-side-heading">
+                  <div class="roster-column-heading">
+                    <div>
+                      <span class="side-label">You send</span>
+                      <h3 id="your-side-heading">Your roster</h3>
+                    </div>
+                    <span id="send-count" class="selection-count">0 selected</span>
+                  </div>
+                  <label class="roster-search-field" for="send-player-search">
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="8.5" cy="8.5" r="5"></circle>
+                      <path d="m12.5 12.5 4 4"></path>
+                    </svg>
+                    <span class="sr-only">Search your roster</span>
+                    <input
+                      id="send-player-search"
+                      type="search"
+                      placeholder="Search your players"
+                      autocomplete="off"
+                    />
+                  </label>
+                  <div id="send-roster" class="roster-list"></div>
+                </section>
+
+                <div class="trade-direction" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"></path>
+                  </svg>
+                </div>
+
+                <section class="roster-column" aria-labelledby="their-side-heading">
+                  <div class="roster-column-heading">
+                    <div>
+                      <span class="side-label">You receive</span>
+                      <h3 id="their-side-heading">Trade partner</h3>
+                    </div>
+                    <span id="receive-count" class="selection-count">0 selected</span>
+                  </div>
+                  <label class="partner-select-label" for="lab-partner-select">
+                    Team
+                    <select id="lab-partner-select"></select>
+                  </label>
+                  <label class="roster-search-field" for="receive-player-search">
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="8.5" cy="8.5" r="5"></circle>
+                      <path d="m12.5 12.5 4 4"></path>
+                    </svg>
+                    <span class="sr-only">Search trade partner roster</span>
+                    <input
+                      id="receive-player-search"
+                      type="search"
+                      placeholder="Search their players"
+                      autocomplete="off"
+                    />
+                  </label>
+                  <div id="receive-roster" class="roster-list"></div>
+                </section>
+              </div>
+
+              <aside id="lab-result" class="trade-result-card" aria-live="polite">
+                <div class="empty-result">
+                  <span class="empty-result-icon" aria-hidden="true">
+                    <svg viewBox="0 0 28 28">
+                      <path d="M5 9h16M17 5l4 4-4 4M23 19H7M11 15l-4 4 4 4"></path>
+                    </svg>
+                  </span>
+                  <h3>Build both sides</h3>
+                  <p>Select at least one player from each roster to grade the trade.</p>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section class="page" data-page="market" aria-labelledby="market-heading" hidden>
+            <div class="page-heading-row">
+              <div>
+                <p class="section-label">League-wide board</p>
+                <h2 id="market-heading">Player market</h2>
+                <p>Values blend projection, roster demand, underlying skill, and role context.</p>
+              </div>
+            </div>
+
+            <div class="market-toolbar">
+              <label class="search-field" for="market-search">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <circle cx="8.5" cy="8.5" r="5"></circle>
+                  <path d="m12.5 12.5 4 4"></path>
+                </svg>
+                <span class="sr-only">Search players</span>
+                <input id="market-search" type="search" placeholder="Search player, team, or position" />
+              </label>
+              <label>
+                <span class="sr-only">Filter by player type</span>
+                <select id="market-type">
+                  <option value="ALL">All players</option>
+                  <option value="hitter">Hitters</option>
+                  <option value="pitcher">Pitchers</option>
+                  <option value="MY_TEAM">My roster</option>
+                </select>
+              </label>
+              <label>
+                <span class="sr-only">Sort players</span>
+                <select id="market-sort">
+                  <option value="value">Sort: market value</option>
+                  <option value="trend">Sort: rising</option>
+                  <option value="ownership">Sort: rostered</option>
+                  <option value="name">Sort: player name</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="market-table-shell">
+              <table class="market-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Player</th>
+                    <th scope="col">Roster</th>
+                    <th scope="col">Category line</th>
+                    <th scope="col">Rostered</th>
+                    <th scope="col">Trend</th>
+                    <th scope="col">Value</th>
+                    <th scope="col"><span class="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody id="market-table-body"></tbody>
+              </table>
+              <div id="market-empty" class="table-empty" hidden>No players match this search.</div>
+            </div>
+          </section>
+
+          <section class="page" data-page="sources" aria-labelledby="sources-heading" hidden>
+            <div class="page-heading-row">
+              <div>
+                <p class="section-label">Auditable inputs</p>
+                <h2 id="sources-heading">Sources & model</h2>
+                <p>See what contributes to a value before using it in a trade.</p>
+              </div>
+              <button class="button button-primary" type="button" data-action="open-espn">
+                Connect ESPN
+              </button>
+            </div>
+
+            <div id="source-cards" class="source-cards"></div>
+
+            <div class="model-grid">
+              <section class="panel model-panel" aria-labelledby="model-heading">
+                <div class="panel-heading">
+                  <div>
+                    <p class="section-label">Value formula</p>
+                    <h3 id="model-heading">How player value is blended</h3>
+                  </div>
+                  <span id="model-version" class="subtle-badge">v0.1 demo</span>
+                </div>
+                <div id="model-weights" class="model-weights"></div>
+                <p class="model-note">
+                  Category fit is applied after market value. That keeps a scarce closer useful to
+                  a team that needs saves without claiming he is more valuable to every roster.
+                </p>
+              </section>
+
+              <section class="panel connector-panel" aria-labelledby="connector-heading">
+                <p class="section-label">Production boundary</p>
+                <h3 id="connector-heading">How connections are handled</h3>
+                <ul>
+                  <li>The browser connector reuses an ESPN session without reading its cookies.</li>
+                  <li>Your ESPN password, verification codes, and session values stay on ESPN.</li>
+                  <li>Media and projection feeds need approved API access or licenses.</li>
+                </ul>
+                <p>
+                  Imported league data stays on your device. The connector returns league data
+                  directly to this page and does not send it through RosterLab's backend.
+                </p>
+                <button class="button button-secondary" type="button" data-action="reset-demo">
+                  Restore demo league
+                </button>
+              </section>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="espn-dialog" class="modal" aria-labelledby="espn-dialog-title">
+      <form id="espn-form" class="modal-card">
+        <div class="modal-heading">
+          <div>
+            <span class="modal-mark" aria-hidden="true">E</span>
+            <div>
+              <p class="section-label">League import</p>
+              <h2 id="espn-dialog-title">Connect ESPN fantasy baseball</h2>
+            </div>
+          </div>
+          <button class="icon-button" type="button" data-action="close-espn" aria-label="Close">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m5 5 10 10M15 5 5 15"></path>
+            </svg>
+          </button>
+        </div>
+
+        <p class="modal-intro">
+          Import team names, rosters, standings, ownership, and available ESPN projections. Your
+          league can use standard or custom category scoring.
+        </p>
+
+        <section
+          id="espn-browser-connector"
+          class="browser-connector"
+          aria-labelledby="browser-connector-heading"
+          hidden
+        >
+          <div class="browser-connector-heading">
+            <div>
+              <p class="section-label">Private or public league</p>
+              <h3 id="browser-connector-heading">Connect in your ESPN browser session</h3>
+            </div>
+            <span id="espn-connector-state" class="connector-state is-checking">
+              Checking connector
+            </span>
+          </div>
+          <p>
+            RosterLab opens ESPN in another tab. Sign in there and choose your baseball league.
+            Your ESPN credentials never enter RosterLab.
+          </p>
+          <button
+            id="espn-browser-connect"
+            class="button button-primary browser-connect-button"
+            type="button"
+            data-action="connect-espn-browser"
+            data-espn-connector-trigger
+            disabled
+          >
+            <span id="espn-browser-connect-label">Connect with ESPN</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 10h12M11 5l5 5-5 5"></path>
+            </svg>
+          </button>
+          <p id="espn-connector-help" class="browser-connector-help">
+            The RosterLab connector supports Chrome and Edge on desktop.
+          </p>
+          <a
+            id="espn-connector-install"
+            class="connector-install-link"
+            href="#"
+            target="_blank"
+            rel="noreferrer"
+            hidden
+          >
+            Install the browser connector
+          </a>
+        </section>
+
+        <div id="espn-connection-divider" class="connection-divider" hidden>
+          <span>or import a public league</span>
+        </div>
+        <div class="form-grid">
+          <label class="field field-wide">
+            Public league URL or ID
+            <input
+              id="espn-league-id"
+              name="leagueId"
+              type="text"
+              autocomplete="url"
+              spellcheck="false"
+              placeholder="Paste your ESPN league URL"
+              required
+            />
+            <small>
+              Private leagues require the browser connector above.
+            </small>
+          </label>
+          <label class="field">
+            Season
+            <input
+              id="espn-season"
+              name="season"
+              type="number"
+              min="2018"
+              max="2035"
+              value="2026"
+              required
+            />
+          </label>
+          <label class="field">
+            Your team ID <span>Optional</span>
+            <input
+              id="espn-team-id"
+              name="teamId"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              placeholder="1"
+            />
+          </label>
+        </div>
+
+        <div class="privacy-note">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="4" y="8" width="12" height="9" rx="2"></rect>
+            <path d="M7 8V6a3 3 0 0 1 6 0v2"></path>
+          </svg>
+          <p>
+            RosterLab never asks for your ESPN password. Public imports send only league
+            coordinates to the relay. When installed, the browser connector uses ESPN's existing
+            session without reading cookie values. Imported league data stays in this browser.
+          </p>
+        </div>
+
+        <p id="espn-status" class="form-status" aria-live="polite"></p>
+        <div class="modal-actions">
+          <button class="button button-quiet" type="button" data-action="close-espn">Cancel</button>
+          <button id="espn-submit" class="button button-primary" type="submit">
+            Import public league
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 10h12M11 5l5 5-5 5"></path>
+            </svg>
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="trade-dialog" class="modal trade-modal" aria-labelledby="trade-dialog-title">
+      <div id="trade-dialog-content" class="modal-card"></div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <noscript>
+      <div class="noscript-message">
+        RosterLab needs JavaScript to analyze rosters and evaluate trades.
+      </div>
+    </noscript>
+
+    <script src="/fantasy/config.js?v=2" defer></script>
+    <script src="/fantasy/data.js?v=2" defer></script>
+    <script src="/fantasy/trade-engine.js?v=2" defer></script>
+    <script src="/fantasy/espn-client.js?v=2" defer></script>
+    <script src="/fantasy/espn-connector.js?v=2" defer></script>
+    <script src="/fantasy/app.js?v=2" defer></script>
+  </body>
+</html>

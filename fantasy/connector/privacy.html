@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Privacy policy for the RosterLab ESPN Connector browser extension."
+    />
+    <title>RosterLab ESPN Connector privacy policy</title>
+    <link rel="stylesheet" href="/fantasy/connector/privacy.css" />
+  </head>
+  <body>
+    <main>
+      <a class="back-link" href="/fantasy/">Back to RosterLab</a>
+      <p class="eyebrow">Browser connector</p>
+      <h1>Privacy policy</h1>
+      <p class="updated">Effective July 6, 2026</p>
+
+      <section>
+        <h2>What the connector does</h2>
+        <p>
+          The RosterLab ESPN Connector lets you sync an ESPN fantasy baseball
+          league into RosterLab. You sign in on ESPN's website. The extension
+          then requests the league data using the ESPN session already held by
+          your browser and returns that league data to the open RosterLab tab.
+        </p>
+      </section>
+
+      <section>
+        <h2>Data the connector does not collect</h2>
+        <p>
+          The connector does not read, receive, or store your ESPN password,
+          verification codes, or session-cookie values. It does not use
+          analytics, advertising, or a RosterLab server. It does not sell or
+          share personal data.
+        </p>
+      </section>
+
+      <section>
+        <h2>League data and temporary state</h2>
+        <p>
+          ESPN returns league settings, teams, rosters, standings, ownership,
+          and available player projections. The extension passes that response
+          directly to RosterLab in your browser. RosterLab normalizes the
+          response and saves the connected league in local browser storage so
+          it remains available after a refresh.
+        </p>
+        <p>
+          While a connection is open, the extension keeps random request and
+          operation IDs, the two browser-tab IDs, the selected league, season, and
+          team IDs, and connection timestamps in Chrome's in-memory session
+          storage. It removes that state after success, cancellation, failure,
+          or ten minutes from the start of the connection. Chrome also clears
+          it when the browser restarts or the extension updates.
+        </p>
+      </section>
+
+      <section>
+        <h2>Permissions</h2>
+        <ul>
+          <li>
+            Access to RosterLab pages lets the extension receive a connection
+            request and return league data to the same tab.
+          </li>
+          <li>
+            Access to ESPN fantasy baseball pages lets the extension recognize
+            the league you open.
+          </li>
+          <li>
+            Access to ESPN's fantasy read API covers that API host because
+            Chrome host permissions are origin-wide. The connector code
+            requests only the fixed baseball league endpoint through your
+            existing ESPN session.
+          </li>
+          <li>
+            Session storage and alarms let the extension coordinate the tabs
+            and discard an unfinished connection after ten minutes.
+          </li>
+        </ul>
+        <p>
+          The extension does not request Chrome's cookie permission or access
+          unrelated websites.
+        </p>
+      </section>
+
+      <section>
+        <h2>Your control</h2>
+        <p>
+          Remove the extension at any time from your browser's extension
+          settings. In RosterLab, choose "Restore demo league" to remove the
+          imported league from local storage. Saved trade scenarios and the
+          player watchlist remain until you delete them in RosterLab or clear
+          this site's browser storage.
+        </p>
+      </section>
+
+      <section>
+        <h2>ESPN notice</h2>
+        <p>
+          RosterLab is not affiliated with or endorsed by ESPN. ESPN does not
+          publish a supported fantasy API, so this connector may stop working
+          if ESPN changes its website or private endpoints.
+        </p>
+      </section>
+
+      <section>
+        <h2>Contact</h2>
+        <p>
+          Questions about this policy can be sent to
+          <a href="mailto:joshuajamessuzuki@gmail.com">
+            joshuajamessuzuki@gmail.com
+          </a>.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
