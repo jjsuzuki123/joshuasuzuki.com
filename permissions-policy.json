@@ -88,7 +88,9 @@
         "apigateway:GET",
         "apigateway:PATCH",
         "apigateway:POST",
-        "apigateway:PUT"
+        "apigateway:PUT",
+        "apigateway:TagResource",
+        "apigateway:UntagResource"
       ],
       "Resource": [
         "arn:aws:apigateway:us-east-1::/apis*",
