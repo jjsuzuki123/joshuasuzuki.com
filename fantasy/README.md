@@ -9,7 +9,8 @@ illustrative six-team league so every workflow is usable without an account.
 - One-for-one trade matches scored for roster fit, value fairness, and likely
   partner interest
 - A multi-player trade lab with category impact and partner-fit estimates
-- A searchable league-wide player market and local watchlist
+- Player search in the trade finder, both trade-lab rosters, and league market
+- A league-wide player market and local watchlist
 - Public ESPN league import for rosters, standings, ownership, and available
   projections
 - Source and model pages that distinguish connected data from demo fixtures
@@ -28,6 +29,11 @@ request retries, caching, and monitoring.
 The importer accepts standard 5x5 rotisserie and head-to-head category leagues.
 It rejects points leagues and custom category sets instead of grading them with
 the wrong model.
+
+To connect a supported league, open any ESPN page inside that league, copy its
+URL, select **Sync ESPN** in RosterLab, and paste the URL. The importer extracts
+the league, team, and season IDs when ESPN includes them in the link. If the
+link does not identify a team, choose yours from the team selector after import.
 
 FanGraphs, Baseball Savant, and RotoWire appear as modeled source adapters in
 the demo. Their displayed values are fixtures, not live claims. Production use

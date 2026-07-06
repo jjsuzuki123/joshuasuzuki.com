@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const {
   buildLeagueUrl,
+  parseLeagueReference,
   parseLeague,
 } = require("../fantasy/espn-client.js");
 
@@ -12,6 +13,46 @@ assert.equal(url.searchParams.getAll("view").length, 4);
 assert.throws(
   () => buildLeagueUrl({ leagueId: "abc", season: "2026" }),
   /numbers only/
+);
+
+assert.deepEqual(parseLeagueReference("123456"), {
+  leagueId: "123456",
+  season: null,
+  teamId: null,
+});
+assert.deepEqual(
+  parseLeagueReference(
+    "https://fantasy.espn.com/baseball/team?leagueId=987654&teamId=4&seasonId=2025"
+  ),
+  {
+    leagueId: "987654",
+    season: "2025",
+    teamId: "4",
+  }
+);
+assert.deepEqual(
+  parseLeagueReference(
+    "fantasy.espn.com/baseball/league#/?leagueId=555&teamId=2"
+  ),
+  {
+    leagueId: "555",
+    season: null,
+    teamId: "2",
+  }
+);
+assert.deepEqual(
+  parseLeagueReference(
+    "https://lm-api-reads.fantasy.espn.com/apis/v3/games/flb/seasons/2026/segments/0/leagues/777"
+  ),
+  {
+    leagueId: "777",
+    season: "2026",
+    teamId: null,
+  }
+);
+assert.throws(
+  () => parseLeagueReference("https://fantasy.espn.com/baseball/league"),
+  /readable ESPN league ID/
 );
 
 const fixture = {

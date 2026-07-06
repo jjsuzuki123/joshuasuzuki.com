@@ -130,6 +130,46 @@
     return url;
   }
 
+  function parseLeagueReference(reference) {
+    const input = String(reference || "").trim().replaceAll("&amp;", "&");
+    if (/^\d+$/.test(input)) {
+      return { leagueId: input, season: null, teamId: null };
+    }
+
+    const candidate = /^(?:(?:fantasy|www)\.)?espn\.com\//i.test(input)
+      ? `https://${input}`
+      : input;
+    let url;
+    try {
+      url = new URL(candidate);
+    } catch (error) {
+      throw new Error("Paste an ESPN league URL or enter its numeric league ID.");
+    }
+
+    const hashParameters = url.hash.includes("?")
+      ? new URLSearchParams(url.hash.slice(url.hash.indexOf("?") + 1))
+      : new URLSearchParams();
+    const parameter = (name) =>
+      url.searchParams.get(name) || hashParameters.get(name);
+    const pathLeagueId =
+      url.pathname.match(/\/leagues?\/(\d+)(?:\/|$)/i)?.[1] || null;
+    const pathSeason =
+      url.pathname.match(/\/seasons\/(\d{4})(?:\/|$)/i)?.[1] || null;
+    const leagueId = parameter("leagueId") || pathLeagueId;
+    const season = parameter("seasonId") || parameter("season") || pathSeason;
+    const teamId = parameter("teamId");
+
+    if (!leagueId || !/^\d+$/.test(leagueId)) {
+      throw new Error("This URL does not contain a readable ESPN league ID.");
+    }
+
+    return {
+      leagueId,
+      season: season && /^\d{4}$/.test(season) ? season : null,
+      teamId: teamId && /^\d+$/.test(teamId) ? teamId : null,
+    };
+  }
+
   function initials(name) {
     return String(name || "")
       .split(/\s+/)
@@ -578,6 +618,7 @@
   return {
     buildLeagueUrl,
     fetchLeague,
+    parseLeagueReference,
     parseLeague,
   };
 });

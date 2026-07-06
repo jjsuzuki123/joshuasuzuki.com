@@ -263,6 +263,21 @@
             </div>
 
             <div class="finder-controls" aria-label="Trade finder filters">
+              <label class="finder-search-control">
+                Player
+                <span class="compact-search-field">
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5"></circle>
+                    <path d="m12.5 12.5 4 4"></path>
+                  </svg>
+                  <input
+                    id="finder-player-search"
+                    type="search"
+                    placeholder="Search either side"
+                    autocomplete="off"
+                  />
+                </span>
+              </label>
               <label>
                 Strategy
                 <select id="finder-strategy">
@@ -349,6 +364,19 @@
                     </div>
                     <span id="send-count" class="selection-count">0 selected</span>
                   </div>
+                  <label class="roster-search-field" for="send-player-search">
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="8.5" cy="8.5" r="5"></circle>
+                      <path d="m12.5 12.5 4 4"></path>
+                    </svg>
+                    <span class="sr-only">Search your roster</span>
+                    <input
+                      id="send-player-search"
+                      type="search"
+                      placeholder="Search your players"
+                      autocomplete="off"
+                    />
+                  </label>
                   <div id="send-roster" class="roster-list"></div>
                 </section>
 
@@ -369,6 +397,19 @@
                   <label class="partner-select-label" for="lab-partner-select">
                     Team
                     <select id="lab-partner-select"></select>
+                  </label>
+                  <label class="roster-search-field" for="receive-player-search">
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="8.5" cy="8.5" r="5"></circle>
+                      <path d="m12.5 12.5 4 4"></path>
+                    </svg>
+                    <span class="sr-only">Search trade partner roster</span>
+                    <input
+                      id="receive-player-search"
+                      type="search"
+                      placeholder="Search their players"
+                      autocomplete="off"
+                    />
                   </label>
                   <div id="receive-roster" class="roster-list"></div>
                 </section>
@@ -521,16 +562,20 @@
 
         <div class="form-grid">
           <label class="field field-wide">
-            League ID
+            League URL or ID
             <input
               id="espn-league-id"
               name="leagueId"
-              inputmode="numeric"
-              pattern="[0-9]+"
-              placeholder="12345678"
+              type="text"
+              autocomplete="url"
+              spellcheck="false"
+              placeholder="Paste your ESPN league URL"
               required
             />
-            <small>Found in the number after <code>leagueId=</code> in your ESPN league URL.</small>
+            <small>
+              Paste any page URL from your league. RosterLab will read the league, team, and
+              season IDs when they are present.
+            </small>
           </label>
           <label class="field">
             Season

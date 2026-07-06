@@ -50,6 +50,7 @@
     overviewOpportunities: document.getElementById("overview-opportunities"),
     priorityNeeds: document.getElementById("priority-needs"),
     marketSignals: document.getElementById("market-signals"),
+    finderPlayerSearch: document.getElementById("finder-player-search"),
     finderStrategy: document.getElementById("finder-strategy"),
     finderPosition: document.getElementById("finder-position"),
     finderCategory: document.getElementById("finder-category"),
@@ -57,6 +58,8 @@
     finderResultsSummary: document.getElementById("finder-results-summary"),
     finderList: document.getElementById("finder-list"),
     labPartnerSelect: document.getElementById("lab-partner-select"),
+    sendPlayerSearch: document.getElementById("send-player-search"),
+    receivePlayerSearch: document.getElementById("receive-player-search"),
     sendRoster: document.getElementById("send-roster"),
     receiveRoster: document.getElementById("receive-roster"),
     sendCount: document.getElementById("send-count"),
@@ -133,8 +136,11 @@
       partnerTeamId: null,
       sending: new Set(),
       receiving: new Set(),
+      sendQuery: "",
+      receiveQuery: "",
     },
     finder: {
+      query: "",
       strategy: "balanced",
       position: "ALL",
       category: "ALL",
@@ -199,6 +205,15 @@
     return state.data.players.find(
       (player) => String(player.id) === String(playerId)
     );
+  }
+
+  function playerMatchesSearch(player, query) {
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    if (!normalizedQuery) return true;
+    return [player.name, player.mlbTeam, player.positions.join(" ")]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery);
   }
 
   function teamById(teamId) {
@@ -662,20 +677,31 @@
   }
 
   function renderFinder() {
-    const opportunities = findOpportunities(state.finder);
+    const opportunities = findOpportunities(state.finder).filter((opportunity) =>
+      [...opportunity.sending, ...opportunity.receiving].some((player) =>
+        playerMatchesSearch(player, state.finder.query)
+      )
+    );
     state.displayedOpportunities = opportunities;
     const realisticText = state.finder.realisticOnly ? " realistic" : "";
+    const queryText = state.finder.query.trim();
     elements.finderResultsSummary.textContent = `${opportunities.length}${realisticText} ${
       opportunities.length === 1 ? "match" : "matches"
-    } for ${currentTeam().name}`;
+    }${queryText ? ` for "${queryText}"` : ` for ${currentTeam().name}`}`;
 
     if (opportunities.length === 0) {
       elements.finderList.innerHTML = `
         <div class="empty-list">
-          <h3>No trades pass these filters</h3>
-          <p>Try another position or include lower partner-fit offers. The model will still show fairness and roster fit.</p>
+          <h3>${queryText ? "No matching players" : "No trades pass these filters"}</h3>
+          <p>${
+            queryText
+              ? `No current trade result includes "${escapeHtml(queryText)}". Try another name or clear the search.`
+              : "Try another position or include lower partner-fit offers. The model will still show fairness and roster fit."
+          }</p>
           ${
-            state.finder.realisticOnly
+            queryText
+              ? '<button class="button button-secondary" type="button" data-action="clear-finder-search">Clear player search</button>'
+              : state.finder.realisticOnly
               ? '<button class="button button-secondary" type="button" data-action="show-all-trades">Show every fair match</button>'
               : ""
           }
@@ -930,6 +956,12 @@
     const partnerRoster = engine
       .playersForTeam(state.data.players, state.lab.partnerTeamId)
       .sort((left, right) => right.marketValue - left.marketValue);
+    const visibleOwnRoster = ownRoster.filter((player) =>
+      playerMatchesSearch(player, state.lab.sendQuery)
+    );
+    const visiblePartnerRoster = partnerRoster.filter((player) =>
+      playerMatchesSearch(player, state.lab.receiveQuery)
+    );
     const ownIds = new Set(ownRoster.map((player) => String(player.id)));
     const partnerIds = new Set(partnerRoster.map((player) => String(player.id)));
     state.lab.sending = new Set(
@@ -947,24 +979,30 @@
           }>${escapeHtml(team.name)}</option>`
       )
       .join("");
-    elements.sendRoster.innerHTML = ownRoster
-      .map((player) =>
-        renderRosterPlayer(
-          player,
-          "send",
-          state.lab.sending.has(String(player.id))
-        )
-      )
-      .join("");
-    elements.receiveRoster.innerHTML = partnerRoster
-      .map((player) =>
-        renderRosterPlayer(
-          player,
-          "receive",
-          state.lab.receiving.has(String(player.id))
-        )
-      )
-      .join("");
+    elements.sendRoster.innerHTML =
+      visibleOwnRoster.length > 0
+        ? visibleOwnRoster
+            .map((player) =>
+              renderRosterPlayer(
+                player,
+                "send",
+                state.lab.sending.has(String(player.id))
+              )
+            )
+            .join("")
+        : '<div class="roster-empty">No players match this search.</div>';
+    elements.receiveRoster.innerHTML =
+      visiblePartnerRoster.length > 0
+        ? visiblePartnerRoster
+            .map((player) =>
+              renderRosterPlayer(
+                player,
+                "receive",
+                state.lab.receiving.has(String(player.id))
+              )
+            )
+            .join("")
+        : '<div class="roster-empty">No players match this search.</div>';
     elements.sendCount.textContent = `${state.lab.sending.size} selected`;
     elements.receiveCount.textContent = `${state.lab.receiving.size} selected`;
     renderSavedTrades();
@@ -1367,6 +1405,33 @@
     });
   }
 
+  function resetPlayerSearches() {
+    state.finder.query = "";
+    state.lab.sendQuery = "";
+    state.lab.receiveQuery = "";
+    elements.finderPlayerSearch.value = "";
+    elements.sendPlayerSearch.value = "";
+    elements.receivePlayerSearch.value = "";
+  }
+
+  function applyEspnReferenceDetails() {
+    const input = elements.espnLeagueId.value.trim();
+    if (!/espn\.com/i.test(input)) return;
+
+    try {
+      const reference = espnClient.parseLeagueReference(input);
+      if (reference.season) elements.espnSeason.value = reference.season;
+      elements.espnTeamId.value = reference.teamId || "";
+      elements.espnStatus.className = "form-status is-success";
+      elements.espnStatus.textContent = `Found league ${reference.leagueId}${
+        reference.teamId ? `, team ${reference.teamId}` : ""
+      }.`;
+    } catch (error) {
+      elements.espnStatus.className = "form-status";
+      elements.espnStatus.textContent = "";
+    }
+  }
+
   function openEspnDialog() {
     elements.espnStatus.textContent = "";
     elements.espnStatus.className = "form-status";
@@ -1392,11 +1457,21 @@
   async function importEspnLeague(event) {
     event.preventDefault();
     const formData = new FormData(elements.espnForm);
-    const leagueId = String(formData.get("leagueId") || "").trim();
+    const leagueReference = String(formData.get("leagueId") || "").trim();
     const season = String(formData.get("season") || "").trim();
     const teamId = String(formData.get("teamId") || "").trim();
 
     elements.espnStatus.className = "form-status";
+    let leagueId;
+    try {
+      leagueId = espnClient.parseLeagueReference(leagueReference).leagueId;
+    } catch (error) {
+      elements.espnStatus.className = "form-status is-error";
+      elements.espnStatus.textContent =
+        error instanceof Error ? error.message : "Enter a valid ESPN league URL.";
+      return;
+    }
+
     elements.espnStatus.textContent = "Contacting ESPN...";
     elements.espnSubmit.disabled = true;
     activeImportController = new AbortController();
@@ -1414,6 +1489,7 @@
       state.lab.partnerTeamId = null;
       state.lab.sending.clear();
       state.lab.receiving.clear();
+      resetPlayerSearches();
       elements.espnStatus.className = "form-status is-success";
       elements.espnStatus.textContent = `Imported ${league.teams.length} teams and ${league.players.length} players.`;
       renderAll();
@@ -1443,6 +1519,7 @@
     state.lab.partnerTeamId = null;
     state.lab.sending.clear();
     state.lab.receiving.clear();
+    resetPlayerSearches();
     renderAll();
     showToast("Demo league restored.");
   }
@@ -1462,6 +1539,7 @@
     state.lab.partnerTeamId = null;
     state.lab.sending.clear();
     state.lab.receiving.clear();
+    resetPlayerSearches();
     if (state.data.mode === "espn") {
       try {
         window.localStorage.setItem(
@@ -1541,6 +1619,11 @@
       state.finder.realisticOnly = false;
       elements.finderRealistic.checked = false;
       renderFinder();
+    } else if (action === "clear-finder-search") {
+      state.finder.query = "";
+      elements.finderPlayerSearch.value = "";
+      renderFinder();
+      elements.finderPlayerSearch.focus();
     }
   });
 
@@ -1553,6 +1636,10 @@
   );
   elements.teamSwitcher.addEventListener("change", () => {
     switchTeam(elements.teamSwitcher.value);
+  });
+  elements.finderPlayerSearch.addEventListener("input", () => {
+    state.finder.query = elements.finderPlayerSearch.value;
+    renderFinder();
   });
   elements.finderStrategy.addEventListener("change", () => {
     state.finder.strategy = elements.finderStrategy.value;
@@ -1573,6 +1660,16 @@
   elements.labPartnerSelect.addEventListener("change", () => {
     state.lab.partnerTeamId = elements.labPartnerSelect.value;
     state.lab.receiving.clear();
+    state.lab.receiveQuery = "";
+    elements.receivePlayerSearch.value = "";
+    renderLab();
+  });
+  elements.sendPlayerSearch.addEventListener("input", () => {
+    state.lab.sendQuery = elements.sendPlayerSearch.value;
+    renderLab();
+  });
+  elements.receivePlayerSearch.addEventListener("input", () => {
+    state.lab.receiveQuery = elements.receivePlayerSearch.value;
     renderLab();
   });
   elements.clearTradeButton.addEventListener("click", () => {
@@ -1592,6 +1689,7 @@
     state.market.sort = elements.marketSort.value;
     renderMarket();
   });
+  elements.espnLeagueId.addEventListener("input", applyEspnReferenceDetails);
   elements.espnForm.addEventListener("submit", importEspnLeague);
 
   [elements.espnDialog, elements.tradeDialog].forEach((dialog) => {

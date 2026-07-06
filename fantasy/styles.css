@@ -1184,7 +1184,10 @@ svg {
 
 .finder-controls {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr)) minmax(190px, 1.1fr);
+  grid-template-columns:
+    minmax(190px, 1.2fr)
+    repeat(3, minmax(135px, 1fr))
+    minmax(175px, 1fr);
   align-items: end;
   gap: 0.7rem;
   padding: 1rem;
@@ -1204,6 +1207,26 @@ svg {
   font-weight: 650;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+}
+
+.compact-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.compact-search-field svg {
+  position: absolute;
+  left: 0.7rem;
+  width: 15px;
+  height: 15px;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.compact-search-field input {
+  width: 100%;
+  padding-left: 2.1rem;
 }
 
 select,
@@ -1726,11 +1749,44 @@ input:focus {
   flex: 1;
 }
 
+.roster-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.roster-search-field svg {
+  position: absolute;
+  left: 1.35rem;
+  width: 15px;
+  height: 15px;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.roster-search-field input {
+  width: 100%;
+  min-height: 35px;
+  padding-left: 2.05rem;
+  background: var(--surface-soft);
+}
+
 .roster-list {
   max-height: 570px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
+}
+
+.roster-empty {
+  padding: 2rem 1rem;
+  color: var(--ink-muted);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .roster-player {
