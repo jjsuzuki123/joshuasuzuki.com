@@ -14,13 +14,18 @@ fi
 
 FANTASY_CONFIG_FILE="$(mktemp)"
 trap 'rm -f "${FANTASY_CONFIG_FILE}"' EXIT
-IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
-  --stack-name "${FANTASY_IMPORT_STACK}" \
-  --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
-  --output text \
-  --profile "${AWS_PROFILE}" \
-  --region "${AWS_REGION}")"
-IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
+cp "fantasy/config.js" "${FANTASY_CONFIG_FILE}"
+if IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
+    --stack-name "${FANTASY_IMPORT_STACK}" \
+    --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
+    --output text \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" 2>/dev/null)" &&
+    [[ "${IMPORT_ENDPOINT}" == https://* ]]; then
+  IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
+else
+  echo "Fantasy backend is not ready; deploying the static app without private import."
+fi
 
 aws s3 sync . "s3://${S3_BUCKET}" \
   --delete \
@@ -90,6 +95,17 @@ for key in "sunset" "sunset/"; do
     --bucket "${S3_BUCKET}" \
     --key "${key}" \
     --body "sunset/index.html" \
+    --cache-control "no-cache, no-store, must-revalidate" \
+    --content-type "text/html; charset=utf-8" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" >/dev/null
+done
+
+for key in "fantasy" "fantasy/"; do
+  aws s3api put-object \
+    --bucket "${S3_BUCKET}" \
+    --key "${key}" \
+    --body "fantasy/index.html" \
     --cache-control "no-cache, no-store, must-revalidate" \
     --content-type "text/html; charset=utf-8" \
     --profile "${AWS_PROFILE}" \
