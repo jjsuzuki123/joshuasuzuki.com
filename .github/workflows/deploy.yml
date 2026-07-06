@@ -67,7 +67,19 @@ jobs:
           set_cache "resume/index.html"
           set_cache "admin/index.html"
           set_cache "sunset/index.html"
-        
+
+      - name: Publish sunset route aliases
+        run: |
+          set -euo pipefail
+          for key in "sunset" "sunset/"; do
+            aws s3api put-object \
+              --bucket "${S3_BUCKET}" \
+              --key "${key}" \
+              --body "sunset/index.html" \
+              --cache-control "no-cache, no-store, must-revalidate" \
+              --content-type "text/html; charset=utf-8" >/dev/null
+          done
+
       - name: Set PDF metadata (Content-Type + inline display)
         run: |
           set -euo pipefail
