@@ -207,15 +207,87 @@ const pointsFixture = JSON.parse(JSON.stringify(fixture));
 pointsFixture.settings.scoringSettings.scoringType = "H2H_POINTS";
 assert.throws(
   () => parseLeague(pointsFixture, { leagueId: "1", season: "2026" }),
-  /standard 5x5 category leagues/
+  /category leagues, not ESPN points leagues/
 );
 
 const customFixture = JSON.parse(JSON.stringify(fixture));
-customFixture.settings.scoringSettings.scoringItems.push({ statId: 60 });
-assert.throws(
-  () => parseLeague(customFixture, { leagueId: "1", season: "2026" }),
-  /custom categories/
+customFixture.settings.scoringSettings.scoringItems = [
+  { statId: 5 },
+  { statId: 9 },
+  { statId: 17 },
+  { statId: 20 },
+  { statId: 21 },
+  { statId: 23 },
+  { statId: 41, isReverseItem: true },
+  { statId: 47, isReverseItem: true },
+  { statId: 48 },
+  { statId: 53 },
+  { statId: 57 },
+  { statId: 60 },
+];
+const customHitterStats =
+  customFixture.teams[0].roster.entries[0].playerPoolEntry.player.stats[0].stats;
+customHitterStats[9] = 0.52;
+customHitterStats[17] = 0.38;
+const customPitcherStats =
+  customFixture.teams[1].roster.entries[0].playerPoolEntry.player.stats[0].stats;
+customPitcherStats[60] = 22;
+
+const customLeague = parseLeague(customFixture, {
+  leagueId: "1",
+  season: "2026",
+  teamId: "1",
+});
+assert.equal(customLeague.league.scoring, "6x6 rotisserie");
+assert.equal(customLeague.categories.length, 12);
+assert.deepEqual(
+  customLeague.categories.map((category) => category.id),
+  [
+    "homeRuns",
+    "slugging",
+    "onBasePercentage",
+    "runs",
+    "rbi",
+    "stolenBases",
+    "whip",
+    "era",
+    "strikeouts",
+    "wins",
+    "saves",
+    "holds",
+  ]
 );
+assert.equal(
+  customLeague.categories.find((category) => category.id === "era").direction,
+  "lower"
+);
+assert.ok(
+  customLeague.players.find((player) => player.id === "101").scores
+    .onBasePercentage > 60
+);
+assert.ok(
+  customLeague.players.find((player) => player.id === "202").scores.holds > 50
+);
+assert.match(
+  customLeague.players.find((player) => player.id === "101").projection,
+  /OBP/
+);
+
+const unknownCategoryFixture = JSON.parse(JSON.stringify(customFixture));
+unknownCategoryFixture.settings.scoringSettings.scoringItems.push({
+  statId: 777,
+  isReverseItem: true,
+});
+const unknownCategoryLeague = parseLeague(unknownCategoryFixture, {
+  leagueId: "1",
+  season: "2026",
+});
+const unknownCategory = unknownCategoryLeague.categories.find(
+  (category) => category.statId === 777
+);
+assert.equal(unknownCategory.id, "espnStat777");
+assert.equal(unknownCategory.direction, "lower");
+assert.equal(unknownCategory.known, false);
 
 assert.throws(
   () => parseLeague({ teams: [] }, { leagueId: "1", season: "2026" }),

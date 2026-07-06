@@ -371,6 +371,35 @@
     return icons[kind] || icons.value;
   }
 
+  function renderCategoryFilter() {
+    const categoryIds = new Set(
+      state.data.categories.map((category) => category.id)
+    );
+    if (
+      state.finder.category !== "ALL" &&
+      !categoryIds.has(state.finder.category)
+    ) {
+      state.finder.category = "ALL";
+    }
+
+    const optionsForGroup = (group) =>
+      state.data.categories
+        .filter((category) => category.group === group)
+        .map(
+          (category) =>
+            `<option value="${escapeHtml(category.id)}">${escapeHtml(
+              category.label
+            )} · ${escapeHtml(category.name)}</option>`
+        )
+        .join("");
+    elements.finderCategory.innerHTML = `
+      <option value="ALL">Any category</option>
+      <optgroup label="Batting">${optionsForGroup("batting")}</optgroup>
+      <optgroup label="Pitching">${optionsForGroup("pitching")}</optgroup>
+    `;
+    elements.finderCategory.value = state.finder.category;
+  }
+
   function renderChrome() {
     const team = currentTeam();
     const isDemo = state.data.mode === "demo";
@@ -392,6 +421,7 @@
     }`;
     elements.dataStateLabel.textContent = isDemo ? "Demo data" : "ESPN connected";
     elements.navOpportunityCount.textContent = String(state.baseOpportunities.length);
+    renderCategoryFilter();
   }
 
   function outlookLabel(score) {
@@ -460,7 +490,9 @@
         return `
           <div class="category-row">
             <div class="category-meta">
-              <span>${escapeHtml(category.label)} · ${escapeHtml(category.name)}</span>
+              <span>${escapeHtml(category.label)} · ${escapeHtml(category.name)}${
+                category.direction === "lower" ? " · lower is better" : ""
+              }</span>
               <strong data-rank="${tone}">#${escapeHtml(category.rank)} of ${escapeHtml(
                 state.data.teams.length
               )}</strong>
@@ -593,7 +625,7 @@
       day: "numeric",
     }).format(new Date());
     elements.heroDate.textContent = `${date} · ${state.data.league.name}`;
-    elements.heroHeading.textContent = `Your ${strength.name.toLowerCase()} are bankable. ${need.name} are the opening.`;
+    elements.heroHeading.textContent = `${strength.name} is your bankable strength. ${need.name} is the opening.`;
     elements.heroSummary.textContent = `You rank ${ordinal(
       strength.rank
     )} in ${strength.name.toLowerCase()} and ${ordinal(
