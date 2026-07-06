@@ -692,6 +692,16 @@
     const aggregateMovement = (beforePlayers, afterPlayers) => {
       const before = aggregateCategory(beforePlayers, category, useRawValues);
       const after = aggregateCategory(afterPlayers, category, useRawValues);
+      if (!useRawValues) {
+        const beforeScore = Number.isFinite(before) ? before : 0;
+        const afterScore = Number.isFinite(after) ? after : 0;
+        return {
+          before: beforeScore,
+          after: afterScore,
+          valueChange: null,
+          normalized: afterScore - beforeScore,
+        };
+      }
       if (!Number.isFinite(before) || !Number.isFinite(after)) {
         return { before: null, after: null, valueChange: null, normalized: 0 };
       }
@@ -870,7 +880,7 @@
     const valueDelta = round(valueIn - valueOut, 1);
     const comparisonValue = Math.max((valueIn + valueOut) / 2, 1);
     const valueGapRatio = Math.abs(valueDelta) / comparisonValue;
-    const fairness = clamp(Math.round(100 - valueGapRatio * 120), 0, 100);
+    const fairness = clamp(Math.round(100 - valueGapRatio * 125), 0, 100);
     const teamValueDelta = round(
       bundleValue(receiving, teamValue) - bundleValue(sending, teamValue),
       1

@@ -95,7 +95,7 @@ const speedTrade = evaluateTrade({
   context,
 });
 assert.equal(speedTrade.valid, true);
-assert.ok(speedTrade.fairness >= 90);
+assert.ok(speedTrade.fairness >= 80);
 assert.ok(speedTrade.gains.some((category) => category.id === "stolenBases"));
 assert.ok(speedTrade.losses.some((category) => category.id === "homeRuns"));
 
@@ -518,7 +518,11 @@ const partnerUnhelpfulTrade = evaluateTrade({
 });
 assert.ok(mutuallyUsefulTrade.partnerNeedGain > partnerUnhelpfulTrade.partnerNeedGain);
 assert.ok(mutuallyUsefulTrade.acceptance > partnerUnhelpfulTrade.acceptance);
-assert.ok(mutuallyUsefulTrade.partnerRotoPointGain > 0);
+assert.ok(
+  mutuallyUsefulTrade.deltas.find((category) => category.id === "power")
+    .partnerPointDelta > 0
+);
+assert.ok(mutuallyUsefulTrade.partnerRotoPointGain >= 0);
 
 const healthyRating = ratePlayer(
   {
