@@ -251,7 +251,13 @@
         entries.push({ value: current, weight: 1 });
       }
       quantitative.forEach((item) => {
-        const candidate = Number(item[key] ?? item.overall);
+        const rawCandidate = item[key] ?? item.overall;
+        const candidate =
+          rawCandidate === null ||
+          rawCandidate === undefined ||
+          rawCandidate === ""
+            ? Number.NaN
+            : Number(rawCandidate);
         const weight = item.confidence * item.freshness;
         if (Number.isFinite(candidate) && weight > 0) {
           entries.push({ value: candidate, weight });
