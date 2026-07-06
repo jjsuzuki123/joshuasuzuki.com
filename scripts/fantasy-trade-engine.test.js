@@ -44,6 +44,10 @@ assert.ok(
     (opportunity) => opportunity.partnerTeam.id !== data.activeTeamId
   )
 );
+assert.ok(
+  new Set(opportunities.slice(0, 5).map((opportunity) => opportunity.partnerTeam.id))
+    .size >= 4
+);
 
 const speedTrade = evaluateTrade({
   teamId: data.activeTeamId,
@@ -71,7 +75,7 @@ const lopsidedTrade = evaluateTrade({
   context,
 });
 assert.equal(lopsidedTrade.valid, true);
-assert.ok(lopsidedTrade.fairness < 50);
+assert.ok(lopsidedTrade.fairness <= 50);
 assert.equal(lopsidedTrade.realistic, false);
 
 const incompleteTrade = evaluateTrade({

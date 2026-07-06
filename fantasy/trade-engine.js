@@ -311,13 +311,6 @@
     return players.map((player) => player.name).join(" + ");
   }
 
-  function topCategoryLabels(deltas, limit) {
-    return deltas
-      .filter((delta) => delta.raw > 3)
-      .slice(0, limit)
-      .map((delta) => delta.label);
-  }
-
   function explainTrade(result, teamProfile, partnerProfile) {
     const gainDeltas = result.gains
       .filter((delta) => delta.raw > 3)
@@ -367,6 +360,63 @@
       sending.map((player) => player.id).sort().join("+"),
       receiving.map((player) => player.id).sort().join("+"),
     ].join(":");
+  }
+
+  function diversifyOpportunities(candidates, limit) {
+    const sorted = [...candidates].sort(
+      (left, right) =>
+        right.result.score - left.result.score ||
+        right.result.acceptance - left.result.acceptance ||
+        right.result.fairness - left.result.fairness
+    );
+    const groupsByPartner = new Map();
+    sorted.forEach((candidate) => {
+      const group = groupsByPartner.get(candidate.partnerTeam.id) || [];
+      group.push(candidate);
+      groupsByPartner.set(candidate.partnerTeam.id, group);
+    });
+    const groups = [...groupsByPartner.values()].sort(
+      (left, right) => right[0].result.score - left[0].result.score
+    );
+    const selected = [];
+    const selectedIds = new Set();
+    const incomingCounts = new Map();
+
+    while (selected.length < limit) {
+      let addedThisRound = false;
+
+      groups.forEach((group) => {
+        if (selected.length >= limit) return;
+        while (group.length > 0) {
+          const candidate = group.shift();
+          const incomingKey = candidate.receiving
+            .map((player) => player.id)
+            .sort()
+            .join("+");
+          const incomingCount = incomingCounts.get(incomingKey) || 0;
+          if (incomingCount >= 2) continue;
+
+          selected.push(candidate);
+          selectedIds.add(candidate.id);
+          incomingCounts.set(incomingKey, incomingCount + 1);
+          addedThisRound = true;
+          break;
+        }
+      });
+
+      if (!addedThisRound) break;
+    }
+
+    if (selected.length < limit) {
+      sorted.forEach((candidate) => {
+        if (selected.length < limit && !selectedIds.has(candidate.id)) {
+          selected.push(candidate);
+          selectedIds.add(candidate.id);
+        }
+      });
+    }
+
+    return selected.slice(0, limit);
   }
 
   function findTradeOpportunities({
@@ -475,14 +525,7 @@
       }
     });
 
-    return [...deduplicated.values()]
-      .sort(
-        (left, right) =>
-          right.result.score - left.result.score ||
-          right.result.acceptance - left.result.acceptance ||
-          right.result.fairness - left.result.fairness
-      )
-      .slice(0, limit);
+    return diversifyOpportunities([...deduplicated.values()], limit);
   }
 
   function describeValueDelta(valueDelta) {
