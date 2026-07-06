@@ -35,7 +35,8 @@ The importer accepts standard and custom rotisserie or head-to-head category
 leagues. It reads ESPN's active categories, lower-is-better settings, and
 projected stat lines before building team needs and trade scores. Points leagues
 remain unsupported because they require a separate points-based valuation
-model.
+model. Categories with unknown ESPN stat IDs or no available season data are
+listed in the app and excluded from recommendations rather than estimated.
 
 To connect a supported league, open any ESPN page inside that league, copy its
 URL, select **Sync ESPN** in RosterLab, and paste the URL. The importer extracts

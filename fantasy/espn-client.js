@@ -105,10 +105,10 @@
   const STAT_DEFINITION_DATA = {
     0: ["atBats", "AB", "At bats", "batting", "count", 200, 700, "higher"],
     1: ["hits", "H", "Hits", "batting", "count", 40, 220, "higher"],
-    2: ["average", "AVG", "Batting average", "batting", "rate", 0.2, 0.33, "higher"],
+    2: ["average", "AVG", "Batting average", "batting", "rate", 0.21, 0.325, "higher"],
     3: ["doubles", "2B", "Doubles", "batting", "count", 5, 50, "higher"],
     4: ["triples", "3B", "Triples", "batting", "count", 0, 15, "higher"],
-    5: ["homeRuns", "HR", "Home runs", "batting", "count", 0, 55, "higher"],
+    5: ["homeRuns", "HR", "Home runs", "batting", "count", 3, 48, "higher"],
     6: ["extraBaseHits", "XBH", "Extra-base hits", "batting", "count", 10, 100, "higher"],
     7: ["singles", "1B", "Singles", "batting", "count", 20, 160, "higher"],
     8: ["totalBases", "TB", "Total bases", "batting", "count", 80, 400, "higher"],
@@ -123,9 +123,9 @@
     17: ["onBasePercentage", "OBP", "On-base percentage", "batting", "rate", 0.25, 0.45, "higher"],
     18: ["ops", "OPS", "On-base plus slugging", "batting", "rate", 0.6, 1.1, "higher"],
     19: ["runsCreated", "RC", "Runs created", "batting", "count", 20, 140, "higher"],
-    20: ["runs", "R", "Runs", "batting", "count", 20, 130, "higher"],
-    21: ["rbi", "RBI", "Runs batted in", "batting", "count", 20, 140, "higher"],
-    23: ["stolenBases", "SB", "Stolen bases", "batting", "count", 0, 60, "higher"],
+    20: ["runs", "R", "Runs", "batting", "count", 25, 115, "higher"],
+    21: ["rbi", "RBI", "Runs batted in", "batting", "count", 25, 125, "higher"],
+    23: ["stolenBases", "SB", "Stolen bases", "batting", "count", 0, 50, "higher"],
     24: ["caughtStealing", "CS", "Caught stealing", "batting", "count", 0, 20, "lower"],
     25: ["netStolenBases", "SB-CS", "Net stolen bases", "batting", "count", -10, 50, "higher"],
     26: ["groundedIntoDoublePlays", "GDP", "Grounded into double plays", "batting", "count", 0, 25, "lower"],
@@ -142,23 +142,23 @@
     38: ["opponentAverage", "OBA", "Opponent batting average", "pitching", "rate", 0.18, 0.33, "lower"],
     39: ["walksAllowed", "BB", "Walks allowed", "pitching", "count", 5, 100, "lower"],
     40: ["intentionalWalksAllowed", "IBB", "Intentional walks allowed", "pitching", "count", 0, 15, "lower"],
-    41: ["whip", "WHIP", "Walks and hits per inning", "pitching", "rate", 0.85, 1.6, "lower"],
+    41: ["whip", "WHIP", "Walks and hits per inning", "pitching", "rate", 0.9, 1.55, "lower"],
     42: ["hitBatters", "HBP", "Hit batters", "pitching", "count", 0, 25, "lower"],
     43: ["opponentOnBasePercentage", "OOBP", "Opponent on-base percentage", "pitching", "rate", 0.23, 0.4, "lower"],
     44: ["runsAllowed", "R", "Runs allowed", "pitching", "count", 10, 120, "lower"],
     45: ["earnedRuns", "ER", "Earned runs", "pitching", "count", 10, 110, "lower"],
     46: ["homeRunsAllowed", "HR", "Home runs allowed", "pitching", "count", 2, 40, "lower"],
-    47: ["era", "ERA", "Earned run average", "pitching", "rate", 2, 6, "lower"],
-    48: ["strikeouts", "K", "Strikeouts", "pitching", "count", 20, 300, "higher"],
+    47: ["era", "ERA", "Earned run average", "pitching", "rate", 2.1, 5.3, "lower"],
+    48: ["strikeouts", "K", "Strikeouts", "pitching", "count", 35, 260, "higher"],
     49: ["strikeoutsPerNine", "K/9", "Strikeouts per nine", "pitching", "rate", 5, 14, "higher"],
     50: ["wildPitches", "WP", "Wild pitches", "pitching", "count", 0, 20, "lower"],
     51: ["balks", "BLK", "Balks", "pitching", "count", 0, 5, "lower"],
     52: ["pickoffs", "PK", "Pickoffs", "pitching", "count", 0, 10, "higher"],
-    53: ["wins", "W", "Wins", "pitching", "count", 0, 22, "higher"],
+    53: ["wins", "W", "Wins", "pitching", "count", 1, 18, "higher"],
     54: ["losses", "L", "Losses", "pitching", "count", 0, 18, "lower"],
     55: ["winningPercentage", "W%", "Winning percentage", "pitching", "rate", 0, 0.85, "higher"],
     56: ["saveOpportunities", "SVO", "Save opportunities", "pitching", "count", 0, 50, "higher"],
-    57: ["saves", "SV", "Saves", "pitching", "count", 0, 50, "higher"],
+    57: ["saves", "SV", "Saves", "pitching", "count", 0, 45, "higher"],
     58: ["blownSaves", "BS", "Blown saves", "pitching", "count", 0, 15, "lower"],
     59: ["savePercentage", "SV%", "Save percentage", "pitching", "rate", 0.4, 1, "higher"],
     60: ["holds", "HLD", "Holds", "pitching", "count", 0, 40, "higher"],
@@ -251,11 +251,14 @@
       : [];
     const seen = new Set();
     const categories = [];
+    const unsupportedCategories = [];
     scoringItems.forEach((item) => {
       const statId = numeric(item?.statId);
       if (!Number.isInteger(statId) || statId < 0 || seen.has(statId)) return;
       seen.add(statId);
-      categories.push(categoryForStat(statId, item));
+      const category = categoryForStat(statId, item);
+      if (category.known) categories.push(category);
+      else unsupportedCategories.push(category);
     });
 
     if (categories.length === 0) {
@@ -264,10 +267,11 @@
         categories: DEFAULT_CATEGORY_STAT_IDS.map((statId) =>
           categoryForStat(statId, null)
         ),
+        unsupportedCategories: [],
       };
     }
 
-    return { scoringType, categories };
+    return { scoringType, categories, unsupportedCategories };
   }
 
   function scoringLabel(scoringType, categories) {
@@ -368,19 +372,36 @@
     return ties > 0 ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`;
   }
 
-  function projectionStats(player) {
-    if (!Array.isArray(player.stats)) return {};
+  function seasonStatLine(player) {
+    if (!Array.isArray(player.stats)) {
+      return { stats: {}, source: "estimate" };
+    }
     const candidates = player.stats.filter(
       (entry) => entry && (entry.stats || entry.appliedStats)
     );
-    if (candidates.length === 0) return {};
+    if (candidates.length === 0) {
+      return { stats: {}, source: "estimate" };
+    }
 
-    const preferred = candidates.find(
+    const projection = candidates.find(
       (entry) => entry.statSourceId === 1 && entry.statSplitTypeId === 0
     );
-    return preferred
-      ? preferred.stats || preferred.appliedStats || {}
-      : {};
+    if (projection) {
+      return {
+        stats: projection.stats || projection.appliedStats || {},
+        source: "projection",
+      };
+    }
+
+    const actual = candidates.find(
+      (entry) => entry.statSourceId === 0 && entry.statSplitTypeId === 0
+    );
+    return actual
+      ? {
+          stats: actual.stats || actual.appliedStats || {},
+          source: "season",
+        }
+      : { stats: {}, source: "estimate" };
   }
 
   function stat(stats, id) {
@@ -397,7 +418,7 @@
       1
     );
     const favorable = category.direction === "lower" ? 1 - amount : amount;
-    return clamp(Math.round(favorable * 99) + 1, 1, 100);
+    return clamp(Math.round(favorable * 100), 1, 100);
   }
 
   function hashNumber(value) {
@@ -460,49 +481,91 @@
   }
 
   function isPitcher(player, positions) {
+    if ([1, 11].includes(player.defaultPositionId)) return true;
+    if (
+      Number.isInteger(player.defaultPositionId) &&
+      player.defaultPositionId >= 2 &&
+      player.defaultPositionId <= 10
+    ) {
+      return false;
+    }
     return (
       positions.includes("SP") ||
-      positions.includes("RP") ||
-      player.defaultPositionId === 1 ||
-      player.defaultPositionId === 11
+      positions.includes("RP")
     );
   }
 
   function scoresForCategories({
     categories,
     stats,
-    baseValue,
-    seed,
     type,
-    positions,
   }) {
     const result = {};
     const group = type === "pitcher" ? "pitching" : "batting";
     categories
       .filter((category) => category.group === group)
-      .forEach((category, index) => {
+      .forEach((category) => {
         const provided = categoryScore(stat(stats, category.statId), category);
-        let fallback = clamp(baseValue + jitter(seed, index, 22), 10, 98);
-        if (
-          type === "pitcher" &&
-          [57, 60, 83].includes(category.statId)
-        ) {
-          fallback = positions.includes("RP")
-            ? clamp(baseValue + jitter(seed, index, 18), 18, 98)
-            : clamp(8 + jitter(seed, index, 7), 1, 20);
-        }
-        if (
-          type === "pitcher" &&
-          [53, 63].includes(category.statId) &&
-          positions.includes("RP")
-        ) {
-          fallback = clamp(18 + jitter(seed, index, 10), 4, 35);
-        }
-        result[category.id] = Number.isFinite(provided)
-          ? provided
-          : fallback;
+        if (Number.isFinite(provided)) result[category.id] = provided;
       });
     return result;
+  }
+
+  function rateCategoryWeight(stats, category, fallbackWeight) {
+    const atBats = stat(stats, 0);
+    const plateAppearances = stat(stats, 16);
+    const outs = stat(stats, 34);
+    const battersFaced = stat(stats, 35);
+    const weightsByStatId = {
+      2: atBats,
+      9: atBats,
+      17:
+        plateAppearances ||
+        [stat(stats, 0), stat(stats, 10), stat(stats, 12), stat(stats, 13)]
+          .filter(Number.isFinite)
+          .reduce((total, value) => total + value, 0),
+      18: plateAppearances,
+      29: plateAppearances,
+      38: battersFaced,
+      41: outs,
+      43: battersFaced,
+      47: outs,
+      49: outs,
+      55: [stat(stats, 53), stat(stats, 54)]
+        .filter(Number.isFinite)
+        .reduce((total, value) => total + value, 0),
+      59: stat(stats, 56),
+      71: stat(stats, 67),
+      82: stat(stats, 39),
+    };
+    const weight = weightsByStatId[category.statId];
+    return Number.isFinite(weight) && weight > 0 ? weight : fallbackWeight;
+  }
+
+  function categoryDataForPlayer({
+    categories,
+    stats,
+    type,
+    fallbackRateWeight,
+  }) {
+    const group = type === "pitcher" ? "pitching" : "batting";
+    const values = {};
+    const weights = {};
+    categories
+      .filter((category) => category.group === group)
+      .forEach((category) => {
+        const value = stat(stats, category.statId);
+        if (!Number.isFinite(value)) return;
+        values[category.id] = value;
+        if (category.aggregation === "rate") {
+          weights[category.id] = rateCategoryWeight(
+            stats,
+            category,
+            fallbackRateWeight
+          );
+        }
+      });
+    return { values, weights };
   }
 
   function projectionLabel(type, stats, rank, ownership, categories) {
@@ -539,7 +602,8 @@
     const positions = positionsFor(raw);
     const type = isPitcher(raw, positions) ? "pitcher" : "hitter";
     const value = marketValue(raw);
-    const stats = projectionStats(raw);
+    const statLine = seasonStatLine(raw);
+    const stats = statLine.stats;
     const seed = hashNumber(raw.id || raw.fullName);
     const ownership = numeric(raw.ownership && raw.ownership.percentOwned);
     const trend =
@@ -548,10 +612,7 @@
     const scores = scoresForCategories({
       categories,
       stats,
-      baseValue: value,
-      seed,
       type,
-      positions,
     });
     const scoreValues = Object.values(scores);
     const skillAverage =
@@ -560,6 +621,16 @@
           scoreValues.length
         : value;
     const rawStatus = String(raw.injuryStatus || "ACTIVE").replaceAll("_", " ");
+    const rateWeight =
+      type === "pitcher"
+        ? stat(stats, 34) || clamp(Math.round(230 + value * 3.2), 260, 560)
+        : stat(stats, 0) || clamp(Math.round(430 + value * 1.8), 450, 620);
+    const categoryData = categoryDataForPlayer({
+      categories,
+      stats,
+      type,
+      fallbackRateWeight: rateWeight,
+    });
 
     return {
       id: String(raw.id || `${ownerTeamId}-${seed}`),
@@ -573,11 +644,11 @@
       ownership: ownership === null ? value : Math.round(ownership),
       status: rawStatus === "ACTIVE" ? "Healthy" : rawStatus,
       projection: projectionLabel(type, stats, rank, ownership, categories),
+      statSource: statLine.source,
       scores,
-      rateWeight:
-        type === "pitcher"
-          ? stat(stats, 34) || clamp(Math.round(230 + value * 3.2), 260, 560)
-          : stat(stats, 0) || clamp(Math.round(430 + value * 1.8), 450, 620),
+      categoryValues: categoryData.values,
+      categoryWeights: categoryData.weights,
+      rateWeight,
       signals: {
         projection: clamp(Math.round(value + jitter(seed, 5, 6)), 1, 99),
         underlying: clamp(Math.round(skillAverage), 1, 99),
@@ -594,7 +665,7 @@
 
     const scoringSettings =
       (payload.settings && payload.settings.scoringSettings) || {};
-    const { scoringType, categories } =
+    const { scoringType, categories, unsupportedCategories } =
       categoriesForScoring(scoringSettings);
     const sortedRawTeams = [...payload.teams].sort((left, right) => {
       const leftSeed = numeric(left.playoffSeed) || 999;
@@ -626,6 +697,34 @@
     if (players.length === 0) {
       throw new Error("ESPN returned the league, but no roster entries were available.");
     }
+    const modeledCategories = categories.filter((category) =>
+      players.some((player) =>
+        Number.isFinite(player.categoryValues?.[category.id])
+      )
+    );
+    const missingDataCategories = categories
+      .filter(
+        (category) =>
+          !modeledCategories.some(
+            (modeledCategory) => modeledCategory.id === category.id
+          )
+      )
+      .map((category) => ({
+        ...category,
+        reason: "ESPN returned no season or projection data for this category.",
+      }));
+    const unmodeledCategories = [
+      ...unsupportedCategories.map((category) => ({
+        ...category,
+        reason: "RosterLab does not recognize this ESPN stat ID yet.",
+      })),
+      ...missingDataCategories,
+    ];
+    if (modeledCategories.length === 0) {
+      throw new Error(
+        "ESPN did not return usable data for this league's scoring categories."
+      );
+    }
 
     const requestedTeamId = String((options && options.teamId) || "");
     const hasRequestedTeam = teams.some((team) => team.id === requestedTeamId);
@@ -651,11 +750,15 @@
           "ESPN fantasy baseball",
         season,
         size: teams.length,
-        scoring: scoringLabel(scoringType, categories),
+        scoring: scoringLabel(scoringType, [
+          ...categories,
+          ...unsupportedCategories,
+        ]),
         sourceLabel: "ESPN league",
         updatedAt: new Date().toISOString(),
       },
-      categories,
+      categories: modeledCategories,
+      unmodeledCategories,
       teams,
       players,
       sources: [

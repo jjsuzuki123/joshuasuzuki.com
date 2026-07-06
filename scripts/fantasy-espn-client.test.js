@@ -178,12 +178,33 @@ assert.equal(pitcher.mlbTeam, "WSH");
 assert.equal(hitter.trend, 0);
 assert.equal(hitter.rateWeight, 545);
 assert.equal(pitcher.rateWeight, 510);
+assert.equal(hitter.scores.homeRuns, 56);
+assert.equal(hitter.scores.stolenBases, 34);
+assert.equal(pitcher.scores.era, 74);
+assert.equal(pitcher.scores.strikeouts, 66);
 assert.ok(hitter.scores.homeRuns > 50);
 assert.ok(hitter.scores.stolenBases > 20);
 assert.ok(pitcher.scores.era > 60);
 assert.ok(pitcher.scores.strikeouts > 50);
 assert.match(hitter.projection, /HR/);
 assert.match(pitcher.projection, /ERA/);
+
+const dualRoleFixture = JSON.parse(JSON.stringify(fixture));
+const dualRolePlayer =
+  dualRoleFixture.teams[0].roster.entries[0].playerPoolEntry.player;
+dualRolePlayer.defaultPositionId = 10;
+dualRolePlayer.eligibleSlots = [11, 14];
+const dualRoleLeague = parseLeague(dualRoleFixture, {
+  leagueId: "123456",
+  season: "2026",
+  teamId: "1",
+});
+const dualRoleHitter = dualRoleLeague.players.find(
+  (player) => player.id === "101"
+);
+assert.equal(dualRoleHitter.type, "hitter");
+assert.ok(Number.isFinite(dualRoleHitter.scores.homeRuns));
+assert.equal(dualRoleHitter.scores.era, undefined);
 
 const unselectedLeague = parseLeague(fixture, {
   leagueId: "123456",
@@ -268,9 +289,43 @@ assert.ok(
 assert.ok(
   customLeague.players.find((player) => player.id === "202").scores.holds > 50
 );
+assert.equal(
+  customLeague.players.find((player) => player.id === "101").categoryValues
+    .onBasePercentage,
+  0.38
+);
+assert.equal(
+  customLeague.players.find((player) => player.id === "101").categoryWeights
+    .onBasePercentage,
+  545
+);
+assert.equal(
+  customLeague.players.find((player) => player.id === "202").categoryValues
+    .holds,
+  22
+);
 assert.match(
   customLeague.players.find((player) => player.id === "101").projection,
   /OBP/
+);
+
+const missingDataFixture = JSON.parse(JSON.stringify(customFixture));
+missingDataFixture.settings.scoringSettings.scoringItems.push({ statId: 63 });
+const missingDataLeague = parseLeague(missingDataFixture, {
+  leagueId: "1",
+  season: "2026",
+});
+assert.equal(
+  missingDataLeague.categories.some(
+    (category) => category.id === "qualityStarts"
+  ),
+  false
+);
+assert.match(
+  missingDataLeague.unmodeledCategories.find(
+    (category) => category.id === "qualityStarts"
+  ).reason,
+  /no season or projection data/
 );
 
 const unknownCategoryFixture = JSON.parse(JSON.stringify(customFixture));
@@ -282,12 +337,17 @@ const unknownCategoryLeague = parseLeague(unknownCategoryFixture, {
   leagueId: "1",
   season: "2026",
 });
-const unknownCategory = unknownCategoryLeague.categories.find(
+const unknownCategory = unknownCategoryLeague.unmodeledCategories.find(
   (category) => category.statId === 777
 );
 assert.equal(unknownCategory.id, "espnStat777");
 assert.equal(unknownCategory.direction, "lower");
 assert.equal(unknownCategory.known, false);
+assert.match(unknownCategory.reason, /does not recognize/);
+assert.equal(
+  unknownCategoryLeague.categories.some((category) => category.statId === 777),
+  false
+);
 
 assert.throws(
   () => parseLeague({ teams: [] }, { leagueId: "1", season: "2026" }),

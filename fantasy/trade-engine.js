@@ -29,6 +29,17 @@
     return Number.isFinite(score) ? score : null;
   }
 
+  function categoryValueFor(player, categoryId) {
+    const value = player?.categoryValues?.[categoryId];
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function categoryUsesRawValues(players, categoryId) {
+    return players.some((player) =>
+      Number.isFinite(categoryValueFor(player, categoryId))
+    );
+  }
+
   function weightedRateScore(players, categoryId) {
     const scoredPlayers = players.filter((player) =>
       Number.isFinite(scoreFor(player, categoryId))
@@ -55,7 +66,41 @@
     );
   }
 
-  function aggregateCategory(players, category) {
+  function weightedRateValue(players, categoryId) {
+    const valuedPlayers = players.filter((player) =>
+      Number.isFinite(categoryValueFor(player, categoryId))
+    );
+    if (valuedPlayers.length === 0) return 0;
+
+    const weightFor = (player) => {
+      const categoryWeight = player.categoryWeights?.[categoryId];
+      if (Number.isFinite(categoryWeight) && categoryWeight > 0) {
+        return categoryWeight;
+      }
+      return Number.isFinite(player.rateWeight) && player.rateWeight > 0
+        ? player.rateWeight
+        : 1;
+    };
+    const totalWeight = sum(valuedPlayers.map(weightFor));
+    return (
+      sum(
+        valuedPlayers.map(
+          (player) =>
+            categoryValueFor(player, categoryId) * weightFor(player)
+        )
+      ) / totalWeight
+    );
+  }
+
+  function aggregateCategory(players, category, useRawValues) {
+    if (useRawValues) {
+      if (category.aggregation === "rate") {
+        return weightedRateValue(players, category.id);
+      }
+      return sum(
+        players.map((player) => categoryValueFor(player, category.id))
+      );
+    }
     if (category.aggregation === "rate") {
       return weightedRateScore(players, category.id);
     }
@@ -68,13 +113,24 @@
 
   function computeLeagueContext({ players, teams, categories }) {
     const rawProfiles = new Map();
+    const rawCategoryModes = {};
+    categories.forEach((category) => {
+      rawCategoryModes[category.id] = categoryUsesRawValues(
+        players,
+        category.id
+      );
+    });
 
     teams.forEach((team) => {
       const roster = playersForTeam(players, team.id);
       const scores = {};
 
       categories.forEach((category) => {
-        scores[category.id] = aggregateCategory(roster, category);
+        scores[category.id] = aggregateCategory(
+          roster,
+          category,
+          rawCategoryModes[category.id]
+        );
       });
 
       rawProfiles.set(team.id, {
@@ -91,7 +147,15 @@
           teamId: team.id,
           score: rawProfiles.get(team.id).scores[category.id],
         }))
-        .sort((left, right) => right.score - left.score);
+        .sort((left, right) => {
+          if (
+            rawCategoryModes[category.id] &&
+            category.direction === "lower"
+          ) {
+            return left.score - right.score;
+          }
+          return right.score - left.score;
+        });
     });
 
     const profiles = new Map();
@@ -103,7 +167,11 @@
         const ordered = categoryRanks[category.id];
         const teamScore = raw.scores[category.id];
         const betterCount = ordered.filter(
-          (entry) => entry.score > teamScore
+          (entry) =>
+            rawCategoryModes[category.id] &&
+            category.direction === "lower"
+              ? entry.score < teamScore
+              : entry.score > teamScore
         ).length;
         const tieCount = ordered.filter(
           (entry) => entry.score === teamScore
@@ -137,7 +205,7 @@
       });
     });
 
-    return { profiles, teams, categories };
+    return { profiles, teams, categories, rawCategoryModes };
   }
 
   function getTeamAnalysis({ teamId, players, teams, categories, context }) {
@@ -207,12 +275,32 @@
       ),
       ...sending,
     ];
-    const raw =
-      aggregateCategory(teamAfter, category) -
-      aggregateCategory(teamRoster, category);
-    const partnerRaw =
-      aggregateCategory(partnerAfter, category) -
-      aggregateCategory(partnerRoster, category);
+    const useRawValues = categoryUsesRawValues(
+      [...teamRoster, ...partnerRoster],
+      category.id
+    );
+    const teamValueChange =
+      aggregateCategory(teamAfter, category, useRawValues) -
+      aggregateCategory(teamRoster, category, useRawValues);
+    const partnerValueChange =
+      aggregateCategory(partnerAfter, category, useRawValues) -
+      aggregateCategory(partnerRoster, category, useRawValues);
+    const favorableChange = (valueChange) =>
+      useRawValues && category.direction === "lower"
+        ? -valueChange
+        : valueChange;
+    const range =
+      useRawValues &&
+      Number.isFinite(category.rangeMaximum) &&
+      Number.isFinite(category.rangeMinimum)
+        ? Math.max(0.0001, category.rangeMaximum - category.rangeMinimum)
+        : 100;
+    const normalize = (valueChange) =>
+      useRawValues
+        ? (favorableChange(valueChange) / range) * 100
+        : favorableChange(valueChange);
+    const raw = normalize(teamValueChange);
+    const partnerRaw = normalize(partnerValueChange);
     const teamWeighted = (raw / 10) * (0.45 + teamNeed / 100);
     const partnerWeighted =
       (partnerRaw / 10) * (0.45 + partnerNeed / 100);
@@ -224,7 +312,10 @@
       group: category.group,
       raw,
       partnerRaw,
-      display: Math.round((raw / 12) * 10) / 10,
+      valueChange: teamValueChange,
+      direction: category.direction || "higher",
+      display:
+        Math.round((useRawValues ? raw : raw / 12) * 10) / 10,
       teamWeighted,
       partnerWeighted,
     };

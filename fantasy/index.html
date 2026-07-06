@@ -149,12 +149,14 @@
               <circle cx="10" cy="10" r="8"></circle>
               <path d="M10 9v5M10 6.5v.1"></path>
             </svg>
-            <p>
+            <p id="data-notice-message">
               You are viewing an illustrative league. Values and news are demo fixtures, not live
               fantasy advice.
             </p>
           </div>
-          <button type="button" data-action="open-espn">Connect a public ESPN league</button>
+          <button id="data-notice-action" type="button" data-action="open-espn">
+            Connect an ESPN league
+          </button>
         </div>
 
         <main id="main-content" class="main-content" tabindex="-1">
@@ -463,7 +465,7 @@
                   <tr>
                     <th scope="col">Player</th>
                     <th scope="col">Roster</th>
-                    <th scope="col">Projection</th>
+                    <th scope="col">Category line</th>
                     <th scope="col">Rostered</th>
                     <th scope="col">Trend</th>
                     <th scope="col">Value</th>
