@@ -5,7 +5,7 @@ illustrative six-team league so every workflow is usable without an account.
 
 ## Included
 
-- Team category ranks and priority needs for standard 5x5 roto scoring
+- Team category ranks and priority needs for standard or custom category scoring
 - One-for-one trade matches scored for roster fit, value fairness, and likely
   partner interest
 - A multi-player trade lab with category impact and partner-fit estimates
@@ -31,9 +31,12 @@ relay is the only practical web connection today. RosterLab uses the values
 once, but ESPN may continue accepting them afterward. Users should treat both
 values like passwords and use them only on a trusted device.
 
-The importer accepts standard 5x5 rotisserie and head-to-head category leagues.
-It rejects points leagues and custom category sets instead of grading them with
-the wrong model.
+The importer accepts standard and custom rotisserie or head-to-head category
+leagues. It reads ESPN's active categories, lower-is-better settings, and
+projected stat lines before building team needs and trade scores. Points leagues
+remain unsupported because they require a separate points-based valuation
+model. Categories with unknown ESPN stat IDs or no available season data are
+listed in the app and excluded from recommendations rather than estimated.
 
 To connect a supported league, open any ESPN page inside that league, copy its
 URL, select **Sync ESPN** in RosterLab, and paste the URL. The importer extracts

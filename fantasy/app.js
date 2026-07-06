@@ -30,6 +30,8 @@
     pageTitle: document.getElementById("page-title"),
     pageKicker: document.getElementById("page-kicker"),
     dataNotice: document.getElementById("data-notice"),
+    dataNoticeMessage: document.getElementById("data-notice-message"),
+    dataNoticeAction: document.getElementById("data-notice-action"),
     dataStateDot: document.getElementById("data-state-dot"),
     dataStateLabel: document.getElementById("data-state-label"),
     sidebarTeamMark: document.getElementById("sidebar-team-mark"),
@@ -104,7 +106,8 @@
         value.teams.length >= 2 &&
         Array.isArray(value.players) &&
         value.players.length > 0 &&
-        Array.isArray(value.categories)
+        Array.isArray(value.categories) &&
+        value.categories.length > 0
     );
   }
 
@@ -371,9 +374,43 @@
     return icons[kind] || icons.value;
   }
 
+  function renderCategoryFilter() {
+    const categoryIds = new Set(
+      state.data.categories.map((category) => category.id)
+    );
+    if (
+      state.finder.category !== "ALL" &&
+      !categoryIds.has(state.finder.category)
+    ) {
+      state.finder.category = "ALL";
+    }
+
+    const optionsForGroup = (group) =>
+      state.data.categories
+        .filter((category) => category.group === group)
+        .map(
+          (category) =>
+            `<option value="${escapeHtml(category.id)}">${escapeHtml(
+              category.label
+            )} · ${escapeHtml(category.name)}${
+              category.direction === "lower" ? " · lower is better" : ""
+            }</option>`
+        )
+        .join("");
+    elements.finderCategory.innerHTML = `
+      <option value="ALL">Any category</option>
+      <optgroup label="Batting">${optionsForGroup("batting")}</optgroup>
+      <optgroup label="Pitching">${optionsForGroup("pitching")}</optgroup>
+    `;
+    elements.finderCategory.value = state.finder.category;
+  }
+
   function renderChrome() {
     const team = currentTeam();
     const isDemo = state.data.mode === "demo";
+    const unmodeledCategories = Array.isArray(state.data.unmodeledCategories)
+      ? state.data.unmodeledCategories
+      : [];
     elements.sidebarTeamMark.textContent = team.abbreviation || initials(team.name);
     elements.sidebarTeamMark.style.background = safeColor(team.color);
     elements.sidebarTeamName.textContent = team.name;
@@ -386,12 +423,27 @@
           }>${escapeHtml(leagueTeam.name)}</option>`
       )
       .join("");
-    elements.dataNotice.hidden = !isDemo;
+    elements.dataNotice.hidden =
+      !isDemo && unmodeledCategories.length === 0;
+    if (isDemo) {
+      elements.dataNoticeMessage.textContent =
+        "You are viewing an illustrative league. Values and news are demo fixtures, not live fantasy advice.";
+      elements.dataNoticeAction.hidden = false;
+    } else if (unmodeledCategories.length > 0) {
+      const labels = unmodeledCategories
+        .map((category) => category.label)
+        .join(", ");
+      elements.dataNoticeMessage.textContent = `${labels} ${
+        unmodeledCategories.length === 1 ? "is" : "are"
+      } active in this league but excluded from analysis because ESPN did not provide usable data or the stat ID is unknown.`;
+      elements.dataNoticeAction.hidden = true;
+    }
     elements.dataStateDot.className = `status-dot ${
       isDemo ? "status-dot-demo" : "status-dot-live"
     }`;
     elements.dataStateLabel.textContent = isDemo ? "Demo data" : "ESPN connected";
     elements.navOpportunityCount.textContent = String(state.baseOpportunities.length);
+    renderCategoryFilter();
   }
 
   function outlookLabel(score) {
@@ -460,7 +512,9 @@
         return `
           <div class="category-row">
             <div class="category-meta">
-              <span>${escapeHtml(category.label)} · ${escapeHtml(category.name)}</span>
+              <span>${escapeHtml(category.label)} · ${escapeHtml(category.name)}${
+                category.direction === "lower" ? " · lower is better" : ""
+              }</span>
               <strong data-rank="${tone}">#${escapeHtml(category.rank)} of ${escapeHtml(
                 state.data.teams.length
               )}</strong>
@@ -593,7 +647,7 @@
       day: "numeric",
     }).format(new Date());
     elements.heroDate.textContent = `${date} · ${state.data.league.name}`;
-    elements.heroHeading.textContent = `Your ${strength.name.toLowerCase()} are bankable. ${need.name} are the opening.`;
+    elements.heroHeading.textContent = `${strength.name} is your bankable strength. ${need.name} is the opening.`;
     elements.heroSummary.textContent = `You rank ${ordinal(
       strength.rank
     )} in ${strength.name.toLowerCase()} and ${ordinal(
@@ -822,7 +876,11 @@
                     .map(
                       (impact) => `
                         <div class="impact-row">
-                          <span>${escapeHtml(impact.name)}</span>
+                          <span>${escapeHtml(impact.name)}${
+                            impact.direction === "lower"
+                              ? " (lower is better)"
+                              : ""
+                          }</span>
                           <strong class="${impact.raw > 0 ? "is-positive" : "is-negative"}">
                             ${impact.raw > 0 ? "+" : ""}${escapeHtml(impact.display)}
                           </strong>
@@ -1260,7 +1318,7 @@
               (gain) =>
                 `<span class="category-chip is-positive">+ ${escapeHtml(
                   gain.label
-                )}</span>`
+                )}${gain.direction === "lower" ? " (lower)" : ""}</span>`
             )
             .join("")}
           ${lossChips
@@ -1268,7 +1326,7 @@
               (loss) =>
                 `<span class="category-chip is-negative">- ${escapeHtml(
                   loss.label
-                )}</span>`
+                )}${loss.direction === "lower" ? " (lower)" : ""}</span>`
             )
             .join("")}
         </div>
@@ -1635,16 +1693,19 @@
         signal: controller.signal,
       });
       if (attempt !== importAttempt) return;
-      window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(league));
+      if (!isLeagueData(league)) {
+        throw new Error("The imported league has no usable category data.");
+      }
       state.data = league;
       state.teamId = String(league.activeTeamId);
       state.lab.partnerTeamId = null;
       state.lab.sending.clear();
       state.lab.receiving.clear();
       resetPlayerSearches();
+      renderAll();
+      window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(league));
       elements.espnStatus.className = "form-status is-success";
       elements.espnStatus.textContent = `Imported ${league.teams.length} teams and ${league.players.length} players.`;
-      renderAll();
       window.setTimeout(() => {
         if (attempt !== importAttempt) return;
         if (elements.espnDialog.open) elements.espnDialog.close();

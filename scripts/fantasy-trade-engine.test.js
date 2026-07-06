@@ -171,6 +171,168 @@ const fullRosterRateTrade = evaluateTrade({
 assert.equal(fullRosterRateTrade.deltas[0].raw, 20);
 assert.equal(fullRosterRateTrade.deltas[0].partnerRaw, -20);
 
+const weightedObpCategory = {
+  id: "onBasePercentage",
+  label: "OBP",
+  name: "On-base percentage",
+  group: "batting",
+  aggregation: "rate",
+  direction: "higher",
+  rangeMinimum: 0.25,
+  rangeMaximum: 0.45,
+};
+const weightedObpPlayers = [
+  {
+    id: "a-core-obp",
+    ownerTeamId: "a",
+    marketValue: 50,
+    trend: 0,
+    scores: { onBasePercentage: 75 },
+    categoryValues: { onBasePercentage: 0.4 },
+    categoryWeights: { onBasePercentage: 100 },
+  },
+  {
+    id: "a-send-obp",
+    ownerTeamId: "a",
+    marketValue: 50,
+    trend: 0,
+    scores: { onBasePercentage: 25 },
+    categoryValues: { onBasePercentage: 0.3 },
+    categoryWeights: { onBasePercentage: 900 },
+  },
+  {
+    id: "b-core-obp",
+    ownerTeamId: "b",
+    marketValue: 50,
+    trend: 0,
+    scores: { onBasePercentage: 35 },
+    categoryValues: { onBasePercentage: 0.32 },
+    categoryWeights: { onBasePercentage: 900 },
+  },
+  {
+    id: "b-receive-obp",
+    ownerTeamId: "b",
+    marketValue: 50,
+    trend: 0,
+    scores: { onBasePercentage: 50 },
+    categoryValues: { onBasePercentage: 0.35 },
+    categoryWeights: { onBasePercentage: 100 },
+  },
+];
+const weightedObpTrade = evaluateTrade({
+  teamId: "a",
+  partnerTeamId: "b",
+  sendingIds: ["a-send-obp"],
+  receivingIds: ["b-receive-obp"],
+  players: weightedObpPlayers,
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [weightedObpCategory],
+});
+assert.ok(
+  Math.abs(weightedObpTrade.deltas[0].valueChange - 0.065) < 0.000001
+);
+assert.ok(Math.abs(weightedObpTrade.deltas[0].raw - 32.5) < 0.000001);
+
+const reverseCategory = {
+  id: "losses",
+  label: "L",
+  name: "Losses",
+  group: "pitching",
+  aggregation: "count",
+  direction: "lower",
+  rangeMinimum: 0,
+  rangeMaximum: 18,
+};
+const reversePlayers = [
+  {
+    id: "zero-losses",
+    ownerTeamId: "a",
+    marketValue: 50,
+    trend: 0,
+    scores: { losses: 100 },
+    categoryValues: { losses: 0 },
+  },
+  {
+    id: "nine-losses",
+    ownerTeamId: "b",
+    marketValue: 50,
+    trend: 0,
+    scores: { losses: 50 },
+    categoryValues: { losses: 9 },
+  },
+];
+const reverseContext = computeLeagueContext({
+  players: reversePlayers,
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [reverseCategory],
+});
+assert.equal(reverseContext.profiles.get("a").categories.losses.rank, 1);
+assert.equal(reverseContext.profiles.get("b").categories.losses.rank, 2);
+const reverseTrade = evaluateTrade({
+  teamId: "a",
+  partnerTeamId: "b",
+  sendingIds: ["zero-losses"],
+  receivingIds: ["nine-losses"],
+  players: reversePlayers,
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [reverseCategory],
+  context: reverseContext,
+});
+assert.equal(reverseTrade.deltas[0].valueChange, 9);
+assert.equal(reverseTrade.deltas[0].raw, -50);
+assert.equal(reverseTrade.deltas[0].partnerRaw, 50);
+
+const missingRateCategory = {
+  id: "era",
+  label: "ERA",
+  name: "Earned run average",
+  group: "pitching",
+  aggregation: "rate",
+  direction: "lower",
+  rangeMinimum: 2.1,
+  rangeMaximum: 5.3,
+};
+const missingRatePlayers = [
+  {
+    id: "missing-era",
+    ownerTeamId: "a",
+    marketValue: 50,
+    trend: 0,
+    scores: {},
+    categoryValues: {},
+    categoryWeights: {},
+  },
+  {
+    id: "known-era",
+    ownerTeamId: "b",
+    marketValue: 50,
+    trend: 0,
+    scores: { era: 70 },
+    categoryValues: { era: 3.0 },
+    categoryWeights: { era: 450 },
+  },
+];
+const missingRateContext = computeLeagueContext({
+  players: missingRatePlayers,
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [missingRateCategory],
+});
+assert.equal(missingRateContext.profiles.get("b").categories.era.rank, 1);
+assert.equal(missingRateContext.profiles.get("a").categories.era.rank, 2);
+const missingRateTrade = evaluateTrade({
+  teamId: "a",
+  partnerTeamId: "b",
+  sendingIds: ["missing-era"],
+  receivingIds: ["known-era"],
+  players: missingRatePlayers,
+  teams: [{ id: "a" }, { id: "b" }],
+  categories: [missingRateCategory],
+  context: missingRateContext,
+});
+assert.equal(missingRateTrade.deltas[0].valueChange, null);
+assert.equal(missingRateTrade.deltas[0].raw, 70);
+assert.equal(missingRateTrade.deltas[0].partnerRaw, -70);
+
 const lopsidedTrade = evaluateTrade({
   teamId: data.activeTeamId,
   partnerTeamId: "northside",
