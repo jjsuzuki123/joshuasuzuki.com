@@ -23,6 +23,7 @@ jobs:
       AWS_REGION: us-east-1
       FANTASY_IMPORT_STACK: rosterlab-fantasy-import-production
       SAM_ARTIFACT_BUCKET: rosterlab-deploy-artifacts-545095759709-us-east-1
+      SOURCE_ENDPOINT: ${{ vars.ROSTERLAB_SOURCE_ENDPOINT }}
 
     steps:
       - name: Checkout
@@ -47,8 +48,11 @@ jobs:
             echo "Fantasy backend bootstrap is not ready; continuing with static deployment."
           fi
 
-      - name: Test fantasy import relay
+      - name: Test fantasy app
         run: |
+          node scripts/fantasy-trade-engine.test.js
+          node scripts/fantasy-espn-client.test.js
+          node scripts/fantasy-source-client.test.js
           node scripts/fantasy-private-import.test.js
           node scripts/fantasy-relay-client.test.js
 
@@ -78,15 +82,19 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
-      - name: Configure fantasy import endpoint
-        if: steps.fantasy-backend.outputs.ready == 'true'
+      - name: Configure fantasy data endpoints
         run: |
           set -euo pipefail
-          IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
-            --stack-name "${FANTASY_IMPORT_STACK}" \
-            --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
-            --output text)"
-          IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" node scripts/write-fantasy-config.js
+          IMPORT_ENDPOINT=""
+          if [[ "${{ steps.fantasy-backend.outputs.ready }}" == "true" ]]; then
+            IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
+              --stack-name "${FANTASY_IMPORT_STACK}" \
+              --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
+              --output text)"
+          fi
+          IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" \
+            SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
+            node scripts/write-fantasy-config.js
 
       - name: Sync to S3
         run: |

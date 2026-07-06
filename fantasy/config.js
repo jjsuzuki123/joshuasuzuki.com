@@ -4,6 +4,7 @@
   if (!root.RosterLabConfig) {
     root.RosterLabConfig = Object.freeze({
       importEndpoint: "",
+      sourceEndpoint: "",
     });
   }
 })(typeof globalThis !== "undefined" ? globalThis : this);

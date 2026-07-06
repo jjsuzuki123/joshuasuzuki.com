@@ -175,6 +175,8 @@ assert.deepEqual(hitter.positions, ["OF", "DH"]);
 assert.deepEqual(pitcher.positions, ["SP"]);
 assert.equal(hitter.mlbTeam, "NYY");
 assert.equal(pitcher.mlbTeam, "WSH");
+assert.equal(hitter.externalIds.espn, "101");
+assert.equal(pitcher.externalIds.espn, "202");
 assert.equal(hitter.trend, 0);
 assert.equal(hitter.rateWeight, 545);
 assert.equal(pitcher.rateWeight, 510);
@@ -188,6 +190,13 @@ assert.ok(pitcher.scores.era > 60);
 assert.ok(pitcher.scores.strikeouts > 50);
 assert.match(hitter.projection, /HR/);
 assert.match(pitcher.projection, /ERA/);
+assert.equal(hitter.signals.consensus, hitter.marketValue);
+assert.equal(pitcher.signals.consensus, pitcher.marketValue);
+assert.ok(hitter.dataQuality.categoryCoverage > 0.9);
+assert.equal(hitter.provenance.espn.playerId, "101");
+assert.equal(league.model.version, "2.0 evidence model");
+assert.equal(league.sourceSnapshot.schemaVersion, 1);
+assert.equal(league.sourceSnapshot.categorySources.homeRuns, "projection");
 
 const dualRoleFixture = JSON.parse(JSON.stringify(fixture));
 const dualRolePlayer =
