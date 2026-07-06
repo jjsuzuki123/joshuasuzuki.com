@@ -3,6 +3,7 @@
 
   root.RosterLabConfig = Object.freeze({
     importEndpoint: "https://5mdog6ljjk.execute-api.us-east-1.amazonaws.com/production/league/import",
+    sourceEndpoint: "",
     // Set this after the Chrome Web Store listing is approved.
     connectorInstallUrl: "",
   });

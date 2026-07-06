@@ -6,8 +6,7 @@ illustrative six-team league so every workflow is usable without an account.
 ## Included
 
 - Team category ranks and priority needs for standard or custom category scoring
-- One-for-one trade matches scored for roster fit, value fairness, and likely
-  partner interest
+- One-for-one and bounded two-for-one trade matches scored for both rosters
 - A multi-player trade lab with category impact and partner-fit estimates
 - Player search in the trade finder, both trade-lab rosters, and league market
 - A league-wide player market and local watchlist
@@ -47,20 +46,87 @@ For a public league, paste any ESPN page URL from that league into the public
 import form. If the link does not identify a team, choose yours from the team
 selector after import.
 
-FanGraphs, Baseball Savant, and RotoWire appear as modeled source adapters in
-the demo. Their displayed values are fixtures, not live claims. Production use
-requires approved API access or a data license.
+FanGraphs, Baseball Savant, and RotoWire values in the demo are fixtures, not
+live claims. Production evidence is accepted only from the configured
+first-party source endpoint. The endpoint must label each feed as licensed,
+official, or user-provided. RotoWire's commercial XML/JSON feeds require a
+syndication agreement; the browser never scrapes RotoWire or stores provider
+credentials.
 
 ## Model
 
-The trade engine first builds a relative category profile for every team. It
-then grades a proposal with:
+Player value uses inputs that are actually present:
 
-- category gain weighted toward the receiving team's weakest categories
-- total player-value fairness
-- fit for the other manager
-- roster-size and availability penalties
-- market trend for upside-oriented searches
+- 50% league market, ownership, or rank anchor
+- 30% category production
+- 20% connected projection and underlying-skill evidence
+- bounded adjustments for availability and dated role news
+
+The team layer is separate. Strategy defaults to `Auto`. The engine infers a
+punt only when a category is a clear performance outlier versus that team's
+other categories and the gap to the next standings point is expensive relative
+to the production one player can add. Category IDs and names do not affect the
+decision. Managers can override Auto with `Compete`, `Focus`, or `Punt`. A punt
+has zero weight in roster fit and trade recommendations, and the model
+redistributes that weight across the remaining categories.
+
+Every trade recomputes both teams' category totals and approximate rotisserie
+points. Partner interest uses the other manager's category priorities,
+roster-specific player value, package shape, star premium, and projected
+standings movement. Recommendations must clear minimum fairness and partner
+interest thresholds. The score is an explainable decision aid, not a claimed
+probability that another manager will accept.
+
+## Licensed evidence endpoint
+
+Set `SOURCE_ENDPOINT` during deployment to write `sourceEndpoint` into
+`config.js`. RosterLab sends league categories and provider IDs to that
+HTTPS endpoint, with no ESPN session values. The response uses schema version
+1:
+
+```json
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-06T18:55:00Z",
+  "sources": [
+    {
+      "id": "rotowire",
+      "name": "RotoWire",
+      "kind": "qualitative",
+      "access": "licensed",
+      "updatedAt": "2026-07-06T18:45:00Z"
+    }
+  ],
+  "players": [
+    {
+      "externalIds": { "espn": "101" },
+      "quantitative": [
+        {
+          "sourceId": "fangraphs",
+          "overall": 84,
+          "categoryScores": { "homeRuns": 88 },
+          "confidence": 0.8,
+          "asOf": "2026-07-06T18:30:00Z"
+        }
+      ],
+      "qualitative": [
+        {
+          "sourceId": "rotowire",
+          "type": "role",
+          "summary": "Moved into a closing role.",
+          "impact": 0.7,
+          "confidence": 0.9,
+          "asOf": "2026-07-06T18:45:00Z"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The client rejects unsupported schema versions, unlicensed source labels,
+unknown player IDs, unknown categories, oversized responses, and stale evidence
+adjustments. It never matches a player by name alone.
 
 Run the connector tests from the repository root:
 

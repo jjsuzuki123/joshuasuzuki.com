@@ -9,7 +9,7 @@
     />
     <meta name="theme-color" content="#f6f7f2" />
     <title>RosterLab | Fantasy baseball trade analysis</title>
-    <link rel="stylesheet" href="/fantasy/styles.css?v=2" />
+    <link rel="stylesheet" href="/fantasy/styles.css?v=3" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -211,7 +211,7 @@
               <section class="panel category-panel" aria-labelledby="category-heading">
                 <div class="panel-heading">
                   <div>
-                    <p class="section-label">Roster shape</p>
+                    <p class="section-label">Roster shape and strategy</p>
                     <h3 id="category-heading">Category position</h3>
                   </div>
                   <span id="category-format" class="subtle-badge">5x5 roto</span>
@@ -250,8 +250,8 @@
               <section class="panel signal-panel" aria-labelledby="signals-heading">
                 <div class="panel-heading">
                   <div>
-                    <p class="section-label">Source blend</p>
-                    <h3 id="signals-heading">Market signals</h3>
+                    <p class="section-label">Dated evidence</p>
+                    <h3 id="signals-heading">Player signals</h3>
                   </div>
                   <button class="text-button" type="button" data-route="sources">Inspect model</button>
                 </div>
@@ -326,7 +326,7 @@
 
             <div class="results-toolbar">
               <p id="finder-results-summary" aria-live="polite">Finding matches...</p>
-              <p class="results-method">Balanced across managers, then ranked by roster fit</p>
+              <p class="results-method">Requires value and category logic for both managers</p>
             </div>
             <div id="finder-list" class="finder-list"></div>
           </section>
@@ -476,7 +476,7 @@
                     <th scope="col">Category line</th>
                     <th scope="col">Rostered</th>
                     <th scope="col">Trend</th>
-                    <th scope="col">Value</th>
+                    <th scope="col">Model value</th>
                     <th scope="col"><span class="sr-only">Actions</span></th>
                   </tr>
                 </thead>
@@ -493,9 +493,20 @@
                 <h2 id="sources-heading">Sources & model</h2>
                 <p>See what contributes to a value before using it in a trade.</p>
               </div>
-              <button class="button button-primary" type="button" data-action="open-espn">
-                Connect ESPN
-              </button>
+              <div class="page-heading-actions">
+                <button
+                  id="refresh-sources-button"
+                  class="button button-secondary"
+                  type="button"
+                  data-action="refresh-sources"
+                  hidden
+                >
+                  Refresh evidence
+                </button>
+                <button class="button button-primary" type="button" data-action="open-espn">
+                  Connect ESPN
+                </button>
+              </div>
             </div>
 
             <div id="source-cards" class="source-cards"></div>
@@ -511,8 +522,9 @@
                 </div>
                 <div id="model-weights" class="model-weights"></div>
                 <p class="model-note">
-                  Category fit is applied after market value. That keeps a scarce closer useful to
-                  a team that needs saves without claiming he is more valuable to every roster.
+                  The base value uses only connected evidence. Availability and role reports adjust
+                  it after the weighted blend. Team strategy is applied separately, so a punted
+                  category cannot inflate a trade recommendation.
                 </p>
               </section>
 
@@ -522,11 +534,13 @@
                 <ul>
                   <li>The browser connector reuses an ESPN session without reading its cookies.</li>
                   <li>Your ESPN password, verification codes, and session values stay on ESPN.</li>
-                  <li>Media and projection feeds need approved API access or licenses.</li>
+                  <li>Projection and news feeds enter through one versioned, normalized endpoint.</li>
+                  <li>RotoWire data is accepted only when the endpoint marks it as licensed.</li>
+                  <li>Every provider record carries an update time, confidence, and provenance.</li>
                 </ul>
                 <p>
-                  Imported league data stays on your device. The connector returns league data
-                  directly to this page and does not send it through RosterLab's backend.
+                  Imported league data stays on your device. The connector returns ESPN league data
+                  directly to this page; licensed evidence still uses the normalized source endpoint.
                 </p>
                 <button class="button button-secondary" type="button" data-action="reset-demo">
                   Restore demo league
@@ -687,11 +701,12 @@
       </div>
     </noscript>
 
-    <script src="/fantasy/config.js?v=2" defer></script>
-    <script src="/fantasy/data.js?v=2" defer></script>
-    <script src="/fantasy/trade-engine.js?v=2" defer></script>
-    <script src="/fantasy/espn-client.js?v=2" defer></script>
-    <script src="/fantasy/espn-connector.js?v=2" defer></script>
-    <script src="/fantasy/app.js?v=2" defer></script>
+    <script src="/fantasy/config.js?v=3" defer></script>
+    <script src="/fantasy/data.js?v=3" defer></script>
+    <script src="/fantasy/trade-engine.js?v=3" defer></script>
+    <script src="/fantasy/espn-client.js?v=3" defer></script>
+    <script src="/fantasy/espn-connector.js?v=3" defer></script>
+    <script src="/fantasy/source-client.js?v=3" defer></script>
+    <script src="/fantasy/app.js?v=3" defer></script>
   </body>
 </html>

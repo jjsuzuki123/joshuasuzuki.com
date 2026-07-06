@@ -431,11 +431,6 @@
     return Math.abs(hash);
   }
 
-  function jitter(seed, index, range) {
-    const shifted = (seed >>> ((index % 4) * 7)) & 255;
-    return Math.round((shifted / 255 - 0.5) * range * 2);
-  }
-
   function playerRank(player) {
     const rankGroups = player.draftRanksByRankType
       ? Object.values(player.draftRanksByRankType)
@@ -626,7 +621,7 @@
     const raw = poolEntry.player || {};
     const positions = positionsFor(raw);
     const type = isPitcher(raw, positions) ? "pitcher" : "hitter";
-    const value = marketValue(raw);
+    const marketAnchor = marketValue(raw);
     const statMaps = seasonStatMaps(raw);
     const seed = hashNumber(raw.id || raw.fullName);
     const ownership = numeric(raw.ownership && raw.ownership.percentOwned);
@@ -645,7 +640,12 @@
       scoreValues.length > 0
         ? scoreValues.reduce((total, score) => total + score, 0) /
           scoreValues.length
-        : value;
+        : marketAnchor;
+    const value = clamp(
+      Math.round(marketAnchor * 0.65 + skillAverage * 0.35),
+      8,
+      99
+    );
     const rawStatus = String(raw.injuryStatus || "ACTIVE").replaceAll("_", " ");
     const preferredStats =
       Object.keys(statMaps.projection).length > 0
@@ -663,9 +663,16 @@
         : categoryData.sources.length > 1
           ? "mixed"
           : "estimate";
+    const relevantCategoryCount = categories.filter(
+      (category) =>
+        category.group === (type === "pitcher" ? "pitching" : "batting")
+    ).length;
 
     return {
       id: String(raw.id || `${ownerTeamId}-${seed}`),
+      externalIds: {
+        espn: String(raw.id || `${ownerTeamId}-${seed}`),
+      },
       name: raw.fullName || raw.displayName || "Unknown player",
       mlbTeam: PRO_TEAM_BY_ID[raw.proTeamId] || "FA",
       positions: positions.length > 0 ? positions : [type === "pitcher" ? "SP" : "UTIL"],
@@ -688,9 +695,29 @@
       categoryWeights: categoryData.weights,
       rateWeight,
       signals: {
-        projection: clamp(Math.round(value + jitter(seed, 5, 6)), 1, 99),
+        projection: clamp(
+          Math.round(skillAverage * 0.7 + marketAnchor * 0.3),
+          1,
+          99
+        ),
         underlying: clamp(Math.round(skillAverage), 1, 99),
-        consensus: clamp(Math.round(value + jitter(seed, 6, 5)), 1, 99),
+        consensus: value,
+      },
+      dataQuality: {
+        sourceId: "espn",
+        categoryCoverage:
+          relevantCategoryCount > 0
+            ? scoreValues.length / relevantCategoryCount
+            : 0,
+        statSource,
+      },
+      provenance: {
+        espn: {
+          playerId: String(raw.id || `${ownerTeamId}-${seed}`),
+          rank,
+          ownership,
+          statSource,
+        },
       },
       news: null,
     };
@@ -792,6 +819,7 @@
       new Date().getFullYear();
     const leagueId =
       (options && options.leagueId) || payload.id || "espn-league";
+    const importedAt = new Date().toISOString();
 
     return {
       mode: "espn",
@@ -810,20 +838,30 @@
           ...unsupportedCategories,
         ]),
         sourceLabel: "ESPN league",
-        updatedAt: new Date().toISOString(),
+        updatedAt: importedAt,
       },
       categories: modeledCategories,
       unmodeledCategories,
       teams,
       players,
+      sourceSnapshot: {
+        schemaVersion: 1,
+        generatedAt: importedAt,
+        categorySources,
+        matchedPlayers: players.length,
+      },
       sources: [
         {
           id: "espn",
           name: "ESPN Fantasy",
           url: "https://www.espn.com/fantasy/baseball/",
-          coverage: "League settings, rosters, standings, ownership",
+          coverage:
+            "League settings, rosters, ownership, and available player projections",
           status: "connected",
-          cadence: "Just synced",
+          kind: "quantitative",
+          access: "user-authorized",
+          updatedAt: importedAt,
+          cadence: `Synced ${importedAt}`,
         },
         {
           id: "fangraphs",
@@ -831,7 +869,8 @@
           url: "https://www.fangraphs.com/projections",
           coverage: "Rest-of-season projection signal",
           status: "disconnected",
-          cadence: "Server adapter needed",
+          kind: "quantitative",
+          cadence: "Licensed export not configured",
         },
         {
           id: "savant",
@@ -839,7 +878,8 @@
           url: "https://baseballsavant.mlb.com/",
           coverage: "Expected outcomes and quality of contact",
           status: "disconnected",
-          cadence: "Server adapter needed",
+          kind: "quantitative",
+          cadence: "Official data adapter not configured",
         },
         {
           id: "rotowire",
@@ -847,16 +887,18 @@
           url: "https://www.rotowire.com/baseball/",
           coverage: "Injury, lineup, and role news",
           status: "disconnected",
-          cadence: "Licensed feed needed",
+          kind: "qualitative",
+          cadence: "Licensed feed not configured",
         },
       ],
       model: {
-        version: "0.1 ESPN import",
+        version: "2.0 evidence model",
         weights: [
-          { label: "ESPN projection or draft rank", value: 55 },
-          { label: "League market and ownership", value: 35 },
-          { label: "Role and availability", value: 10 },
+          { label: "Market and rank anchor", value: 50 },
+          { label: "Category production", value: 30 },
+          { label: "Projection and skill evidence", value: 20 },
         ],
+        adjustments: ["Availability", "Role news", "Team category strategy"],
       },
     };
   }

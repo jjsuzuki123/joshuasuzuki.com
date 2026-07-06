@@ -6,8 +6,9 @@
   const espnClient = window.EspnFantasyClient;
   const espnConnector = window.RosterLabEspnConnector;
   const appConfig = window.RosterLabConfig || {};
+  const sourceClient = window.RosterLabSourceClient;
 
-  if (!engine || !demoData || !espnClient) {
+  if (!engine || !demoData || !espnClient || !sourceClient) {
     document.body.innerHTML =
       '<div class="noscript-message">RosterLab could not load its analysis modules. Refresh the page to try again.</div>';
     return;
@@ -16,6 +17,7 @@
   const LEAGUE_STORAGE_KEY = "rosterlab:league:v1";
   const WATCHLIST_STORAGE_KEY = "rosterlab:watchlist:v1";
   const SAVED_TRADES_STORAGE_KEY = "rosterlab:saved-trades:v1";
+  const STRATEGY_STORAGE_KEY = "rosterlab:strategies:v1";
   const ROUTES = {
     overview: { title: "Overview", kicker: "Your league" },
     finder: { title: "Trade finder", kicker: "Opportunity board" },
@@ -81,6 +83,7 @@
     sourceCards: document.getElementById("source-cards"),
     modelVersion: document.getElementById("model-version"),
     modelWeights: document.getElementById("model-weights"),
+    refreshSourcesButton: document.getElementById("refresh-sources-button"),
     espnDialog: document.getElementById("espn-dialog"),
     espnForm: document.getElementById("espn-form"),
     espnBrowserConnector: document.getElementById("espn-browser-connector"),
@@ -134,15 +137,48 @@
     return Array.isArray(value) ? value : [];
   }
 
+  function cleanTeamStrategy(value) {
+    const strategy = value && typeof value === "object" ? value : {};
+    return {
+      puntCategories: Array.isArray(strategy.puntCategories)
+        ? [...new Set(strategy.puntCategories.map(String))]
+        : [],
+      focusCategories: Array.isArray(strategy.focusCategories)
+        ? [...new Set(strategy.focusCategories.map(String))]
+        : [],
+      competeCategories: Array.isArray(strategy.competeCategories)
+        ? [...new Set(strategy.competeCategories.map(String))]
+        : [],
+    };
+  }
+
+  function strategiesForLeague(data) {
+    const stored = readJsonStorage(STRATEGY_STORAGE_KEY, {});
+    const leagueStrategies =
+      stored && typeof stored === "object"
+        ? stored[String(data.league.id)] || {}
+        : {};
+    const teamIds = new Set(Object.keys(leagueStrategies));
+    return Object.fromEntries(
+      [...teamIds].map((teamId) => [
+        String(teamId),
+        cleanTeamStrategy(leagueStrategies[teamId]),
+      ])
+    );
+  }
+
   function initialRoute() {
     const route = window.location.hash.replace(/^#/, "");
     return ROUTES[route] ? route : "overview";
   }
 
   const storedWatchlist = readJsonStorage(WATCHLIST_STORAGE_KEY, []);
+  const initialData = savedLeague() || demoData;
   const state = {
-    data: savedLeague() || demoData,
+    data: initialData,
     teamId: null,
+    teamStrategies: strategiesForLeague(initialData),
+    context: null,
     route: initialRoute(),
     baseOpportunities: [],
     displayedOpportunities: [],
@@ -175,9 +211,11 @@
   let connectorAvailable = false;
   let connectorProbe = 0;
   let importBusy = false;
+  let activeSourceController = null;
   let inferredEspnSeason = null;
   let inferredEspnTeam = null;
   let importAttempt = 0;
+  let sourceRefreshAttempt = 0;
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -245,6 +283,89 @@
     return teamById(state.teamId) || state.data.teams[0];
   }
 
+  function currentTeamStrategy() {
+    return cleanTeamStrategy(state.teamStrategies[String(state.teamId)]);
+  }
+
+  function categoryPlan(categoryId) {
+    const strategy = currentTeamStrategy();
+    if (strategy.puntCategories.includes(String(categoryId))) return "punt";
+    if (strategy.focusCategories.includes(String(categoryId))) return "focus";
+    if (strategy.competeCategories.includes(String(categoryId))) return "compete";
+    return "auto";
+  }
+
+  function saveStrategies() {
+    const stored = readJsonStorage(STRATEGY_STORAGE_KEY, {});
+    const records = stored && typeof stored === "object" ? stored : {};
+    records[String(state.data.league.id)] = state.teamStrategies;
+    window.localStorage.setItem(STRATEGY_STORAGE_KEY, JSON.stringify(records));
+  }
+
+  function setCategoryPlan(categoryId, plan) {
+    const category = state.data.categories.find(
+      (candidate) => String(candidate.id) === String(categoryId)
+    );
+    if (!category || !["auto", "compete", "focus", "punt"].includes(plan)) return;
+    const strategy = currentTeamStrategy();
+    strategy.puntCategories = strategy.puntCategories.filter(
+      (id) => id !== String(category.id)
+    );
+    strategy.focusCategories = strategy.focusCategories.filter(
+      (id) => id !== String(category.id)
+    );
+    strategy.competeCategories = strategy.competeCategories.filter(
+      (id) => id !== String(category.id)
+    );
+    if (plan === "punt") strategy.puntCategories.push(String(category.id));
+    if (plan === "focus") strategy.focusCategories.push(String(category.id));
+    if (plan === "compete") {
+      strategy.competeCategories.push(String(category.id));
+    }
+    state.teamStrategies = {
+      ...state.teamStrategies,
+      [String(state.teamId)]: strategy,
+    };
+    try {
+      saveStrategies();
+    } catch (error) {
+      showToast("The strategy changed, but this browser could not save it.");
+    }
+    renderAll();
+    showToast(
+      plan === "punt"
+        ? `${category.label} is now excluded from trade value for ${currentTeam().name}.`
+        : plan === "focus"
+          ? `${category.label} now receives extra weight for ${currentTeam().name}.`
+          : plan === "compete"
+            ? `${category.label} will stay active even when the model detects a punt.`
+            : `${category.label} returned to automatic strategy inference.`
+    );
+  }
+
+  function playerRating(player) {
+    return (
+      state.context?.playerRatings?.get(String(player.id)) ||
+      engine.ratePlayer(player, state.data.categories)
+    );
+  }
+
+  function playerModelValue(player) {
+    return playerRating(player).value;
+  }
+
+  function playerFitValue(player, teamId = state.teamId) {
+    return engine.ratePlayerForTeam({
+      player,
+      teamId,
+      players: state.data.players,
+      teams: state.data.teams,
+      categories: state.data.categories,
+      teamStrategies: state.teamStrategies,
+      context: state.context,
+    }).contextualValue;
+  }
+
   function formatTrend(value) {
     const number = Number(value) || 0;
     if (Math.abs(number) < 0.05) return "0.0";
@@ -272,7 +393,7 @@
   function playerMeta(player) {
     return `${escapeHtml(player.mlbTeam)} · ${escapeHtml(
       player.positions.join("/")
-    )} · Value ${escapeHtml(player.marketValue)}`;
+    )} · Model ${escapeHtml(playerModelValue(player))}`;
   }
 
   function renderTradePlayer(player) {
@@ -360,6 +481,7 @@
       players: state.data.players,
       teams: state.data.teams,
       categories: state.data.categories,
+      teamStrategies: state.teamStrategies,
       strategy: filters.strategy,
       position: filters.position,
       category: filters.category,
@@ -449,7 +571,13 @@
     elements.dataStateDot.className = `status-dot ${
       isDemo ? "status-dot-demo" : "status-dot-live"
     }`;
-    elements.dataStateLabel.textContent = isDemo ? "Demo data" : "ESPN connected";
+    const latestEvidence =
+      state.data.league.insightsUpdatedAt || state.data.league.updatedAt;
+    elements.dataStateLabel.textContent = isDemo
+      ? "Demo data"
+      : `ESPN · ${formatUpdatedAt(latestEvidence)}`;
+    elements.refreshSourcesButton.hidden =
+      isDemo || !sourceClient.hasSourceEndpoint;
     elements.navOpportunityCount.textContent = String(state.baseOpportunities.length);
     renderCategoryFilter();
   }
@@ -462,7 +590,7 @@
   }
 
   function renderSummaryMetrics(analysis) {
-    const primaryNeed = analysis.needs[0];
+    const primaryNeed = analysis.needs[0] || analysis.categoryRows[0];
     const metrics = [
       {
         icon: "finish",
@@ -472,7 +600,7 @@
       },
       {
         icon: "value",
-        label: "Roster value",
+        label: "Evidence value",
         value: analysis.totalValue,
         detail: `${analysis.roster.length} active assets`,
       },
@@ -510,22 +638,52 @@
     elements.categoryFormat.textContent = state.data.league.scoring;
     elements.categoryList.innerHTML = analysis.categoryRows
       .map((category) => {
+        const inferredPunt = category.strategy === "inferred-punt";
+        const punted = inferredPunt || category.strategy === "punt";
+        const plan = categoryPlan(category.id);
         const tone =
-          category.rank <= 2
+          punted
+            ? "punt"
+            : category.rank <= 2
             ? "strong"
             : category.rank >= state.data.teams.length - 1
               ? "weak"
               : "middle";
         const width = Math.max(8, category.percentile);
         return `
-          <div class="category-row">
+          <div class="category-row ${
+            punted ? "is-punted" : ""
+          }">
             <div class="category-meta">
               <span>${escapeHtml(category.label)} · ${escapeHtml(category.name)}${
                 category.direction === "lower" ? " · lower is better" : ""
               }</span>
-              <strong data-rank="${tone}">#${escapeHtml(category.rank)} of ${escapeHtml(
-                state.data.teams.length
-              )}</strong>
+              <span class="category-rank-plan">
+                <strong data-rank="${tone}">#${escapeHtml(category.rank)} of ${escapeHtml(
+                  state.data.teams.length
+                )}</strong>
+                <label>
+                  <span class="sr-only">Strategy for ${escapeHtml(category.name)}</span>
+                  <select
+                    data-action="category-plan"
+                    data-category-id="${escapeHtml(category.id)}"
+                    aria-label="Strategy for ${escapeHtml(category.name)}"
+                  >
+                    <option value="auto" ${
+                      plan === "auto" ? "selected" : ""
+                    }>Auto${inferredPunt ? " · Punt" : ""}</option>
+                    <option value="compete" ${
+                      plan === "compete" ? "selected" : ""
+                    }>Compete</option>
+                    <option value="focus" ${
+                      plan === "focus" ? "selected" : ""
+                    }>Focus</option>
+                    <option value="punt" ${
+                      plan === "punt" ? "selected" : ""
+                    }>Punt</option>
+                  </select>
+                </label>
+              </span>
             </div>
             <div class="category-track" aria-label="${escapeHtml(
               category.name
@@ -534,6 +692,13 @@
             )}">
               <span data-tone="${tone}" style="--width: ${width}%"></span>
             </div>
+            ${
+              inferredPunt
+                ? `<p class="category-inference">Auto punt · ${escapeHtml(
+                    Math.round(category.inference.confidence * 100)
+                  )}% confidence · harder to recover than your other low categories</p>`
+                : ""
+            }
           </div>
         `;
       })
@@ -589,10 +754,14 @@
       .slice(0, 3)
       .map((need, index) => {
         const availableTargets = state.data.players.filter(
-          (player) =>
-            player.ownerTeamId !== state.teamId &&
-            Number.isFinite(player.scores && player.scores[need.id]) &&
-            player.scores[need.id] >= 75
+          (player) => {
+            const score = (player.modelScores || player.scores)?.[need.id];
+            return (
+              player.ownerTeamId !== state.teamId &&
+              Number.isFinite(score) &&
+              score >= 75
+            );
+          }
         ).length;
         const urgency = need.need >= 80 ? "High need" : need.need >= 55 ? "Medium need" : "Watch";
         return `
@@ -619,20 +788,38 @@
     const signals = [...newsPlayers, ...movers].slice(0, 3);
 
     elements.marketSignals.innerHTML = signals
-      .map((player, index) => {
+      .map((player) => {
+        const quantitative = Array.isArray(player.insights?.quantitative)
+          ? player.insights.quantitative
+              .filter((item) => item.freshness > 0)
+              .sort(
+                (left, right) =>
+                  right.confidence * right.freshness -
+                  left.confidence * left.freshness
+              )[0]
+          : null;
+        const sourceRecord = quantitative
+          ? state.data.sources.find(
+              (source) => source.id === quantitative.sourceId
+            )
+          : null;
         const source = player.news
           ? player.news.source
-          : index % 2 === 0
-            ? "Market movement"
-            : "Projection blend";
+          : sourceRecord?.name ||
+            (player.statSource
+              ? `ESPN ${player.statSource}`
+              : "League market");
+        const rating = playerRating(player);
         const detail = player.news
           ? player.news.headline
-          : `${player.ownership}% rostered · composite value ${player.marketValue}`;
+          : `${player.projection} · ${Math.round(
+              rating.confidence * 100
+            )}% evidence confidence · model ${rating.value}`;
         return `
           <article class="signal-card">
             <div class="signal-card-top">
               <span class="signal-source">${escapeHtml(source)}${
-                state.data.mode === "demo" ? " · demo" : ""
+                state.data.mode === "demo" || player.news?.fixture ? " · demo" : ""
               }</span>
               <span class="signal-trend ${player.trend < 0 ? "is-down" : ""}">
                 ${escapeHtml(formatTrend(player.trend))}
@@ -647,8 +834,14 @@
   }
 
   function renderOverview(analysis) {
-    const strength = analysis.strengths[0];
-    const need = analysis.needs[0];
+    const strength = analysis.strengths[0] || analysis.categoryRows[0];
+    const need = analysis.needs[0] || strength;
+    const manualPunts = analysis.categoryRows.filter(
+      (category) => category.strategy === "punt"
+    );
+    const inferredPunts = analysis.categoryRows.filter(
+      (category) => category.strategy === "inferred-punt"
+    );
     const date = new Intl.DateTimeFormat(undefined, {
       weekday: "long",
       month: "long",
@@ -656,7 +849,19 @@
     }).format(new Date());
     elements.heroDate.textContent = `${date} · ${state.data.league.name}`;
     elements.heroHeading.textContent = `${strength.name} is your bankable strength. ${need.name} is the opening.`;
-    elements.heroSummary.textContent = `You rank ${ordinal(
+    const manualPuntText =
+      manualPunts.length > 0
+        ? `Punting ${manualPunts
+            .map((category) => category.label)
+            .join(" and ")}. `
+        : "";
+    const inferredPuntText =
+      inferredPunts.length > 0
+        ? `The model infers a punt in ${inferredPunts
+            .map((category) => category.label)
+            .join(" and ")} from relative standings and recovery cost. `
+        : "";
+    elements.heroSummary.textContent = `${manualPuntText}${inferredPuntText}You rank ${ordinal(
       strength.rank
     )} in ${strength.name.toLowerCase()} and ${ordinal(
       need.rank
@@ -676,8 +881,6 @@
   }
 
   function tradeCard(opportunity) {
-    const incoming = opportunity.receiving[0];
-    const outgoing = opportunity.sending[0];
     const likelihoodLabel =
       opportunity.result.acceptance >= 78
         ? "High"
@@ -696,7 +899,7 @@
             ${escapeHtml(opportunity.partnerTeam.name)}
           </span>
           <span class="likelihood">
-            Partner fit
+            Partner interest
             <b>${escapeHtml(likelihoodLabel)} · ${escapeHtml(
               opportunity.result.acceptance
             )}/100</b>
@@ -706,14 +909,18 @@
           <div class="trade-sides">
             <div class="trade-side">
               <span>You send</span>
-              ${renderTradePlayer(outgoing)}
+              <div class="trade-player-stack">
+                ${opportunity.sending.map(renderTradePlayer).join("")}
+              </div>
             </div>
             <span class="trade-arrow" aria-hidden="true">
               <svg viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5"></path></svg>
             </span>
             <div class="trade-side">
               <span>You receive</span>
-              ${renderTradePlayer(incoming)}
+              <div class="trade-player-stack">
+                ${opportunity.receiving.map(renderTradePlayer).join("")}
+              </div>
             </div>
           </div>
           <p class="trade-reason">${escapeHtml(opportunity.reason)} ${escapeHtml(
@@ -803,8 +1010,8 @@
           )}</small>
         </span>
         <span class="player-value">
-          <strong>${escapeHtml(player.marketValue)}</strong>
-          <span>value</span>
+          <strong>${escapeHtml(playerFitValue(player))}</strong>
+          <span>team fit</span>
         </span>
         <span class="selection-box" aria-hidden="true">
           <svg viewBox="0 0 16 16"><path d="m3 8 3 3 7-7"></path></svg>
@@ -836,6 +1043,8 @@
       players: state.data.players,
       teams: state.data.teams,
       categories: state.data.categories,
+      teamStrategies: state.teamStrategies,
+      context: state.context,
     });
 
     if (!evaluation.valid) {
@@ -845,8 +1054,22 @@
 
     const categoryImpacts = [...evaluation.deltas]
       .filter((delta) => Math.abs(delta.raw) >= 2)
-      .sort((left, right) => Math.abs(right.raw) - Math.abs(left.raw))
+      .sort(
+        (left, right) =>
+          Math.abs(right.teamWeighted) - Math.abs(left.teamWeighted) ||
+          Math.abs(right.raw) - Math.abs(left.raw)
+      )
       .slice(0, 5);
+    const partnerFitText =
+      evaluation.partnerRosterFitPenalty >= 8
+        ? `The offer leaves their ${
+            evaluation.partnerMissingPositions[0]?.position || "lineup"
+          } slot uncovered, so the interest score is capped.`
+        : `Their roster changes by ${
+            evaluation.partnerValueDelta >= 0 ? "+" : ""
+          }${evaluation.partnerValueDelta} fit value and ${
+            evaluation.partnerRotoPointGain >= 0 ? "+" : ""
+          }${evaluation.partnerRotoPointGain} projected standings points.`;
     elements.labResult.innerHTML = `
       <div class="result-grade-header">
         <div class="result-grade-top">
@@ -864,14 +1087,14 @@
       <div class="result-body">
         <div class="result-value-row">
           <div>
-            <span>You send</span>
+            <span>You send · model value</span>
             <strong>${escapeHtml(evaluation.valueOut)}</strong>
           </div>
           <strong>${evaluation.valueDelta >= 0 ? "+" : ""}${escapeHtml(
             evaluation.valueDelta
           )}</strong>
           <div>
-            <span>You receive</span>
+            <span>You receive · model value</span>
             <strong>${escapeHtml(evaluation.valueIn)}</strong>
           </div>
         </div>
@@ -888,8 +1111,14 @@
                             impact.direction === "lower"
                               ? " (lower is better)"
                               : ""
-                          }</span>
-                          <strong class="${impact.raw > 0 ? "is-positive" : "is-negative"}">
+                          }${impact.punted ? " (punted)" : ""}</span>
+                          <strong class="${
+                            impact.punted
+                              ? "is-muted"
+                              : impact.raw > 0
+                                ? "is-positive"
+                                : "is-negative"
+                          }">
                             ${impact.raw > 0 ? "+" : ""}${escapeHtml(impact.display)}
                           </strong>
                         </div>
@@ -907,10 +1136,19 @@
             <strong>${escapeHtml(evaluation.fairness)}</strong>
           </div>
           <div class="result-meter">
-            <span>Partner fit</span>
+            <span>Partner interest</span>
             <span class="result-meter-track"><i style="--meter: ${evaluation.acceptance}%"></i></span>
             <strong>${escapeHtml(evaluation.acceptance)}</strong>
           </div>
+          <div class="result-meter">
+            <span>Data confidence</span>
+            <span class="result-meter-track"><i style="--meter: ${evaluation.dataConfidence}%"></i></span>
+            <strong>${escapeHtml(evaluation.dataConfidence)}</strong>
+          </div>
+        </div>
+        <div class="result-section result-mutual-fit">
+          <span>Partner decision factors</span>
+          <p>${escapeHtml(partnerFitText)}</p>
         </div>
         <div class="result-actions">
           <button class="button button-primary" type="button" data-action="save-current-trade">
@@ -972,6 +1210,8 @@
           players: state.data.players,
           teams: state.data.teams,
           categories: state.data.categories,
+          teamStrategies: state.teamStrategies,
+          context: state.context,
         });
         return `
           <article class="saved-trade-card">
@@ -1028,10 +1268,14 @@
 
     const ownRoster = engine
       .playersForTeam(state.data.players, state.teamId)
-      .sort((left, right) => right.marketValue - left.marketValue);
+      .sort((left, right) => playerFitValue(right) - playerFitValue(left));
     const partnerRoster = engine
       .playersForTeam(state.data.players, state.lab.partnerTeamId)
-      .sort((left, right) => right.marketValue - left.marketValue);
+      .sort(
+        (left, right) =>
+          playerFitValue(right, state.lab.partnerTeamId) -
+          playerFitValue(left, state.lab.partnerTeamId)
+      );
     const visibleOwnRoster = ownRoster.filter((player) =>
       playerMatchesSearch(player, state.lab.sendQuery)
     );
@@ -1110,7 +1354,7 @@
       if (state.market.sort === "trend") return right.trend - left.trend;
       if (state.market.sort === "ownership") return right.ownership - left.ownership;
       if (state.market.sort === "name") return left.name.localeCompare(right.name);
-      return right.marketValue - left.marketValue;
+      return playerModelValue(right) - playerModelValue(left);
     });
     return filtered;
   }
@@ -1123,6 +1367,18 @@
         const owner = teamById(player.ownerTeamId);
         const watched = state.watchlist.has(String(player.id));
         const ownPlayer = String(player.ownerTeamId) === String(state.teamId);
+        const rating = playerRating(player);
+        const evidenceSources = [
+          ...(Array.isArray(player.insights?.quantitative)
+            ? player.insights.quantitative.map((item) => item.sourceId)
+            : []),
+          ...(Array.isArray(player.insights?.qualitative)
+            ? player.insights.qualitative.map((item) => item.sourceId)
+            : []),
+        ];
+        const sourceText =
+          [...new Set(evidenceSources)].join(", ") ||
+          (player.statSource ? `ESPN ${player.statSource}` : "League fixture");
         return `
           <tr>
             <td>
@@ -1139,7 +1395,9 @@
             <td class="roster-cell">${escapeHtml(
               ownPlayer ? "Your roster" : owner?.name || "Free agent"
             )}</td>
-            <td class="projection-cell" title="${escapeHtml(player.projection)}">
+            <td class="projection-cell" title="${escapeHtml(
+              `${sourceText} · ${Math.round(rating.confidence * 100)}% confidence`
+            )}">
               ${escapeHtml(player.projection)}
             </td>
             <td class="number-cell">${escapeHtml(player.ownership)}%</td>
@@ -1148,9 +1406,16 @@
                 ${escapeHtml(formatTrend(player.trend))}
               </span>
             </td>
-            <td><span class="market-value-badge">${escapeHtml(
-              player.marketValue
-            )}</span></td>
+            <td>
+              <span
+                class="market-value-badge"
+                title="${escapeHtml(
+                  `${Math.round(rating.confidence * 100)}% evidence confidence · ${playerFitValue(
+                    player
+                  )} value for ${currentTeam().name}`
+                )}"
+              >${escapeHtml(rating.value)}</span>
+            </td>
             <td>
               <button
                 class="watch-button ${watched ? "is-watched" : ""}"
@@ -1179,6 +1444,8 @@
       demo: "Demo fixture",
       fixture: "Demo fixture",
       disconnected: "Not connected",
+      stale: "Stale",
+      error: "Unavailable",
     };
     return labels[status] || status;
   }
@@ -1197,7 +1464,17 @@
             <h3>${escapeHtml(source.name)}</h3>
             <p>${escapeHtml(source.coverage)}</p>
             <div class="source-card-footer">
-              <span>${escapeHtml(source.cadence)}</span>
+              <span>${escapeHtml(
+                source.updatedAt
+                  ? `Updated ${formatUpdatedAt(source.updatedAt)}`
+                  : source.cadence
+              )}${
+                source.access === "licensed"
+                  ? " · Licensed"
+                  : source.access === "official"
+                    ? " · Official"
+                    : ""
+              }</span>
               <a href="${escapeHtml(
                 safeExternalUrl(source.url)
               )}" target="_blank" rel="noopener noreferrer">Source</a>
@@ -1208,7 +1485,13 @@
       .join("");
 
     elements.modelVersion.textContent = state.data.model.version;
-    elements.modelWeights.innerHTML = state.data.model.weights
+    const adjustmentText = Array.isArray(state.data.model.adjustments)
+      ? `<p class="model-adjustments">Then adjusted for ${escapeHtml(
+          state.data.model.adjustments.join(", ")
+        )}.</p>`
+      : "";
+    elements.modelWeights.innerHTML =
+      state.data.model.weights
       .map(
         (weight) => `
           <div class="model-weight-row">
@@ -1227,17 +1510,25 @@
           </div>
         `
       )
-      .join("");
+      .join("") + adjustmentText;
   }
 
   function renderAll() {
     const validTeam = teamById(state.teamId);
     if (!validTeam) state.teamId = String(state.data.teams[0].id);
+    state.context = engine.computeLeagueContext({
+      players: state.data.players,
+      teams: state.data.teams,
+      categories: state.data.categories,
+      teamStrategies: state.teamStrategies,
+    });
     const analysis = engine.getTeamAnalysis({
       teamId: state.teamId,
       players: state.data.players,
       teams: state.data.teams,
       categories: state.data.categories,
+      teamStrategies: state.teamStrategies,
+      context: state.context,
     });
     if (!analysis) throw new Error("The active team could not be analyzed.");
 
@@ -1280,7 +1571,9 @@
           )} fits the gap</h2>
           <p>${escapeHtml(
             engine.describeValueDelta(opportunity.result.valueDelta)
-          )} · ${escapeHtml(opportunity.result.fairness)}% value fairness</p>
+          )} · ${escapeHtml(opportunity.result.fairness)}/100 fairness · ${escapeHtml(
+            opportunity.result.dataConfidence
+          )}% data confidence</p>
         </div>
         <button class="icon-button" type="button" data-action="close-trade" aria-label="Close">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"></path></svg>
@@ -1296,11 +1589,11 @@
       </div>
       <div class="detail-sides">
         <div class="detail-side">
-          <span>You send · ${escapeHtml(opportunity.result.valueOut)} value</span>
+          <span>You send · ${escapeHtml(opportunity.result.valueOut)} model value</span>
           ${opportunity.sending.map(renderTradePlayer).join("")}
         </div>
         <div class="detail-side">
-          <span>You receive · ${escapeHtml(opportunity.result.valueIn)} value</span>
+          <span>You receive · ${escapeHtml(opportunity.result.valueIn)} model value</span>
           ${opportunity.receiving.map(renderTradePlayer).join("")}
         </div>
       </div>
@@ -1408,6 +1701,8 @@
       players: state.data.players,
       teams: state.data.teams,
       categories: state.data.categories,
+      teamStrategies: state.teamStrategies,
+      context: state.context,
     });
     if (!evaluation.valid) return;
     saveTradeRecord({
@@ -1664,6 +1959,7 @@
 
     state.data = league;
     state.teamId = String(league.activeTeamId);
+    state.teamStrategies = strategiesForLeague(league);
     state.lab.partnerTeamId = null;
     state.lab.sending.clear();
     state.lab.receiving.clear();
@@ -1694,6 +1990,9 @@
         );
       }
     }, 550);
+    if (sourceClient.hasSourceEndpoint) {
+      window.setTimeout(() => refreshSources({ quiet: true }), 0);
+    }
   }
 
   function connectorStatusLabel(status) {
@@ -1802,19 +2101,69 @@
     }
 
     elements.espnStatus.textContent = "Importing the public league...";
+    sourceRefreshAttempt += 1;
+    if (activeSourceController) {
+      activeSourceController.abort();
+      activeSourceController = null;
+    }
     const attempt = ++importAttempt;
     const controller = new AbortController();
     activeImportController = controller;
     setImportBusy(true);
 
     try {
-      const league = await espnClient.fetchLeague({
+      let league = await espnClient.fetchLeague({
         leagueId,
         season,
         teamId,
         signal: controller.signal,
       });
-      completeEspnImport(league, attempt);
+      if (attempt !== importAttempt) return;
+      if (!isLeagueData(league)) {
+        throw new Error("The imported league has no usable category data.");
+      }
+      let sourceWarning = "";
+      if (sourceClient.hasSourceEndpoint) {
+        elements.espnStatus.textContent =
+          "ESPN connected. Adding licensed projections and news...";
+        try {
+          league = await sourceClient.enrichLeague({
+            league,
+            signal: controller.signal,
+          });
+        } catch (error) {
+          if (error?.name === "AbortError") throw error;
+          sourceWarning =
+            error instanceof Error
+              ? error.message
+              : "External evidence could not be refreshed.";
+        }
+      }
+      if (attempt !== importAttempt) return;
+      state.data = league;
+      state.teamId = String(league.activeTeamId);
+      state.teamStrategies = strategiesForLeague(league);
+      state.lab.partnerTeamId = null;
+      state.lab.sending.clear();
+      state.lab.receiving.clear();
+      resetPlayerSearches();
+      renderAll();
+      window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(league));
+      elements.espnStatus.className = "form-status is-success";
+      elements.espnStatus.textContent = `Imported ${league.teams.length} teams and ${
+        league.players.length
+      } players.${sourceWarning ? ` ${sourceWarning}` : ""}`;
+      window.setTimeout(() => {
+        if (attempt !== importAttempt) return;
+        if (elements.espnDialog.open) elements.espnDialog.close();
+        showToast(
+          sourceWarning
+            ? `${league.league.name} imported, but licensed evidence was unavailable.`
+            : league.teamSelectionRequired
+            ? `${league.league.name} imported. Choose your team in the lower-left menu.`
+            : `${league.league.name} is now connected.`
+        );
+      }, 550);
     } catch (error) {
       if (
         attempt !== importAttempt ||
@@ -1840,10 +2189,76 @@
     }
   }
 
+  async function refreshSources(options = {}) {
+    if (
+      !sourceClient.hasSourceEndpoint ||
+      state.data.mode === "demo" ||
+      !isLeagueData(state.data)
+    ) {
+      if (!options.quiet) {
+        showToast("A licensed evidence endpoint is not configured here.");
+      }
+      return;
+    }
+    if (activeSourceController) activeSourceController.abort();
+    const attempt = ++sourceRefreshAttempt;
+    const leagueId = String(state.data.league.id);
+    const controller = new AbortController();
+    activeSourceController = controller;
+    elements.refreshSourcesButton.disabled = true;
+    elements.refreshSourcesButton.textContent = "Refreshing...";
+    try {
+      const enriched = await sourceClient.enrichLeague({
+        league: state.data,
+        signal: controller.signal,
+      });
+      if (
+        attempt !== sourceRefreshAttempt ||
+        String(state.data.league.id) !== leagueId
+      ) {
+        return;
+      }
+      state.data = enriched;
+      window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(enriched));
+      renderAll();
+      if (!options.quiet) {
+        showToast(
+          `Evidence refreshed for ${enriched.sourceSnapshot.matchedPlayers} players.`
+        );
+      }
+    } catch (error) {
+      if (
+        attempt !== sourceRefreshAttempt ||
+        error?.name === "AbortError"
+      ) {
+        return;
+      }
+      if (!options.quiet) {
+        showToast(
+          error instanceof Error
+            ? error.message
+            : "External evidence could not be refreshed."
+        );
+      }
+    } finally {
+      if (attempt === sourceRefreshAttempt) {
+        activeSourceController = null;
+        elements.refreshSourcesButton.disabled = false;
+        elements.refreshSourcesButton.textContent = "Refresh evidence";
+      }
+    }
+  }
+
   function resetDemo() {
+    sourceRefreshAttempt += 1;
+    if (activeSourceController) {
+      activeSourceController.abort();
+      activeSourceController = null;
+    }
     window.localStorage.removeItem(LEAGUE_STORAGE_KEY);
     state.data = demoData;
     state.teamId = String(demoData.activeTeamId);
+    state.teamStrategies = strategiesForLeague(demoData);
     state.lab.partnerTeamId = null;
     state.lab.sending.clear();
     state.lab.receiving.clear();
@@ -1952,6 +2367,8 @@
       toggleWatch(actionTarget.dataset.playerId);
     } else if (action === "reset-demo") {
       resetDemo();
+    } else if (action === "refresh-sources") {
+      refreshSources();
     } else if (action === "show-all-trades") {
       state.finder.realisticOnly = false;
       elements.finderRealistic.checked = false;
@@ -1962,6 +2379,14 @@
       renderFinder();
       elements.finderPlayerSearch.focus();
     }
+  });
+
+  document.addEventListener("change", (event) => {
+    const planControl = event.target.closest(
+      '[data-action="category-plan"]'
+    );
+    if (!planControl) return;
+    setCategoryPlan(planControl.dataset.categoryId, planControl.value);
   });
 
   elements.menuButton.addEventListener("click", () => {
@@ -2079,6 +2504,9 @@
 
   try {
     renderAll();
+    if (sourceClient.hasSourceEndpoint && state.data.mode !== "demo") {
+      window.setTimeout(() => refreshSources({ quiet: true }), 0);
+    }
   } catch (error) {
     console.error(error);
     document.getElementById("main-content").innerHTML = `

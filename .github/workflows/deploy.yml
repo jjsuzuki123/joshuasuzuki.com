@@ -36,6 +36,7 @@ jobs:
           node --check fantasy/data.js
           node --check fantasy/espn-client.js
           node --check fantasy/espn-connector.js
+          node --check fantasy/source-client.js
           node --check fantasy/trade-engine.js
           node scripts/fantasy-espn-client.test.js
           node scripts/fantasy-espn-connector.test.js
