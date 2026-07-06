@@ -991,6 +991,13 @@ svg {
   background: #aab3ae;
 }
 
+.category-inference {
+  margin: 0.3rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.54rem;
+  line-height: 1.35;
+}
+
 .overview-opportunities {
   display: grid;
 }

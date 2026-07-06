@@ -31,6 +31,15 @@
     return finiteValues.reduce((total, value) => total + value, 0) / finiteValues.length;
   }
 
+  function median(values) {
+    const finiteValues = values.filter(Number.isFinite).sort((left, right) => left - right);
+    if (finiteValues.length === 0) return 0;
+    const middle = Math.floor(finiteValues.length / 2);
+    return finiteValues.length % 2 === 0
+      ? (finiteValues[middle - 1] + finiteValues[middle]) / 2
+      : finiteValues[middle];
+  }
+
   function weightedMean(entries) {
     const usable = entries.filter(
       (entry) =>
@@ -184,6 +193,11 @@
           ? strategy.focusCategories.map(String)
           : []
       ),
+      competeCategories: new Set(
+        Array.isArray(strategy.competeCategories)
+          ? strategy.competeCategories.map(String)
+          : []
+      ),
       categoryWeights:
         strategy.categoryWeights && typeof strategy.categoryWeights === "object"
           ? strategy.categoryWeights
@@ -237,14 +251,39 @@
     };
   }
 
-  function categoryLeverage(entries, teamId, category) {
+  function categoryPlayerScale(players, category, useRawValues) {
+    const values = players
+      .filter((player) => playerMatchesCategoryGroup(player, category))
+      .map((player) =>
+        useRawValues
+          ? categoryValueFor(player, category.id)
+          : scoreFor(player, category.id)
+      )
+      .filter(Number.isFinite);
+    if (values.length < 2) return 1;
+    const observedRange = Math.max(...values) - Math.min(...values);
+    const configuredRange =
+      useRawValues &&
+      Number.isFinite(category.rangeMaximum) &&
+      Number.isFinite(category.rangeMinimum)
+        ? category.rangeMaximum - category.rangeMinimum
+        : 0;
+    return Math.max(observedRange, configuredRange, 0.0001);
+  }
+
+  function categoryLeverage(entries, teamId, category, playerScale) {
     const target = entries.find(
       (entry) => String(entry.teamId) === String(teamId)
     );
     const score = target?.score;
     const finiteScores = entries.map((entry) => entry.score).filter(Number.isFinite);
     if (!Number.isFinite(score) || finiteScores.length < 2) {
-      return { gainGap: null, loseGap: null, pointOpportunity: 0 };
+      return {
+        gainGap: null,
+        loseGap: null,
+        gainDifficulty: null,
+        pointOpportunity: 0,
+      };
     }
     const betterGaps = entries
       .filter((entry) => favorableCompare(entry.score, score, category) > 0)
@@ -254,18 +293,77 @@
       .map((entry) => Math.abs(entry.score - score));
     const gainGap = betterGaps.length > 0 ? Math.min(...betterGaps) : null;
     const loseGap = worseGaps.length > 0 ? Math.min(...worseGaps) : null;
-    const spread = Math.max(...finiteScores) - Math.min(...finiteScores);
     const normalizedGap = Number.isFinite(gainGap) ? gainGap : loseGap;
+    const gainDifficulty = Number.isFinite(gainGap)
+      ? gainGap / Math.max(playerScale, 0.0001)
+      : 0;
     const pointOpportunity =
-      spread <= 0 || !Number.isFinite(normalizedGap)
+      !Number.isFinite(normalizedGap)
         ? 0.5
-        : clamp(1 - normalizedGap / spread, 0, 1);
-    return { gainGap, loseGap, pointOpportunity };
+        : clamp(1 - normalizedGap / Math.max(playerScale, 0.0001), 0, 1);
+    return { gainGap, loseGap, gainDifficulty, pointOpportunity };
   }
 
-  function categoryPriority(categoryProfile, strategy, categoryId) {
+  function inferPuntCategories(categoryProfiles, strategy) {
+    const entries = Object.entries(categoryProfiles);
+    const inferred = new Map();
+    if (entries.length < 5) return inferred;
+    entries.forEach(([categoryId, profile]) => {
+      const key = String(categoryId);
+      if (
+        strategy.puntCategories.has(key) ||
+        strategy.focusCategories.has(key) ||
+        strategy.competeCategories.has(key) ||
+        Number.isFinite(Number(strategy.categoryWeights[key]))
+      ) {
+        return;
+      }
+      const otherPercentiles = entries
+        .filter(([otherId]) => String(otherId) !== key)
+        .map(([, other]) => other.percentile);
+      const comparisonPercentile = median(otherPercentiles);
+      const relativeGap = clamp(
+        (comparisonPercentile - profile.percentile) / 100,
+        0,
+        1
+      );
+      const difficulty = Number.isFinite(profile.gainDifficulty)
+        ? profile.gainDifficulty
+        : 0;
+      const confidence = relativeGap * 0.45 + difficulty * 0.75;
+      if (
+        profile.percentile <= 20 &&
+        relativeGap >= 0.3 &&
+        difficulty >= 0.3 &&
+        confidence >= 0.5
+      ) {
+        inferred.set(key, {
+          confidence: clamp(confidence, 0, 1),
+          comparisonPercentile,
+          relativeGap,
+          difficulty,
+        });
+      }
+    });
+    return inferred;
+  }
+
+  function categoryPriority(
+    categoryProfile,
+    strategy,
+    categoryId,
+    inferredPunts
+  ) {
+    const key = String(categoryId);
     if (strategy.puntCategories.has(String(categoryId))) return 0;
-    const explicitWeight = Number(strategy.categoryWeights[String(categoryId)]);
+    if (
+      inferredPunts.has(key) &&
+      !strategy.competeCategories.has(key) &&
+      !strategy.focusCategories.has(key)
+    ) {
+      return 0;
+    }
+    const explicitWeight = Number(strategy.categoryWeights[key]);
     if (Number.isFinite(explicitWeight)) {
       return clamp(explicitWeight, 0, 2);
     }
@@ -502,6 +600,16 @@
         score: rawProfiles.get(String(team.id))?.scores[category.id],
       }));
     });
+    const categoryScales = Object.fromEntries(
+      categories.map((category) => [
+        category.id,
+        categoryPlayerScale(
+          players,
+          category,
+          rawCategoryModes[category.id]
+        ),
+      ])
+    );
 
     const profiles = new Map();
     teams.forEach((team) => {
@@ -512,8 +620,13 @@
       categories.forEach((category) => {
         const entries = categoryEntries[category.id];
         const rank = rankDetails(entries, teamId, category);
-        const leverage = categoryLeverage(entries, teamId, category);
-        const preliminary = {
+        const leverage = categoryLeverage(
+          entries,
+          teamId,
+          category,
+          categoryScales[category.id]
+        );
+        categoryProfile[category.id] = {
           score: raw.scores[category.id],
           rank: rank.rank,
           percentile: rank.percentile,
@@ -521,16 +634,57 @@
           need: 100 - rank.percentile,
           ...leverage,
         };
-        const priority = categoryPriority(preliminary, strategy, category.id);
+      });
+      const inferredPunts = inferPuntCategories(categoryProfile, strategy);
+      const rawPriorities = Object.fromEntries(
+        categories.map((category) => [
+          category.id,
+          categoryPriority(
+            categoryProfile[category.id],
+            strategy,
+            category.id,
+            inferredPunts
+          ),
+        ])
+      );
+      const activePriorityTotal = sum(
+        Object.values(rawPriorities).filter((priority) => priority > 0)
+      );
+      const priorityScale =
+        activePriorityTotal > 0
+          ? categories.length / activePriorityTotal
+          : 1;
+      categories.forEach((category) => {
+        const preliminary = categoryProfile[category.id];
+        const rawPriority = rawPriorities[category.id];
+        const priority =
+          rawPriority === 0
+            ? 0
+            : clamp(rawPriority * priorityScale, 0.2, 2);
+        const key = String(category.id);
+        const inference = inferredPunts.get(key);
+        const strategyLabel = strategy.puntCategories.has(key)
+          ? "punt"
+          : strategy.focusCategories.has(key)
+            ? "focus"
+            : inference && !strategy.competeCategories.has(key)
+              ? "inferred-punt"
+              : "compete";
         categoryProfile[category.id] = {
           ...preliminary,
           priority: round(priority, 2),
-          strategy:
-            priority === 0
-              ? "punt"
-              : strategy.focusCategories.has(String(category.id))
-                ? "focus"
-                : "compete",
+          strategy: strategyLabel,
+          inference: inference
+            ? {
+                confidence: round(inference.confidence, 2),
+                comparisonPercentile: round(
+                  inference.comparisonPercentile,
+                  1
+                ),
+                relativeGap: round(inference.relativeGap, 2),
+                difficulty: round(inference.difficulty, 2),
+              }
+            : null,
           targetScore: round(
             priority *
               (0.45 + preliminary.need / 100) *
@@ -574,6 +728,7 @@
       rawProfiles,
       rawCategoryModes,
       categoryEntries,
+      categoryScales,
       playerRatings,
       teamStrategies,
     };

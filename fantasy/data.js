@@ -284,12 +284,6 @@
     categories,
     teams,
     players,
-    teamStrategies: {
-      "fog-city": {
-        puntCategories: ["stolenBases"],
-        focusCategories: ["saves"],
-      },
-    },
     sourceSnapshot: {
       schemaVersion: 1,
       generatedAt: null,

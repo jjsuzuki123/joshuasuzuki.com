@@ -142,6 +142,9 @@
       focusCategories: Array.isArray(strategy.focusCategories)
         ? [...new Set(strategy.focusCategories.map(String))]
         : [],
+      competeCategories: Array.isArray(strategy.competeCategories)
+        ? [...new Set(strategy.competeCategories.map(String))]
+        : [],
     };
   }
 
@@ -151,22 +154,11 @@
       stored && typeof stored === "object"
         ? stored[String(data.league.id)] || {}
         : {};
-    const defaults =
-      data.teamStrategies && typeof data.teamStrategies === "object"
-        ? data.teamStrategies
-        : {};
-    const teamIds = new Set([
-      ...Object.keys(defaults),
-      ...Object.keys(leagueStrategies),
-    ]);
+    const teamIds = new Set(Object.keys(leagueStrategies));
     return Object.fromEntries(
       [...teamIds].map((teamId) => [
         String(teamId),
-        cleanTeamStrategy(
-          Object.prototype.hasOwnProperty.call(leagueStrategies, teamId)
-            ? leagueStrategies[teamId]
-            : defaults[teamId]
-        ),
+        cleanTeamStrategy(leagueStrategies[teamId]),
       ])
     );
   }
@@ -291,7 +283,8 @@
     const strategy = currentTeamStrategy();
     if (strategy.puntCategories.includes(String(categoryId))) return "punt";
     if (strategy.focusCategories.includes(String(categoryId))) return "focus";
-    return "compete";
+    if (strategy.competeCategories.includes(String(categoryId))) return "compete";
+    return "auto";
   }
 
   function saveStrategies() {
@@ -305,7 +298,7 @@
     const category = state.data.categories.find(
       (candidate) => String(candidate.id) === String(categoryId)
     );
-    if (!category || !["compete", "focus", "punt"].includes(plan)) return;
+    if (!category || !["auto", "compete", "focus", "punt"].includes(plan)) return;
     const strategy = currentTeamStrategy();
     strategy.puntCategories = strategy.puntCategories.filter(
       (id) => id !== String(category.id)
@@ -313,8 +306,14 @@
     strategy.focusCategories = strategy.focusCategories.filter(
       (id) => id !== String(category.id)
     );
+    strategy.competeCategories = strategy.competeCategories.filter(
+      (id) => id !== String(category.id)
+    );
     if (plan === "punt") strategy.puntCategories.push(String(category.id));
     if (plan === "focus") strategy.focusCategories.push(String(category.id));
+    if (plan === "compete") {
+      strategy.competeCategories.push(String(category.id));
+    }
     state.teamStrategies = {
       ...state.teamStrategies,
       [String(state.teamId)]: strategy,
@@ -330,7 +329,9 @@
         ? `${category.label} is now excluded from trade value for ${currentTeam().name}.`
         : plan === "focus"
           ? `${category.label} now receives extra weight for ${currentTeam().name}.`
-          : `${category.label} returned to the standings-based model.`
+          : plan === "compete"
+            ? `${category.label} will stay active even when the model detects a punt.`
+            : `${category.label} returned to automatic strategy inference.`
     );
   }
 
@@ -629,8 +630,11 @@
     elements.categoryFormat.textContent = state.data.league.scoring;
     elements.categoryList.innerHTML = analysis.categoryRows
       .map((category) => {
+        const inferredPunt = category.strategy === "inferred-punt";
+        const punted = inferredPunt || category.strategy === "punt";
+        const plan = categoryPlan(category.id);
         const tone =
-          category.strategy === "punt"
+          punted
             ? "punt"
             : category.rank <= 2
             ? "strong"
@@ -640,7 +644,7 @@
         const width = Math.max(8, category.percentile);
         return `
           <div class="category-row ${
-            category.strategy === "punt" ? "is-punted" : ""
+            punted ? "is-punted" : ""
           }">
             <div class="category-meta">
               <span>${escapeHtml(category.label)} · ${escapeHtml(category.name)}${
@@ -657,14 +661,17 @@
                     data-category-id="${escapeHtml(category.id)}"
                     aria-label="Strategy for ${escapeHtml(category.name)}"
                   >
+                    <option value="auto" ${
+                      plan === "auto" ? "selected" : ""
+                    }>Auto${inferredPunt ? " · Punt" : ""}</option>
                     <option value="compete" ${
-                      category.strategy === "compete" ? "selected" : ""
+                      plan === "compete" ? "selected" : ""
                     }>Compete</option>
                     <option value="focus" ${
-                      category.strategy === "focus" ? "selected" : ""
+                      plan === "focus" ? "selected" : ""
                     }>Focus</option>
                     <option value="punt" ${
-                      category.strategy === "punt" ? "selected" : ""
+                      plan === "punt" ? "selected" : ""
                     }>Punt</option>
                   </select>
                 </label>
@@ -677,6 +684,13 @@
             )}">
               <span data-tone="${tone}" style="--width: ${width}%"></span>
             </div>
+            ${
+              inferredPunt
+                ? `<p class="category-inference">Auto punt · ${escapeHtml(
+                    Math.round(category.inference.confidence * 100)
+                  )}% confidence · harder to recover than your other low categories</p>`
+                : ""
+            }
           </div>
         `;
       })
@@ -814,8 +828,11 @@
   function renderOverview(analysis) {
     const strength = analysis.strengths[0] || analysis.categoryRows[0];
     const need = analysis.needs[0] || strength;
-    const punts = analysis.categoryRows.filter(
+    const manualPunts = analysis.categoryRows.filter(
       (category) => category.strategy === "punt"
+    );
+    const inferredPunts = analysis.categoryRows.filter(
+      (category) => category.strategy === "inferred-punt"
     );
     const date = new Intl.DateTimeFormat(undefined, {
       weekday: "long",
@@ -824,11 +841,19 @@
     }).format(new Date());
     elements.heroDate.textContent = `${date} · ${state.data.league.name}`;
     elements.heroHeading.textContent = `${strength.name} is your bankable strength. ${need.name} is the opening.`;
-    const puntText =
-      punts.length > 0
-        ? `Punting ${punts.map((category) => category.label).join(" and ")}. `
+    const manualPuntText =
+      manualPunts.length > 0
+        ? `Punting ${manualPunts
+            .map((category) => category.label)
+            .join(" and ")}. `
         : "";
-    elements.heroSummary.textContent = `${puntText}You rank ${ordinal(
+    const inferredPuntText =
+      inferredPunts.length > 0
+        ? `The model infers a punt in ${inferredPunts
+            .map((category) => category.label)
+            .join(" and ")} from relative standings and recovery cost. `
+        : "";
+    elements.heroSummary.textContent = `${manualPuntText}${inferredPuntText}You rank ${ordinal(
       strength.rank
     )} in ${strength.name.toLowerCase()} and ${ordinal(
       need.rank

@@ -10,10 +10,16 @@ const {
   ratePlayer,
 } = require("../fantasy/trade-engine.js");
 
+const forceCompete = {
+  [data.activeTeamId]: {
+    competeCategories: data.categories.map((category) => category.id),
+  },
+};
 const context = computeLeagueContext({
   players: data.players,
   teams: data.teams,
   categories: data.categories,
+  teamStrategies: forceCompete,
 });
 assert.equal(context.profiles.size, data.teams.length);
 
@@ -56,12 +62,16 @@ const analysis = getTeamAnalysis({
   players: data.players,
   teams: data.teams,
   categories: data.categories,
+  teamStrategies: forceCompete,
   context,
 });
 assert.ok(analysis);
 assert.equal(analysis.roster.length, 10);
 assert.equal(analysis.categoryRows.length, 10);
-assert.ok(analysis.needs.some((category) => category.id === "stolenBases"));
+assert.ok(
+  analysis.categoryRows.find((category) => category.id === "stolenBases")
+    .priority > 0
+);
 assert.ok(analysis.needs.some((category) => category.id === "saves"));
 
 const opportunities = findTradeOpportunities({
@@ -376,6 +386,60 @@ const incompleteTrade = evaluateTrade({
   context,
 });
 assert.equal(incompleteTrade.valid, false);
+
+assert.equal(data.teamStrategies, undefined);
+const inferredContext = computeLeagueContext({
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+});
+const inferredAnalysis = getTeamAnalysis({
+  teamId: data.activeTeamId,
+  players: data.players,
+  teams: data.teams,
+  categories: data.categories,
+  context: inferredContext,
+});
+const inferredStolenBases = inferredAnalysis.categoryRows.find(
+  (category) => category.id === "stolenBases"
+);
+assert.equal(inferredStolenBases.strategy, "inferred-punt");
+assert.equal(inferredStolenBases.priority, 0);
+assert.ok(inferredStolenBases.inference.confidence >= 0.5);
+assert.ok(inferredStolenBases.inference.difficulty >= 0.3);
+assert.equal(
+  inferredAnalysis.needs.some((category) => category.id === "stolenBases"),
+  false
+);
+assert.equal(
+  analysis.categoryRows.find((category) => category.id === "stolenBases")
+    .strategy,
+  "compete"
+);
+
+const renamedCategories = data.categories.map((category) =>
+  category.id === "stolenBases"
+    ? { ...category, id: "outlierCategory", label: "OUT" }
+    : category
+);
+const renamedPlayers = data.players.map((player) => {
+  if (!Number.isFinite(player.scores.stolenBases)) return player;
+  const scores = { ...player.scores, outlierCategory: player.scores.stolenBases };
+  delete scores.stolenBases;
+  return { ...player, scores };
+});
+const renamedInference = getTeamAnalysis({
+  teamId: data.activeTeamId,
+  players: renamedPlayers,
+  teams: data.teams,
+  categories: renamedCategories,
+});
+assert.equal(
+  renamedInference.categoryRows.find(
+    (category) => category.id === "outlierCategory"
+  ).strategy,
+  "inferred-punt"
+);
 
 const teamStrategies = {
   [data.activeTeamId]: {

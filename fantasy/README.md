@@ -58,10 +58,13 @@ Player value uses inputs that are actually present:
 - 20% connected projection and underlying-skill evidence
 - bounded adjustments for availability and dated role news
 
-The team layer is separate. Each category can be set to `Compete`, `Focus`, or
-`Punt`. A punt has zero weight in roster fit and trade recommendations. Focused
-categories receive extra weight. Other categories use standings leverage, so a
-small, recoverable gap matters more than a distant last-place category.
+The team layer is separate. Strategy defaults to `Auto`. The engine infers a
+punt only when a category is a clear performance outlier versus that team's
+other categories and the gap to the next standings point is expensive relative
+to the production one player can add. Category IDs and names do not affect the
+decision. Managers can override Auto with `Compete`, `Focus`, or `Punt`. A punt
+has zero weight in roster fit and trade recommendations, and the model
+redistributes that weight across the remaining categories.
 
 Every trade recomputes both teams' category totals and approximate rotisserie
 points. Partner interest uses the other manager's category priorities,
