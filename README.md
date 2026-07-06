@@ -7,3 +7,7 @@ Personal website built with vanilla HTML, CSS, and JavaScript.
 - Served via CloudFront
 - Custom domain: joshuasuzuki.com
 - Backend APIs via AWS API Gateway + Lambdas (contact form + admin)
+
+## Projects
+- `/fantasy/`: RosterLab fantasy baseball trade analysis
+- `/sunset/`: Afterglow sunset quality forecast
