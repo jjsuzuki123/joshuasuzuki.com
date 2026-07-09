@@ -1,6 +1,27 @@
 # RosterLab
 
-RosterLab is a browser-based fantasy baseball trade analyzer. It ships with an
+RosterLab is a browser-based fantasy trade toolkit.
+
+## Football (redraft calculator)
+
+`/fantasy/football/` is a FantasyCalc-style redraft trade calculator. It does
+**not** require ESPN or any league sync.
+
+- League settings: size, PPR / half / standard, Superflex, TE premium
+- Settings-aware player values from projected points + VORP, market anchors,
+  and fixture quantitative / qualitative sources
+- Two-sided trade calculator for multi-player packages
+- **Roster-slot / consolidation math**: receiving more players pays a
+  roster-space tax near replacement value; consolidating into fewer players
+  earns a premium so “more players” is never a free win
+- Rankings table that recomputes when settings change
+
+Player values and source cards are model/fixture based, not a live trade
+database and not a claim of FantasyCalc’s real-trade methodology.
+
+## Baseball
+
+The baseball app at `/fantasy/` is a category-league trade analyzer. It ships with an
 illustrative six-team league so every workflow is usable without an account.
 
 ## Included

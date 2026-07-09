@@ -9,7 +9,7 @@
     />
     <meta name="theme-color" content="#f6f7f2" />
     <title>RosterLab | Fantasy baseball trade analysis</title>
-    <link rel="stylesheet" href="/fantasy/styles.css?v=3" />
+    <link rel="stylesheet" href="/fantasy/styles.css?v=4" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -27,11 +27,15 @@
             </span>
             <span>
               <strong>RosterLab</strong>
-              <small>Fantasy intelligence</small>
+              <small>Fantasy baseball</small>
             </span>
           </a>
 
           <nav class="primary-nav" aria-label="App sections">
+            <p class="nav-label">Sports</p>
+            <a class="nav-item" href="/fantasy/football/">
+              <span>Football calculator</span>
+            </a>
             <p class="nav-label">Workspace</p>
             <button class="nav-item is-active" type="button" data-route="overview">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -578,12 +582,11 @@
           id="espn-browser-connector"
           class="browser-connector"
           aria-labelledby="browser-connector-heading"
-          hidden
         >
           <div class="browser-connector-heading">
             <div>
-              <p class="section-label">Private or public league</p>
-              <h3 id="browser-connector-heading">Connect in your ESPN browser session</h3>
+              <p class="section-label">Private league</p>
+              <h3 id="browser-connector-heading">Connect securely through ESPN</h3>
             </div>
             <span id="espn-connector-state" class="connector-state is-checking">
               Checking connector
@@ -621,7 +624,7 @@
           </a>
         </section>
 
-        <div id="espn-connection-divider" class="connection-divider" hidden>
+        <div id="espn-connection-divider" class="connection-divider">
           <span>or import a public league</span>
         </div>
         <div class="form-grid">
@@ -701,12 +704,12 @@
       </div>
     </noscript>
 
-    <script src="/fantasy/config.js?v=3" defer></script>
-    <script src="/fantasy/data.js?v=3" defer></script>
-    <script src="/fantasy/trade-engine.js?v=3" defer></script>
-    <script src="/fantasy/espn-client.js?v=3" defer></script>
-    <script src="/fantasy/espn-connector.js?v=3" defer></script>
-    <script src="/fantasy/source-client.js?v=3" defer></script>
-    <script src="/fantasy/app.js?v=3" defer></script>
+    <script src="/fantasy/config.js?v=4" defer></script>
+    <script src="/fantasy/data.js?v=4" defer></script>
+    <script src="/fantasy/trade-engine.js?v=4" defer></script>
+    <script src="/fantasy/espn-client.js?v=4" defer></script>
+    <script src="/fantasy/espn-connector.js?v=4" defer></script>
+    <script src="/fantasy/source-client.js?v=4" defer></script>
+    <script src="/fantasy/app.js?v=4" defer></script>
   </body>
 </html>
