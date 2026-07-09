@@ -3,3 +3,5 @@
 .env.*
 node_modules/
 *.zip
+.aws-sam/
+fantasy-backend/packaged.yaml

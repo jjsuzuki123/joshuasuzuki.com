@@ -1,0 +1,12 @@
+{
+  "name": "rosterlab-espn-import",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "test": "node ../../scripts/fantasy-private-import.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

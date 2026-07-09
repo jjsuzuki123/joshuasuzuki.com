@@ -907,6 +907,8 @@
     leagueId,
     season,
     teamId,
+    espnS2,
+    swid,
     signal,
     timeout,
   }) {
@@ -934,6 +936,8 @@
           leagueId,
           season,
           teamId: teamId || undefined,
+          espnS2: espnS2 || undefined,
+          swid: swid || undefined,
         }),
         signal: controller.signal,
       });
@@ -993,7 +997,7 @@
       });
       if (response.status === 401 || response.status === 403) {
         throw new LeagueImportError(
-          "This league appears to be private. Use Connect with ESPN to sync it.",
+          "This league appears to be private. Use Connect with ESPN or Private league credentials to sync it.",
           "PRIVATE_LEAGUE"
         );
       }
@@ -1023,6 +1027,8 @@
     leagueId,
     season,
     teamId,
+    espnS2,
+    swid,
     signal,
     timeout = 12000,
   }) {
@@ -1031,9 +1037,17 @@
         leagueId,
         season,
         teamId,
+        espnS2,
+        swid,
         signal,
         timeout,
       });
+    }
+    if (espnS2 || swid) {
+      throw new LeagueImportError(
+        "Private league import is not configured in this environment.",
+        "RELAY_NOT_CONFIGURED"
+      );
     }
     return fetchLeagueDirect({
       leagueId,

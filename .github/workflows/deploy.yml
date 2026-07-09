@@ -9,6 +9,10 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -17,16 +21,32 @@ jobs:
       S3_BUCKET: josh-personal-site-1
       CF_DISTRIBUTION_ID: E3LDS3FK17E3JF
       AWS_REGION: us-east-1
+      FANTASY_IMPORT_STACK: rosterlab-fantasy-import-production
+      SAM_ARTIFACT_BUCKET: rosterlab-deploy-artifacts-545095759709-us-east-1
+      SOURCE_ENDPOINT: ${{ vars.ROSTERLAB_SOURCE_ENDPOINT }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@f84ec7d548307efafe33230528756de3c5841a17 # v2
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: arn:aws:iam::545095759709:role/GitHubActionsDeployPersonalSite
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check fantasy backend bootstrap
+        id: fantasy-backend
+        run: |
+          if aws s3api head-bucket --bucket "${SAM_ARTIFACT_BUCKET}" >/dev/null 2>&1; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            echo "Fantasy backend bootstrap is not ready; continuing with static deployment."
+          fi
 
       - name: Validate RosterLab
         run: |
@@ -38,10 +58,59 @@ jobs:
           node --check fantasy/espn-connector.js
           node --check fantasy/source-client.js
           node --check fantasy/trade-engine.js
+          node --check fantasy/football-data.js
+          node --check fantasy/football-value.js
+          node --check fantasy/football-trade.js
+          node --check fantasy/football/app.js
+          node scripts/fantasy-trade-engine.test.js
           node scripts/fantasy-espn-client.test.js
           node scripts/fantasy-espn-connector.test.js
+          node scripts/fantasy-source-client.test.js
+          node scripts/fantasy-private-import.test.js
+          node scripts/fantasy-relay-client.test.js
+          node --test scripts/fantasy-football-trade.test.js
           npm run check --prefix extensions/rosterlab-espn
           npm test --prefix extensions/rosterlab-espn
+
+      - name: Validate fantasy import infrastructure
+        run: |
+          sam validate --lint --template-file fantasy-backend/bootstrap-template.yaml
+          sam validate --lint --template-file fantasy-backend/template.yaml
+
+      - name: Build and package fantasy import relay
+        if: steps.fantasy-backend.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          sam build --template-file fantasy-backend/template.yaml
+          sam package \
+            --template-file .aws-sam/build/template.yaml \
+            --s3-bucket "${SAM_ARTIFACT_BUCKET}" \
+            --s3-prefix "rosterlab" \
+            --output-template-file fantasy-backend/packaged.yaml
+
+      - name: Deploy fantasy import relay
+        if: steps.fantasy-backend.outputs.ready == 'true'
+        run: |
+          sam deploy \
+            --template-file fantasy-backend/packaged.yaml \
+            --stack-name "${FANTASY_IMPORT_STACK}" \
+            --parameter-overrides Environment=production \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Configure fantasy data endpoints
+        run: |
+          set -euo pipefail
+          IMPORT_ENDPOINT=""
+          if [[ "${{ steps.fantasy-backend.outputs.ready }}" == "true" ]]; then
+            IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
+              --stack-name "${FANTASY_IMPORT_STACK}" \
+              --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
+              --output text)"
+          fi
+          IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" \
+            SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
+            node scripts/write-fantasy-config.js
 
       - name: Sync to S3
         run: |
@@ -50,6 +119,7 @@ jobs:
             --exclude ".git/*" \
             --exclude ".github/*" \
             --exclude ".cursor/*" \
+            --exclude ".aws-sam/*" \
             --exclude ".DS_Store" \
             --exclude "deploy.sh" \
             --exclude "debug-pdf-fetch.sh" \
@@ -58,6 +128,8 @@ jobs:
             --exclude "*.zip" \
             --exclude "admin-backend/*" \
             --exclude "extensions/*" \
+            --exclude "fantasy-backend/*" \
+            --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
             --exclude "trust-policy.json"
@@ -68,6 +140,12 @@ jobs:
             --bucket "${S3_BUCKET}" \
             --key "fantasy/" \
             --body "fantasy/index.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+          aws s3api put-object \
+            --bucket "${S3_BUCKET}" \
+            --key "fantasy/football/" \
+            --body "fantasy/football/index.html" \
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "text/html; charset=utf-8"
           aws s3 cp "s3://${S3_BUCKET}/fantasy/config.js" "s3://${S3_BUCKET}/fantasy/config.js" \
@@ -95,9 +173,47 @@ jobs:
           set_cache "index.html"
           set_cache "resume/index.html"
           set_cache "admin/index.html"
+          set_cache "sunset/index.html"
           set_cache "fantasy/index.html"
+          set_cache "fantasy/football/index.html"
+          set_cache "fantasy/connector/index.html"
           set_cache "fantasy/connector/privacy.html"
-        
+
+      - name: Disable caching for runtime configuration
+        run: |
+          aws s3 cp "s3://${S3_BUCKET}/fantasy/config.js" "s3://${S3_BUCKET}/fantasy/config.js" \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "application/javascript; charset=utf-8"
+
+      - name: Publish app route aliases
+        run: |
+          set -euo pipefail
+          for key in "sunset" "sunset/"; do
+            aws s3api put-object \
+              --bucket "${S3_BUCKET}" \
+              --key "${key}" \
+              --body "sunset/index.html" \
+              --cache-control "no-cache, no-store, must-revalidate" \
+              --content-type "text/html; charset=utf-8" >/dev/null
+          done
+          for key in "fantasy" "fantasy/"; do
+            aws s3api put-object \
+              --bucket "${S3_BUCKET}" \
+              --key "${key}" \
+              --body "fantasy/index.html" \
+              --cache-control "no-cache, no-store, must-revalidate" \
+              --content-type "text/html; charset=utf-8" >/dev/null
+          done
+          for key in "fantasy/football" "fantasy/football/"; do
+            aws s3api put-object \
+              --bucket "${S3_BUCKET}" \
+              --key "${key}" \
+              --body "fantasy/football/index.html" \
+              --cache-control "no-cache, no-store, must-revalidate" \
+              --content-type "text/html; charset=utf-8" >/dev/null
+          done
+
       - name: Set PDF metadata (Content-Type + inline display)
         run: |
           set -euo pipefail

@@ -4,8 +4,6 @@
   const engine = window.TradeEngine;
   const demoData = window.FantasyDemoData;
   const espnClient = window.EspnFantasyClient;
-  const espnConnector = window.RosterLabEspnConnector;
-  const appConfig = window.RosterLabConfig || {};
   const sourceClient = window.RosterLabSourceClient;
 
   if (!engine || !demoData || !espnClient || !sourceClient) {
@@ -86,18 +84,16 @@
     refreshSourcesButton: document.getElementById("refresh-sources-button"),
     espnDialog: document.getElementById("espn-dialog"),
     espnForm: document.getElementById("espn-form"),
-    espnBrowserConnector: document.getElementById("espn-browser-connector"),
-    espnConnectionDivider: document.getElementById("espn-connection-divider"),
-    espnBrowserConnect: document.getElementById("espn-browser-connect"),
-    espnBrowserConnectLabel: document.getElementById(
-      "espn-browser-connect-label"
+    leagueVisibilityOptions: document.querySelectorAll(
+      'input[name="leagueVisibility"]'
     ),
-    espnConnectorState: document.getElementById("espn-connector-state"),
-    espnConnectorHelp: document.getElementById("espn-connector-help"),
-    espnConnectorInstall: document.getElementById("espn-connector-install"),
+    privateCredentials: document.getElementById("private-credentials"),
+    privateModeCaption: document.getElementById("private-mode-caption"),
     espnLeagueId: document.getElementById("espn-league-id"),
     espnSeason: document.getElementById("espn-season"),
     espnTeamId: document.getElementById("espn-team-id"),
+    espnS2: document.getElementById("espn-s2"),
+    espnSwid: document.getElementById("espn-swid"),
     espnStatus: document.getElementById("espn-status"),
     espnSubmit: document.getElementById("espn-submit"),
     tradeDialog: document.getElementById("trade-dialog"),
@@ -207,10 +203,6 @@
 
   let toastTimer = null;
   let activeImportController = null;
-  let activeConnectorRequestId = null;
-  let connectorAvailable = false;
-  let connectorProbe = 0;
-  let importBusy = false;
   let activeSourceController = null;
   let inferredEspnSeason = null;
   let inferredEspnTeam = null;
@@ -1815,7 +1807,7 @@
         elements.espnTeamId.value = reference.teamId;
         inferredEspnTeam = reference.teamId;
       }
-      if (!/^\d+$/.test(input)) {
+      if (/espn\.com/i.test(input)) {
         elements.espnStatus.className = "form-status is-success";
         elements.espnStatus.textContent = `Found league ${reference.leagueId}${
           reference.teamId ? `, team ${reference.teamId}` : ""
@@ -1826,102 +1818,80 @@
     }
   }
 
+  function selectedLeagueVisibility() {
+    return (
+      [...elements.leagueVisibilityOptions].find((option) => option.checked)
+        ?.value || "public"
+    );
+  }
+
+  function privateVisibilityOption() {
+    return [...elements.leagueVisibilityOptions].find(
+      (option) => option.value === "private"
+    );
+  }
+
+  function clearEspnCredentials() {
+    elements.espnS2.value = "";
+    elements.espnSwid.value = "";
+    elements.espnS2.setCustomValidity("");
+    elements.espnSwid.setCustomValidity("");
+  }
+
   function setImportBusy(busy) {
-    importBusy = busy;
     elements.espnForm.setAttribute("aria-busy", String(busy));
     [
       elements.espnLeagueId,
       elements.espnSeason,
       elements.espnTeamId,
+      elements.espnS2,
+      elements.espnSwid,
+      ...elements.leagueVisibilityOptions,
     ].forEach((control) => {
       control.disabled = busy;
     });
+    if (!busy && !espnClient.hasImportRelay) {
+      privateVisibilityOption().disabled = true;
+    }
     elements.espnSubmit.disabled = busy;
-    elements.espnBrowserConnect.disabled = busy || !connectorAvailable;
   }
 
-  function setConnectorState(kind, label, helpText) {
-    elements.espnConnectorState.className = `connector-state is-${kind}`;
-    elements.espnConnectorState.textContent = label;
-    if (helpText) elements.espnConnectorHelp.textContent = helpText;
-  }
+  function setLeagueVisibility(visibility, options) {
+    const requestedPrivate = visibility === "private";
+    const isPrivate = requestedPrivate && espnClient.hasImportRelay;
+    elements.leagueVisibilityOptions.forEach((option) => {
+      option.checked = option.value === (isPrivate ? "private" : "public");
+    });
+    elements.privateCredentials.hidden = !isPrivate;
+    elements.espnS2.required = isPrivate;
+    elements.espnSwid.required = isPrivate;
 
-  function configuredConnectorInstallUrl() {
-    const url = safeExternalUrl(appConfig.connectorInstallUrl);
-    return url === "#" ? null : url;
-  }
+    if (!isPrivate) {
+      clearEspnCredentials();
+    }
+    if (requestedPrivate && !espnClient.hasImportRelay) {
+      elements.espnStatus.className = "form-status is-error";
+      elements.espnStatus.textContent =
+        "Private import is not configured in this environment yet.";
+    }
 
-  function applyConnectorAvailability(available) {
-    connectorAvailable = Boolean(available);
-    elements.espnBrowserConnect.disabled = importBusy || !connectorAvailable;
-    const installUrl = configuredConnectorInstallUrl();
-    const showConnector = connectorAvailable || Boolean(installUrl);
-    elements.espnBrowserConnector.hidden = !showConnector;
-    elements.espnConnectionDivider.hidden = !showConnector;
-    elements.espnConnectorInstall.hidden = connectorAvailable || !installUrl;
-    if (installUrl) elements.espnConnectorInstall.href = installUrl;
-
-    if (connectorAvailable) {
-      setConnectorState(
-        "ready",
-        "Connector ready",
-        "ESPN sign-in happens in a separate ESPN tab."
-      );
-    } else {
-      setConnectorState(
-        "missing",
-        "Not installed",
-        installUrl
-          ? "Install the connector, then refresh RosterLab to sync a private league."
-          : "The store-ready connector must be installed before private-league sync."
-      );
+    if (isPrivate && options?.focus) {
+      window.setTimeout(() => elements.espnS2.focus(), 0);
     }
   }
 
-  async function probeBrowserConnector() {
-    const probe = ++connectorProbe;
-    setConnectorState(
-      "checking",
-      "Checking connector",
-      "Looking for the RosterLab browser connector..."
-    );
-    elements.espnBrowserConnect.disabled = true;
-    const available = Boolean(
-      espnConnector && (await espnConnector.ping(800).catch(() => false))
-    );
-    if (probe !== connectorProbe) return;
-    connectorAvailable = available;
-    if (elements.espnDialog.open) applyConnectorAvailability(available);
-  }
-
-  function preferredConnectorLeague() {
-    if (state.data.mode !== "espn") return null;
-    return {
-      leagueId: String(state.data.league.id),
-      season: String(state.data.league.season),
-      teamId: String(state.teamId || ""),
-    };
-  }
-
-  function openEspnDialog(options = {}) {
+  function openEspnDialog() {
     inferredEspnSeason = null;
     inferredEspnTeam = null;
     elements.espnStatus.textContent = "";
     elements.espnStatus.className = "form-status";
-    const installUrl = configuredConnectorInstallUrl();
-    const showConnector = connectorAvailable || Boolean(installUrl);
-    elements.espnBrowserConnector.hidden = !showConnector;
-    elements.espnConnectionDivider.hidden = !showConnector;
+    clearEspnCredentials();
+    privateVisibilityOption().disabled = !espnClient.hasImportRelay;
+    elements.privateModeCaption.textContent = espnClient.hasImportRelay
+      ? "Use your ESPN session for one request"
+      : "Unavailable until the secure relay is deployed";
     setImportBusy(false);
-    if (connectorAvailable) {
-      applyConnectorAvailability(true);
-    } else if (installUrl) {
-      setConnectorState(
-        "checking",
-        "Checking connector",
-        "Looking for the RosterLab browser connector..."
-      );
-    }
+    setLeagueVisibility("public");
     elements.espnLeagueId.value =
       state.data.mode === "espn" ? state.data.league.id : "";
     elements.espnSeason.value = String(
@@ -1929,152 +1899,19 @@
     );
     elements.espnTeamId.value =
       state.data.mode === "espn" ? state.teamId : "";
-    elements.espnBrowserConnectLabel.textContent =
-      state.data.mode === "espn" ? "Sync ESPN now" : "Connect with ESPN";
     elements.espnDialog.showModal();
-    if (options.probe !== false) void probeBrowserConnector();
     window.setTimeout(() => elements.espnLeagueId.focus(), 0);
   }
 
   function closeEspnDialog() {
     importAttempt += 1;
-    connectorProbe += 1;
     if (activeImportController) {
       activeImportController.abort();
       activeImportController = null;
     }
-    if (activeConnectorRequestId && espnConnector) {
-      espnConnector.cancel(activeConnectorRequestId);
-      activeConnectorRequestId = null;
-    }
     setImportBusy(false);
+    clearEspnCredentials();
     if (elements.espnDialog.open) elements.espnDialog.close();
-  }
-
-  function completeEspnImport(league, attempt) {
-    if (attempt !== importAttempt) return;
-    if (!isLeagueData(league)) {
-      throw new Error("The imported league has no usable category data.");
-    }
-
-    state.data = league;
-    state.teamId = String(league.activeTeamId);
-    state.teamStrategies = strategiesForLeague(league);
-    state.lab.partnerTeamId = null;
-    state.lab.sending.clear();
-    state.lab.receiving.clear();
-    resetPlayerSearches();
-    renderAll();
-    let persistenceFailed = false;
-    try {
-      window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(league));
-    } catch (error) {
-      persistenceFailed = true;
-    }
-    elements.espnStatus.className = "form-status is-success";
-    elements.espnStatus.textContent = persistenceFailed
-      ? `Imported ${league.teams.length} teams, but this browser could not save the league.`
-      : `Imported ${league.teams.length} teams and ${league.players.length} players.`;
-    window.setTimeout(() => {
-      if (attempt !== importAttempt) return;
-      if (elements.espnDialog.open) elements.espnDialog.close();
-      if (persistenceFailed) {
-        showToast(
-          `${league.league.name} is connected for this tab, but could not be saved.`
-        );
-      } else {
-        showToast(
-          league.teamSelectionRequired
-            ? `${league.league.name} imported. Choose your team in the lower-left menu.`
-            : `${league.league.name} is now connected.`
-        );
-      }
-    }, 550);
-    if (sourceClient.hasSourceEndpoint) {
-      window.setTimeout(() => refreshSources({ quiet: true }), 0);
-    }
-  }
-
-  function connectorStatusLabel(status) {
-    const labels = {
-      starting: "Connecting",
-      "login-required": "ESPN sign-in",
-      "choose-league": "Choose league",
-      syncing: "Syncing",
-    };
-    return labels[status] || "Connecting";
-  }
-
-  async function connectEspnBrowser() {
-    if (!espnConnector || !connectorAvailable) {
-      elements.espnStatus.className = "form-status is-error";
-      elements.espnStatus.textContent =
-        "Install and enable the RosterLab browser connector first.";
-      return;
-    }
-
-    const attempt = ++importAttempt;
-    const connection = espnConnector.connect({
-      preferredLeague: preferredConnectorLeague(),
-      defaultSeason: elements.espnSeason.value,
-      onStatus(update) {
-        if (attempt !== importAttempt) return;
-        setConnectorState(
-          "busy",
-          connectorStatusLabel(update.status),
-          update.message
-        );
-        elements.espnStatus.className = "form-status";
-        elements.espnStatus.textContent = update.message;
-      },
-    });
-    activeConnectorRequestId = connection.requestId;
-    setImportBusy(true);
-    setConnectorState(
-      "busy",
-      "Connecting",
-      "Checking your current ESPN browser session..."
-    );
-    elements.espnStatus.className = "form-status";
-    elements.espnStatus.textContent =
-      "Opening ESPN. Sign in there if ESPN asks you to.";
-
-    try {
-      const result = await connection.result;
-      if (attempt !== importAttempt) return;
-      const reference = result && result.reference;
-      if (!reference || !reference.leagueId || !result.payload) {
-        throw new Error("The browser connector returned an incomplete league.");
-      }
-      const league = espnClient.parseLeague(result.payload, {
-        leagueId: reference.leagueId,
-        season: reference.season,
-        teamId: reference.teamId,
-      });
-      completeEspnImport(league, attempt);
-    } catch (error) {
-      if (attempt !== importAttempt || error?.code === "CANCELED") return;
-      if (error?.code === "EXTENSION_UNAVAILABLE") {
-        applyConnectorAvailability(false);
-      }
-      elements.espnStatus.className = "form-status is-error";
-      elements.espnStatus.textContent =
-        error instanceof Error
-          ? error.message
-          : "The ESPN browser connection failed.";
-    } finally {
-      if (attempt === importAttempt) {
-        activeConnectorRequestId = null;
-        setImportBusy(false);
-        if (connectorAvailable) {
-          setConnectorState(
-            "ready",
-            "Connector ready",
-            "ESPN sign-in happens in a separate ESPN tab."
-          );
-        }
-      }
-    }
   }
 
   async function importEspnLeague(event) {
@@ -2083,14 +1920,38 @@
     const leagueReference = String(formData.get("leagueId") || "").trim();
     const season = String(formData.get("season") || "").trim();
     const teamId = String(formData.get("teamId") || "").trim();
+    const visibility = selectedLeagueVisibility();
+    const espnS2 =
+      visibility === "private"
+        ? String(formData.get("espnS2") || "").trim()
+        : "";
+    const swid =
+      visibility === "private"
+        ? String(formData.get("swid") || "").trim()
+        : "";
 
     elements.espnStatus.className = "form-status";
     elements.espnLeagueId.setCustomValidity("");
+    if (visibility === "private" && (!espnS2 || !swid)) {
+      clearEspnCredentials();
+      if (!espnS2) {
+        elements.espnS2.setCustomValidity("Paste your espn_s2 value.");
+        elements.espnS2.reportValidity();
+      } else {
+        elements.espnSwid.setCustomValidity("Paste your SWID value.");
+        elements.espnSwid.reportValidity();
+      }
+      elements.espnStatus.className = "form-status is-error";
+      elements.espnStatus.textContent =
+        "Both ESPN session values are required for a private league.";
+      return;
+    }
 
     let leagueId;
     try {
       leagueId = espnClient.parseLeagueReference(leagueReference).leagueId;
     } catch (error) {
+      clearEspnCredentials();
       const message =
         error instanceof Error ? error.message : "Enter a valid ESPN league URL.";
       elements.espnLeagueId.setCustomValidity(message);
@@ -2100,7 +1961,18 @@
       return;
     }
 
-    elements.espnStatus.textContent = "Importing the public league...";
+    if (visibility === "private" && !espnClient.hasImportRelay) {
+      clearEspnCredentials();
+      elements.espnStatus.className = "form-status is-error";
+      elements.espnStatus.textContent =
+        "Private import is not configured in this environment yet.";
+      return;
+    }
+
+    elements.espnStatus.textContent =
+      visibility === "private"
+        ? "Connecting to your private league..."
+        : "Importing your league...";
     sourceRefreshAttempt += 1;
     if (activeSourceController) {
       activeSourceController.abort();
@@ -2116,6 +1988,8 @@
         leagueId,
         season,
         teamId,
+        espnS2,
+        swid,
         signal: controller.signal,
       });
       if (attempt !== importAttempt) return;
@@ -2173,15 +2047,25 @@
       }
       const message =
         error instanceof Error ? error.message : "The ESPN import failed.";
-      if (error?.code === "PRIVATE_LEAGUE") {
+      if (
+        visibility === "public" &&
+        error?.code === "PRIVATE_LEAGUE" &&
+        espnClient.hasImportRelay
+      ) {
+        setLeagueVisibility("private", { focus: true });
         elements.espnStatus.className = "form-status is-error";
         elements.espnStatus.textContent =
-          "Private league detected. Use Connect with ESPN above.";
+          "Private league detected. Paste your ESPN session values to continue.";
+      } else if (error?.code === "PRIVATE_LEAGUE") {
+        elements.espnStatus.className = "form-status is-error";
+        elements.espnStatus.textContent =
+          "This league is private, but the secure import relay is not deployed here.";
       } else {
         elements.espnStatus.className = "form-status is-error";
         elements.espnStatus.textContent = message;
       }
     } finally {
+      clearEspnCredentials();
       if (attempt === importAttempt) {
         activeImportController = null;
         setImportBusy(false);
@@ -2336,18 +2220,9 @@
     if (!actionTarget) return;
     const action = actionTarget.dataset.action;
 
-    if (action === "open-espn") {
-      const directSync =
-        actionTarget.hasAttribute("data-direct-espn-sync") &&
-        state.data.mode === "espn" &&
-        connectorAvailable;
-      openEspnDialog({ probe: !directSync });
-      if (directSync) void connectEspnBrowser();
-    }
+    if (action === "open-espn") openEspnDialog();
     else if (action === "close-espn") closeEspnDialog();
-    else if (action === "connect-espn-browser") {
-      void connectEspnBrowser();
-    } else if (action === "trade-details") {
+    else if (action === "trade-details") {
       openTradeDetails(actionTarget.dataset.opportunityId);
     } else if (action === "close-trade") {
       elements.tradeDialog.close();
@@ -2451,7 +2326,21 @@
     state.market.sort = elements.marketSort.value;
     renderMarket();
   });
+  elements.leagueVisibilityOptions.forEach((option) => {
+    option.addEventListener("change", () => {
+      if (!option.checked) return;
+      elements.espnStatus.className = "form-status";
+      elements.espnStatus.textContent = "";
+      setLeagueVisibility(option.value);
+    });
+  });
   elements.espnLeagueId.addEventListener("input", applyEspnReferenceDetails);
+  elements.espnS2.addEventListener("input", () => {
+    elements.espnS2.setCustomValidity("");
+  });
+  elements.espnSwid.addEventListener("input", () => {
+    elements.espnSwid.setCustomValidity("");
+  });
   elements.espnForm.addEventListener("submit", importEspnLeague);
 
   [elements.espnDialog, elements.tradeDialog].forEach((dialog) => {
@@ -2521,5 +2410,4 @@
       </div>
     `;
   }
-  void probeBrowserConnector();
 })();

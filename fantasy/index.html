@@ -9,7 +9,7 @@
     />
     <meta name="theme-color" content="#f6f7f2" />
     <title>RosterLab | Fantasy baseball trade analysis</title>
-    <link rel="stylesheet" href="/fantasy/styles.css?v=4" />
+    <link rel="stylesheet" href="/fantasy/styles.css?v=5" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -137,8 +137,6 @@
               class="button button-secondary sync-button"
               type="button"
               data-action="open-espn"
-              data-direct-espn-sync
-              data-espn-connector-trigger
               aria-label="Sync ESPN fantasy league"
             >
               <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -536,15 +534,14 @@
                 <p class="section-label">Production boundary</p>
                 <h3 id="connector-heading">How connections are handled</h3>
                 <ul>
-                  <li>The browser connector reuses an ESPN session without reading its cookies.</li>
-                  <li>Your ESPN password, verification codes, and session values stay on ESPN.</li>
+                  <li>Private ESPN requests pass through a stateless, rate-limited relay.</li>
                   <li>Projection and news feeds enter through one versioned, normalized endpoint.</li>
                   <li>RotoWire data is accepted only when the endpoint marks it as licensed.</li>
                   <li>Every provider record carries an update time, confidence, and provenance.</li>
                 </ul>
                 <p>
-                  Imported league data stays on your device. The connector returns ESPN league data
-                  directly to this page; licensed evidence still uses the normalized source endpoint.
+                  Imported league data stays on your device. Private ESPN session values are used
+                  for one request and are never written to application storage or logs.
                 </p>
                 <button class="button button-secondary" type="button" data-action="reset-demo">
                   Restore demo league
@@ -575,61 +572,31 @@
 
         <p class="modal-intro">
           Import team names, rosters, standings, ownership, and available ESPN projections. Your
-          league can use standard or custom category scoring.
+          league can use standard or custom category scoring. Public leagues need only a URL;
+          private leagues also use one-time ESPN session values.
         </p>
 
-        <section
-          id="espn-browser-connector"
-          class="browser-connector"
-          aria-labelledby="browser-connector-heading"
-        >
-          <div class="browser-connector-heading">
-            <div>
-              <p class="section-label">Private league</p>
-              <h3 id="browser-connector-heading">Connect securely through ESPN</h3>
-            </div>
-            <span id="espn-connector-state" class="connector-state is-checking">
-              Checking connector
+        <fieldset class="connection-mode">
+          <legend class="sr-only">ESPN league visibility</legend>
+          <label>
+            <input type="radio" name="leagueVisibility" value="public" checked />
+            <span>
+              <strong>Public league</strong>
+              <small>No ESPN session values needed</small>
             </span>
-          </div>
-          <p>
-            RosterLab opens ESPN in another tab. Sign in there and choose your baseball league.
-            Your ESPN credentials never enter RosterLab.
-          </p>
-          <button
-            id="espn-browser-connect"
-            class="button button-primary browser-connect-button"
-            type="button"
-            data-action="connect-espn-browser"
-            data-espn-connector-trigger
-            disabled
-          >
-            <span id="espn-browser-connect-label">Connect with ESPN</span>
-            <svg viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10h12M11 5l5 5-5 5"></path>
-            </svg>
-          </button>
-          <p id="espn-connector-help" class="browser-connector-help">
-            The RosterLab connector supports Chrome and Edge on desktop.
-          </p>
-          <a
-            id="espn-connector-install"
-            class="connector-install-link"
-            href="#"
-            target="_blank"
-            rel="noreferrer"
-            hidden
-          >
-            Install the browser connector
-          </a>
-        </section>
+          </label>
+          <label>
+            <input type="radio" name="leagueVisibility" value="private" />
+            <span>
+              <strong>Private league</strong>
+              <small id="private-mode-caption">Use your ESPN session for one request</small>
+            </span>
+          </label>
+        </fieldset>
 
-        <div id="espn-connection-divider" class="connection-divider">
-          <span>or import a public league</span>
-        </div>
         <div class="form-grid">
           <label class="field field-wide">
-            Public league URL or ID
+            League URL or ID
             <input
               id="espn-league-id"
               name="leagueId"
@@ -640,7 +607,8 @@
               required
             />
             <small>
-              Private leagues require the browser connector above.
+              Paste any page URL from your league. RosterLab will read the league, team, and
+              season IDs when they are present.
             </small>
           </label>
           <label class="field">
@@ -667,15 +635,59 @@
           </label>
         </div>
 
+        <div id="private-credentials" class="private-credentials" hidden>
+          <div class="private-credentials-heading">
+            <div>
+              <p class="section-label">One-request ESPN session</p>
+              <h3>Connect using your existing ESPN session</h3>
+            </div>
+            <span>Not saved by RosterLab</span>
+          </div>
+          <div class="form-grid">
+            <label class="field field-wide">
+              espn_s2
+              <input
+                id="espn-s2"
+                name="espnS2"
+                type="password"
+                maxlength="8192"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Paste the espn_s2 cookie value"
+              />
+            </label>
+            <label class="field field-wide">
+              SWID
+              <input
+                id="espn-swid"
+                name="swid"
+                type="password"
+                maxlength="160"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}"
+              />
+            </label>
+          </div>
+          <details class="credential-help">
+            <summary>Where do I find these values?</summary>
+            <ol>
+              <li>Sign in at ESPN and open your fantasy league.</li>
+              <li>Open browser developer tools, then Application or Storage.</li>
+              <li>Under Cookies for <code>espn.com</code>, copy <code>espn_s2</code> and <code>SWID</code>.</li>
+            </ol>
+          </details>
+        </div>
+
         <div class="privacy-note">
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <rect x="4" y="8" width="12" height="9" rx="2"></rect>
             <path d="M7 8V6a3 3 0 0 1 6 0v2"></path>
           </svg>
           <p>
-            RosterLab never asks for your ESPN password. Public imports send only league
-            coordinates to the relay. When installed, the browser connector uses ESPN's existing
-            session without reading cookie values. Imported league data stays in this browser.
+            RosterLab never asks for your ESPN password. Private session values go once to the
+            import relay over HTTPS and are not saved by RosterLab. ESPN may keep them valid after
+            import, so treat them like passwords and use them only on a device you trust.
           </p>
         </div>
 
@@ -683,7 +695,7 @@
         <div class="modal-actions">
           <button class="button button-quiet" type="button" data-action="close-espn">Cancel</button>
           <button id="espn-submit" class="button button-primary" type="submit">
-            Import public league
+            Import league
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M4 10h12M11 5l5 5-5 5"></path>
             </svg>
@@ -704,12 +716,11 @@
       </div>
     </noscript>
 
-    <script src="/fantasy/config.js?v=4" defer></script>
-    <script src="/fantasy/data.js?v=4" defer></script>
-    <script src="/fantasy/trade-engine.js?v=4" defer></script>
-    <script src="/fantasy/espn-client.js?v=4" defer></script>
-    <script src="/fantasy/espn-connector.js?v=4" defer></script>
-    <script src="/fantasy/source-client.js?v=4" defer></script>
-    <script src="/fantasy/app.js?v=4" defer></script>
+    <script src="/fantasy/config.js?v=2" defer></script>
+    <script src="/fantasy/data.js?v=2" defer></script>
+    <script src="/fantasy/trade-engine.js?v=2" defer></script>
+    <script src="/fantasy/espn-client.js?v=2" defer></script>
+    <script src="/fantasy/source-client.js?v=2" defer></script>
+    <script src="/fantasy/app.js?v=2" defer></script>
   </body>
 </html>

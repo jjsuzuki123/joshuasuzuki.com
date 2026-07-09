@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Stateless ESPN fantasy league import relay for RosterLab
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://joshuasuzuki.com,https://www.joshuasuzuki.com
+  ExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::545095759709:role/rosterlab-espn-import-production
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/rosterlab-espn-import-[a-z0-9-]+$
+
+Resources:
+  ImportApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/rosterlab-espn-import-${Environment}
+      RetentionInDays: 7
+
+  ImportApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowHeaders:
+          - Content-Type
+        AllowMethods:
+          - POST
+          - OPTIONS
+        MaxAge: 300
+      AccessLogSettings:
+        DestinationArn: !GetAtt ImportApiAccessLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 2
+        ThrottlingRateLimit: 1
+      FailOnWarnings: true
+
+  ImportFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - ImportFunctionLogGroup
+    Properties:
+      FunctionName: !Sub rosterlab-espn-import-${Environment}
+      Description: Fetches one ESPN league without storing session values
+      CodeUri: import-league/
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: 2
+      Role: !Ref ExecutionRoleArn
+      Environment:
+        Variables:
+          ALLOWED_ORIGINS: !Join [",", !Ref AllowedOrigins]
+      LoggingConfig:
+        ApplicationLogLevel: ERROR
+        LogFormat: JSON
+        SystemLogLevel: WARN
+      Events:
+        ImportLeague:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ImportApi
+            Path: /league/import
+            Method: POST
+
+  ImportFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/rosterlab-espn-import-${Environment}
+      RetentionInDays: 7
+
+  ImportFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rosterlab-espn-import-${Environment}-errors
+      AlarmDescription: RosterLab ESPN import Lambda errors
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ImportFunction
+
+  ImportFunctionThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rosterlab-espn-import-${Environment}-throttles
+      AlarmDescription: RosterLab ESPN import Lambda throttles
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: Throttles
+      Namespace: AWS/Lambda
+      Period: 300
+      Statistic: Sum
+      Threshold: 5
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ImportFunction
+
+  ImportApiServerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rosterlab-espn-import-${Environment}-api-5xx
+      AlarmDescription: RosterLab ESPN import API 5xx responses
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: 5xx
+      Namespace: AWS/ApiGateway
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref ImportApi
+        - Name: Stage
+          Value: !Ref Environment
+
+Outputs:
+  ImportEndpoint:
+    Description: RosterLab league import endpoint
+    Value: !Sub https://${ImportApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}/league/import
