@@ -7,25 +7,30 @@
 
 ## Current phase
 
-Phase 1: Research and Selection — IN PROGRESS
+Phase 1: COMPLETE (pick made, pending operator ratification HA-001) → Phase 2: Build — STARTING
 
 ## Where things stand
 
-- Session 1 just started. Continuity files created.
-- Operator context confirmed from resume in repo root (`AE Resume - 2026.docx.pdf`):
-  Joshua Suzuki, Mid-Market AE at Fastly (NYC), sells CDN/WAF/edge compute using MEDDPICC,
-  192% attainment, writes enablement docs. Strong fit for sales-tooling or dev-adjacent niches.
-- Candidate research not yet started.
+- Phase 1 done: 14 candidates researched with live web evidence, scored on the weighted
+  rubric, full memo in RESEARCH.md.
+- **Pick: SiteRamp (working name)** — automated accessibility scanner + scheduled monitoring
+  + white-label client-ready reports, for freelance web designers/devs and 1–10-person
+  agencies. Flat subscription ~$29–49/mo. Decision + steelman in DECISIONS.md D-003.
+- Runner-up/fallback: mutual-action-plan tool for individual AEs (C2 in RESEARCH.md).
+- Operator context confirmed from resume in repo root: Joshua Suzuki, Mid-Market AE at
+  Fastly (NYC), sells CDN/WAF/edge security, MEDDPICC. Used in scoring.
 
 ## In progress
 
-- Generating and researching 12+ candidate problems with verified demand evidence (web searches this session).
+- Phase 2: writing SPEC.md, then building the app in `business/app/`.
 
 ## Next 3 concrete actions
 
-1. Run web research on each candidate: competitor pricing pages, public complaints, distribution channels. Log evidence with URLs in RESEARCH.md.
-2. Score all candidates on the rubric (demand evidence, gap clarity, build simplicity, support burden, operator advantage, time to first dollar).
-3. Write recommendation memo (top pick + strongest case against), record in DECISIONS.md, then start Phase 2 SPEC.md.
+1. Write SPEC.md (MVP definition, cut list, data model, error-handling strategy).
+2. Scaffold app: Node 22 + TypeScript + Fastify + server-rendered views + SQLite; Playwright
+   + axe-core scan engine with page caps; tests with vitest.
+3. Build features in order: auth → sites CRUD → scan engine → report rendering → scheduling
+   → billing adapter → hostile-user QA pass. Commit after each.
 
 ## File map
 
