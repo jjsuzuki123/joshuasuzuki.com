@@ -71,3 +71,13 @@ and mark dependent steps "blocked on human."
 ### HA-011 · Green-light launch (public actions gate) — BLOCKED until HA-003…HA-010 done
 - **What:** Say go. Then: I finalize production QA (LAUNCH.md §5 step 11), and you start posting the Week-1 content from OPERATIONS.md under your name.
 - **Tell me:** "Launch."
+
+### HA-012 · Check your employment agreement's side-project clause — PENDING
+- **What:** Before Day-1 content goes out under your name, confirm your employer's IP/moonlighting policy permits an unrelated side business (accessibility tooling doesn't compete with CDN/edge, but the paper matters). The marketing drafts never name your employer.
+- **Time:** ~20 minutes of reading (or one HR question).
+- **Tell me:** "Clear" or any constraints — content and attribution can be adjusted (e.g., brand-first instead of person-first distribution).
+
+### HA-013 · Off-server backup copy — PENDING (after first paying customer)
+- **What:** The VPS makes nightly local backups automatically. Add an off-server copy: simplest is an `rclone` cron to any object storage (Cloudflare R2 free tier works) — I'll give exact commands once you pick a provider; or even a weekly `scp` to your laptop.
+- **Time:** ~20 minutes.
+- **Tell me:** "Backups off-server."
