@@ -1,0 +1,53 @@
+{% extends "layout.njk" %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="card">
+  <h2 style="margin-top:0">Report branding</h2>
+  <p class="muted">Applied to every PDF and shared report — your clients see your brand, not ours.</p>
+  <form method="post" action="/settings/branding" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <div class="form-row">
+      <div>
+        <label for="agency_name">Agency / business name</label>
+        <input type="text" id="agency_name" name="agency_name" value="{{ user.agency_name }}" maxlength="120" placeholder="Suzuki Web Studio">
+      </div>
+      <div style="flex:0 0 auto">
+        <label for="accent_color">Accent color</label>
+        <input type="color" id="accent_color" name="accent_color" value="{{ user.accent_color }}">
+      </div>
+    </div>
+    <label for="logo">Logo (PNG or JPEG, under 1&nbsp;MB)</label>
+    {% if user.logo_path %}
+      <p><img src="/uploads/logos/{{ user.logo_path }}" alt="Current logo" style="max-height:60px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff"></p>
+      <p><label style="font-weight:400;display:inline-flex;gap:.4rem;align-items:center"><input type="checkbox" name="remove_logo" value="1" style="width:auto"> Remove current logo</label></p>
+    {% endif %}
+    <input type="file" id="logo" name="logo" accept="image/png,image/jpeg">
+    <p><button class="btn btn-primary" type="submit">Save branding</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Password</h2>
+  <form method="post" action="/settings/password">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <label for="current_password">Current password</label>
+    <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+    <label for="new_password">New password</label>
+    <input type="password" id="new_password" name="new_password" required minlength="10" autocomplete="new-password">
+    <p><button class="btn btn-secondary" type="submit">Change password</button></p>
+  </form>
+</div>
+
+<div class="card danger-zone">
+  <h2 style="margin-top:0">Delete account</h2>
+  <p class="muted">Deletes your account, sites, scans, reports, and logo immediately and permanently.
+  {% if billingEnabled %}If you have an active subscription, cancel it first via <a href="/billing">Billing → Manage billing</a>.{% endif %}</p>
+  <form method="post" action="/settings/delete-account" data-confirm="Permanently delete this account and all its data?">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <label for="confirm_email">Type your account email to confirm</label>
+    <input type="email" id="confirm_email" name="confirm_email" placeholder="{{ user.email }}" required>
+    <p><button class="btn btn-danger" type="submit">Delete my account</button></p>
+  </form>
+</div>
+{% endblock %}

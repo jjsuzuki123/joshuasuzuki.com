@@ -1,0 +1,98 @@
+{% extends "layout.njk" %}
+{% block content %}
+<p><a href="/dashboard">← All sites</a></p>
+<div class="report-header">
+  <div>
+    <h1>{{ site.name }}</h1>
+    <p class="muted">{{ site.start_url }}</p>
+  </div>
+  <div class="report-actions">
+    <form method="post" action="/sites/{{ site.id }}/scan" class="inline-form">
+      <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+      <button class="btn btn-primary" type="submit" {% if hasActiveScan %}disabled{% endif %}>
+        {% if hasActiveScan %}Scan in progress…{% else %}Run scan now{% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+
+{% if robotsBlocked %}
+  <div class="card" style="border-color:#fcd34d;background:#fffbeb">
+    <h3>This site's robots.txt asks crawlers to stay away</h3>
+    <p>{{ brand }} respects that by default. If you own or manage this site (you almost
+    certainly do — that's what {{ brand }} is for), confirm below and scans will proceed.</p>
+    <form method="post" action="/sites/{{ site.id }}/robots-override">
+      <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+      <button class="btn btn-secondary" type="submit">I own or manage this site — scan it</button>
+    </form>
+  </div>
+{% endif %}
+
+<div class="card">
+  <h3>Settings</h3>
+  <form method="post" action="/sites/{{ site.id }}/update">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <div class="form-row">
+      <div>
+        <label for="name">Label</label>
+        <input type="text" id="name" name="name" value="{{ site.name }}" maxlength="120" required>
+      </div>
+      <div>
+        <label for="schedule">Automatic monitoring</label>
+        <select id="schedule" name="schedule">
+          <option value="off" {% if site.schedule == 'off' %}selected{% endif %}>Off — manual scans only</option>
+          <option value="weekly" {% if site.schedule == 'weekly' %}selected{% endif %}>Weekly rescan</option>
+          <option value="monthly" {% if site.schedule == 'monthly' %}selected{% endif %}>Monthly rescan</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto">
+        <button class="btn btn-secondary" type="submit">Save</button>
+      </div>
+    </div>
+    <p class="field-help">Scans check up to {{ pageLimit }} pages on your plan.
+      {% if emailEnabled %}Scheduled scans email you when new issues appear.{% else %}Email alerts activate once outbound email is configured on this installation.{% endif %}</p>
+  </form>
+</div>
+
+<h2>Scan history</h2>
+{% if scans.length == 0 %}
+  <div class="empty-state"><p>No scans yet. Run the first one from the button above — it usually takes a minute or two.</p></div>
+{% else %}
+  <div class="card">
+    <table class="table">
+      <thead><tr><th>When</th><th>Status</th><th>Score</th><th>Pages</th><th>Changes</th><th></th></tr></thead>
+      <tbody>
+        {% for scan in scans %}
+        <tr>
+          <td>{{ scan.created_at | datetime }}<br><small class="muted">{{ scan.trigger_kind }}</small></td>
+          <td>
+            {% if scan.status == 'done' %}<span class="badge badge-ok">done</span>
+            {% elif scan.status == 'failed' %}<span class="badge badge-failed">failed</span>
+            {% else %}<span class="badge badge-queued">{{ scan.status }}</span>{% endif %}
+          </td>
+          <td>{% if scan.status == 'done' %}<span class="score-pill"><span class="score-grade grade-{{ scan.grade }}">{{ scan.grade }}</span> {{ scan.score }}</span>{% else %}—{% endif %}</td>
+          <td>{% if scan.status == 'done' %}{{ scan.pages_crawled - scan.pages_failed }} ok{% if scan.pages_failed > 0 %}, {{ scan.pages_failed }} failed{% endif %}{% else %}—{% endif %}</td>
+          <td>
+            {% if scan.status == 'done' %}
+              {% if scan.new_issue_count > 0 %}<span class="badge badge-serious">+{{ scan.new_issue_count }} new</span>{% endif %}
+              {% if scan.resolved_issue_count > 0 %}<span class="badge badge-ok">−{{ scan.resolved_issue_count }} fixed</span>{% endif %}
+              {% if scan.new_issue_count == 0 and scan.resolved_issue_count == 0 %}<span class="muted">no change</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td><a class="btn btn-secondary btn-sm" href="/scans/{{ scan.id }}">{% if scan.status == 'done' %}Report{% else %}View{% endif %}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+<div class="card danger-zone">
+  <h3>Remove this site</h3>
+  <p class="muted">Deletes the site and all its scan history immediately. Share links stop working.</p>
+  <form method="post" action="/sites/{{ site.id }}/delete" data-confirm="Delete {{ site.name }} and all its scan history? This cannot be undone.">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <button class="btn btn-danger" type="submit">Delete site</button>
+  </form>
+</div>
+{% endblock %}

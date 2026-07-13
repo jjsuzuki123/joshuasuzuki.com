@@ -1,0 +1,31 @@
+{# Reusable issue listing. Expects `vm` (ReportViewModel) in context. #}
+{% macro issueGroups(vm, showSnippets=true) %}
+  {% for impactBlock in vm.groupsByImpact %}
+    <h3 style="text-transform:capitalize">{{ impactBlock.impact }} issues</h3>
+    {% for group in impactBlock.groups %}
+      <details class="issue-group" {% if impactBlock.impact == 'critical' or impactBlock.impact == 'serious' %}open{% endif %}>
+        <summary>
+          <span class="badge badge-{{ group.impact }}">{{ group.impact }}</span>
+          {{ group.title }}
+          <small class="muted">({{ group.totalCount }} instance{% if group.totalCount != 1 %}s{% endif %} on {{ group.pages.length }} page{% if group.pages.length != 1 %}s{% endif %})</small>
+        </summary>
+        <div class="issue-group-body">
+          <p><strong>Why it matters:</strong> {{ group.why }}</p>
+          <p><strong>How to fix it:</strong> {{ group.fix }}</p>
+          {% if group.helpUrl %}<p><a href="{{ group.helpUrl }}" rel="noopener noreferrer">Full guideline reference ↗</a>
+            {% if group.wcagTags.length > 0 %}<small class="muted"> · {{ group.wcagTags | join(', ') }}</small>{% endif %}</p>{% endif %}
+          <ul class="issue-pages">
+            {% for page in group.pages %}
+              <li>
+                <strong>{{ page.url | pathOf }}</strong> — {{ page.count }} instance{% if page.count != 1 %}s{% endif %}
+                {% if showSnippets and page.sampleSnippet %}
+                  <div class="snippet">{{ page.sampleSnippet | truncate(300) }}</div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </details>
+    {% endfor %}
+  {% endfor %}
+{% endmacro %}

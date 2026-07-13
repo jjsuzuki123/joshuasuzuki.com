@@ -1,0 +1,15 @@
+{% extends "layout.njk" %}
+{% block content %}
+<div class="card" style="max-width:440px;margin:2rem auto">
+  <h1>Choose a new password</h1>
+  {% if error %}<div class="form-error" role="alert">{{ error }} <a href="/forgot-password">Request a new link</a>.</div>{% endif %}
+  <form method="post" action="/reset-password">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <label for="password">New password</label>
+    <input type="password" id="password" name="password" required minlength="10" autocomplete="new-password">
+    <p class="field-help">At least 10 characters. All other devices will be logged out.</p>
+    <p><button class="btn btn-primary" type="submit" style="width:100%">Set password &amp; log in</button></p>
+  </form>
+</div>
+{% endblock %}

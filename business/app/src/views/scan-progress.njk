@@ -1,0 +1,17 @@
+{% extends "layout.njk" %}
+{% block content %}
+<p><a href="/sites/{{ site.id }}">← {{ site.name }}</a></p>
+<div class="card progress-wrap" data-scan-poll="{{ scan.id }}">
+  <div class="spinner" aria-hidden="true"></div>
+  <h1>Scanning {{ site.name }}</h1>
+  <p id="scan-status-line" class="muted">
+    {% if scan.status == 'queued' %}
+      Waiting in queue{% if queuePosition > 1 %} (position {{ queuePosition }}){% endif %}…
+    {% else %}
+      Scanning pages…
+    {% endif %}
+  </p>
+  <p class="muted">This usually takes one to three minutes depending on the site.
+  This page refreshes itself — or <a href="/scans/{{ scan.id }}">reload manually</a>.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "layout.njk" %}
+{% block content %}
+<h1>Your sites</h1>
+<p class="muted">{{ sites.length }} of {{ siteLimit }} sites on your plan.</p>
+
+<div class="card">
+  <h3>Add a website</h3>
+  <form method="post" action="/sites">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <div class="form-row">
+      <div>
+        <label for="url">Website address</label>
+        <input type="text" id="url" name="url" placeholder="https://client-site.com" required>
+      </div>
+      <div>
+        <label for="name">Label <span class="muted">(optional)</span></label>
+        <input type="text" id="name" name="name" placeholder="Acme Bakery" maxlength="120">
+      </div>
+      <div style="flex:0 0 auto">
+        <button class="btn btn-primary" type="submit">Add site</button>
+      </div>
+    </div>
+    <p class="field-help">Public pages only — no logins, no code snippet to install.</p>
+  </form>
+</div>
+
+{% if sites.length == 0 %}
+  <div class="empty-state">
+    <p><strong>No sites yet.</strong></p>
+    <p>Add the first website you'd like to check — yours is a fine test subject.</p>
+  </div>
+{% else %}
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr><th>Site</th><th>Last scan</th><th>Score</th><th>Issues</th><th>Monitoring</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for site in sites %}
+        <tr>
+          <td>
+            <a href="/sites/{{ site.id }}"><strong>{{ site.name }}</strong></a><br>
+            <small class="muted">{{ site.origin | hostname }}</small>
+          </td>
+          <td>
+            {% if site.latestScan %}
+              {% if site.latestScan.status == 'done' %}{{ site.latestScan.finished_at | datetime }}
+              {% elif site.latestScan.status == 'failed' %}<span class="badge badge-failed">failed</span>
+              {% else %}<span class="badge badge-queued">{{ site.latestScan.status }}</span>{% endif %}
+            {% else %}<span class="muted">never</span>{% endif %}
+          </td>
+          <td>
+            {% if site.latestScan and site.latestScan.status == 'done' %}
+              <span class="score-pill"><span class="score-grade grade-{{ site.latestScan.grade }}">{{ site.latestScan.grade }}</span> {{ site.latestScan.score }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if site.latestScan and site.latestScan.status == 'done' %}
+              {% set c = site.latestScan.critical_count %}{% set s = site.latestScan.serious_count %}
+              {% if c > 0 %}<span class="badge badge-critical">{{ c }} critical</span>{% endif %}
+              {% if s > 0 %}<span class="badge badge-serious">{{ s }} serious</span>{% endif %}
+              {% if c == 0 and s == 0 %}<span class="badge badge-ok">clean</span>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>{% if site.schedule == 'off' %}<span class="muted">off</span>{% else %}{{ site.schedule }}{% endif %}</td>
+          <td><a class="btn btn-secondary btn-sm" href="/sites/{{ site.id }}">Open</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}
