@@ -246,6 +246,9 @@ Resources:
           REQUESTS_TABLE: !Ref RequestsTable
           CONFIG_SECRET_NAME: !Sub rsvp-sniper-${Environment}
           NOTIFICATIONS_TOPIC_ARN: !Ref NotificationsTopic
+          # Writable cache for impers in case it ever needs to stage the
+          # curl-impersonate lib; the image already bundles it at /usr/local/lib.
+          IMPER_CACHE_DIR: /tmp/impers-cache
 
   SniperFunctionErrorAlarm:
     Type: AWS::CloudWatch::Alarm

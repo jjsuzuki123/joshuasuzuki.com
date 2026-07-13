@@ -183,6 +183,7 @@ function buildRecord(input, { id, nowMs }) {
       : true,
     resyVenueId: input.resyVenueId || restaurant?.resyVenueId || null,
     resySlug: input.resySlug || restaurant?.resySlug || null,
+    bookingUrl: restaurant?.bookingUrl || null,
     diningDate: input.diningDate,
     partySize: input.partySize,
     window: { earliest: input.earliest, latest: input.latest },
