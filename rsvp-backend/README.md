@@ -31,9 +31,26 @@ before, and fires a Resy booking at the exact release millisecond.
   the sniper ~90 seconds early.
 - **Sniper** (`sniper/`, container image): on wake it authenticates, pre-warms
   the connection, measures its clock offset + RTT against Resy, then busy-waits
-  and fires `find -> details -> book` at the exact release millisecond, ranking
-  in-window slots and falling back across candidates on a race. Writes the
-  outcome to DynamoDB and notifies via SNS.
+  and fires at the exact release millisecond. Writes the outcome to DynamoDB and
+  notifies via SNS.
+
+### Modes (per snipe)
+
+Each snipe chooses how it behaves at the drop:
+
+- **Notify (default, lower risk):** read-only. It watches for availability in
+  your window and, the moment a table appears, alerts you (SMS/email) with the
+  times and a booking link so you tap "book" yourself. No automated booking, so
+  it avoids the riskiest action against Resy's ToS.
+- **Auto-book (opt-in):** fires a short bounded burst of `find -> details ->
+  book` at the drop, ranking in-window slots and falling back across candidates
+  on a race. Turn this on per restaurant once you trust it.
+
+Neither mode is a persistent scraper: the job sleeps until ~90s before the known
+drop, works only within a short bounded window, then exits. Auto-book keeps that
+window especially short since booking is the risk-bearing action; notify makes
+calmer read-only checks over a slightly longer bounded window and stops the
+instant a table shows up.
 
 ### Beating bot detection
 

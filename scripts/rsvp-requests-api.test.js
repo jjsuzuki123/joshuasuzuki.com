@@ -25,11 +25,38 @@ function run() {
   const polo = restaurants.find((r) => r.slug === "the-polo-bar");
   assert.equal(polo.autoBook, false, "phone-only venue is not auto-bookable");
 
+  // --- autobook mode is honored for a Resy venue, but clamped to notify for a
+  //     venue that can't be auto-booked (phone-only) ---
+  const autoOnResy = model.buildRecord(
+    model.validateRequestBody(baseBody({ mode: "autobook" })).value,
+    { id: "auto-1", nowMs: Date.parse("2026-06-01T12:00:00Z") }
+  );
+  assert.equal(autoOnResy.record.mode, "autobook");
+  const autoOnPhone = model.buildRecord(
+    model.validateRequestBody(baseBody({ restaurantSlug: "the-polo-bar", mode: "autobook" })).value,
+    { id: "auto-2", nowMs: Date.parse("2026-06-01T12:00:00Z") }
+  );
+  assert.equal(
+    autoOnPhone.record.mode,
+    "notify",
+    "auto-book clamps to notify when the venue can't be auto-booked"
+  );
+
   // --- validation: happy path ---
   const ok = model.validateRequestBody(baseBody());
   assert.equal(ok.error, undefined);
   assert.equal(ok.value.partySize, 2);
   assert.equal(ok.value.bestInWindow, true, "defaults to best-in-window");
+  assert.equal(ok.value.mode, "notify", "defaults to notify mode");
+  assert.equal(
+    model.validateRequestBody(baseBody({ mode: "autobook" })).value.mode,
+    "autobook"
+  );
+  assert.equal(
+    model.validateRequestBody(baseBody({ mode: "garbage" })).value.mode,
+    "notify",
+    "unknown mode falls back to notify"
+  );
 
   // --- validation: bad inputs ---
   assert.match(model.validateRequestBody(baseBody({ diningDate: "nope" })).error, /diningDate/);
@@ -54,6 +81,7 @@ function run() {
   assert.equal(built.error, undefined);
   assert.equal(built.record.restaurantName, "Carbone");
   assert.equal(built.record.status, "scheduled");
+  assert.equal(built.record.mode, "notify", "record defaults to notify mode");
   // Carbone: 30 days out at 10:00 ET => dining 2026-08-10 opens 2026-07-11 14:00Z.
   assert.equal(built.record.releaseAt, "2026-07-11T14:00:00.000Z");
   // Wake is 90s before release.

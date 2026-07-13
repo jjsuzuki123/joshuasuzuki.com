@@ -122,6 +122,9 @@ async function run() {
   assert.equal(built.record.restaurantName, "Carbone");
   assert.equal(built.record.resySlug, "carbone");
   const record = built.record;
+  // This end-to-end test exercises the full booking path, so force auto-book
+  // (new snipes default to notify).
+  record.mode = "autobook";
   // Drop opens 5s into the run.
   const releaseAtMs = T0 + 5_000;
   record.releaseEpochMs = releaseAtMs;
@@ -148,6 +151,7 @@ async function run() {
   const outcome = await runSnipe({
     record,
     client,
+    mode: "autobook",
     clock: null,
     venueId,
     paymentMethodId,
@@ -171,6 +175,49 @@ async function run() {
   assert.ok(transport.calls.find >= 2, "fired before the drop and polled through it");
 
   await client.close();
+
+  // ---- Scenario 2: notify mode watches read-only and never books ----
+  {
+    const clock2 = virtualClock(T0);
+    const built2 = model.buildRecord(
+      model.validateRequestBody({
+        restaurantSlug: "carbone",
+        diningDate: "2026-08-10",
+        partySize: 2,
+        earliest: "19:00",
+        latest: "21:00",
+        mode: "notify",
+      }).value,
+      { id: "e2e-2", nowMs: T0 }
+    );
+    assert.equal(built2.record.mode, "notify");
+    const record2 = built2.record;
+    const releaseAtMs2 = T0 + 5_000;
+    record2.releaseEpochMs = releaseAtMs2;
+
+    const transport2 = fakeResy({ clock: clock2, releaseAtMs: releaseAtMs2, venueId, venueName: "Carbone" });
+    const client2 = createResyClient({ transport: transport2, authToken: "tok" });
+
+    const outcome2 = await runSnipe({
+      record: record2,
+      client: client2,
+      mode: "notify",
+      clock: null,
+      venueId,
+      deps: { now: clock2.now, sleep: clock2.sleep },
+      config: { pollIntervalMs: 300, jitterMs: 0, maxPollMs: 30_000, preReleaseLeadMs: 250 },
+    });
+
+    assert.equal(outcome2.status, "available", `expected available, got ${outcome2.status}`);
+    assert.equal(outcome2.bookAttempts, 0);
+    assert.equal(transport2.calls.details, 0, "notify never calls details");
+    assert.equal(transport2.calls.book, 0, "notify never books");
+    // In-window slots reported, ranked by proximity to the 20:00 midpoint; with
+    // no seating preference the dead-center 20:00 slot leads.
+    assert.equal(outcome2.slots[0].time, "20:00");
+    await client2.close();
+  }
+
   console.log("RSVP end-to-end integration test passed.");
 }
 

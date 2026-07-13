@@ -221,12 +221,14 @@
   // ---- Create snipe ----
   function buildPayload() {
     const restaurant = selectedRestaurant();
+    const modeInput = document.querySelector('input[name="mode"]:checked');
     const payload = {
       diningDate: document.getElementById("diningDate").value,
       partySize: Number(document.getElementById("partySize").value),
       earliest: document.getElementById("earliest").value,
       latest: document.getElementById("latest").value,
       bestInWindow: document.getElementById("bestInWindow").checked,
+      mode: modeInput ? modeInput.value : "notify",
     };
     const seating = document.getElementById("seatingPreference").value.trim();
     if (seating) payload.seatingPreference = seating;
@@ -279,6 +281,8 @@
         document.getElementById("earliest").value = "19:00";
         document.getElementById("latest").value = "21:00";
         document.getElementById("bestInWindow").checked = true;
+        const notifyRadio = document.querySelector('input[name="mode"][value="notify"]');
+        if (notifyRadio) notifyRadio.checked = true;
         updateFormForSelection();
         await loadRequests();
       } catch (err) {
@@ -324,6 +328,12 @@
       const slot = item.result.slot;
       return `Booked ${slot?.time || ""}${slot?.seatingType ? ` · ${slot.seatingType}` : ""} · #${item.result.reservationId}`;
     }
+    if (item.status === "available" && Array.isArray(item.result?.availableSlots)) {
+      const times = item.result.availableSlots
+        .map((s) => `${s.time}${s.seatingType ? ` ${s.seatingType}` : ""}`)
+        .join(", ");
+      return times ? `Open — book now: ${times}` : "Tables opened — check the app";
+    }
     if (item.result?.message) return item.result.message;
     return item.releaseExplanation || "";
   }
@@ -353,7 +363,7 @@
     if (!items.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 8;
+      td.colSpan = 9;
       td.textContent = "No snipes scheduled yet.";
       td.className = "notes";
       tr.appendChild(td);
@@ -367,6 +377,15 @@
       appendCell(tr, item.diningDate || "");
       appendCell(tr, String(item.partySize || ""));
       appendCell(tr, `${item.window?.earliest || ""}–${item.window?.latest || ""}`);
+
+      const modeCell = document.createElement("td");
+      const modePill = document.createElement("span");
+      const mode = item.mode === "autobook" ? "autobook" : "notify";
+      modePill.className = `mode-pill ${mode}`;
+      modePill.textContent = mode === "autobook" ? "auto-book" : "notify";
+      modeCell.appendChild(modePill);
+      tr.appendChild(modeCell);
+
       appendCell(tr, formatET(item.releaseAt));
 
       const statusCell = document.createElement("td");
@@ -386,7 +405,7 @@
       const del = document.createElement("button");
       del.type = "button";
       del.className = "delete-btn";
-      del.textContent = ["booked", "missed", "failed", "reminded"].includes(status)
+      del.textContent = ["booked", "available", "missed", "failed", "reminded"].includes(status)
         ? "Remove"
         : "Cancel";
       del.dataset.id = item.id;

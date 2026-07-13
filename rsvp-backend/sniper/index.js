@@ -129,9 +129,12 @@ exports.handler = async (event) => {
       return { ok: false, reason: "venue" };
     }
 
-    const paymentMethodId = await client
-      .resolvePaymentMethodId(config.paymentMethodId)
-      .catch(() => null);
+    // Notify-only snipes never book, so they don't need a payment method.
+    const mode = record.mode === "autobook" ? "autobook" : "notify";
+    const paymentMethodId =
+      mode === "autobook"
+        ? await client.resolvePaymentMethodId(config.paymentMethodId).catch(() => null)
+        : null;
 
     outcome = await runSnipe({
       record,
@@ -139,6 +142,7 @@ exports.handler = async (event) => {
       clock,
       venueId,
       paymentMethodId,
+      mode,
       deps: { now, sleep, log: (msg, meta) => console.log(msg, meta || "") },
       config: {
         maxPollMs: Number(config.maxPollMs) || undefined,
@@ -165,6 +169,7 @@ exports.handler = async (event) => {
     reservationId: outcome.reservation?.reservationId || null,
     resyToken: outcome.reservation?.resyToken || null,
     slot: outcome.slot || null,
+    availableSlots: outcome.slots || null,
     findCalls: outcome.findCalls,
     bookAttempts: outcome.bookAttempts,
   });
@@ -250,6 +255,7 @@ async function finalize(id, result) {
       reservationId: result.reservationId || null,
       resyToken: result.resyToken || null,
       slot: result.slot || null,
+      availableSlots: result.availableSlots || null,
       findCalls: result.findCalls ?? null,
       bookAttempts: result.bookAttempts ?? null,
     },
@@ -276,6 +282,14 @@ async function notify(subject, message) {
   }
 }
 
+function bookingUrlFor(record) {
+  if (record.bookingUrl) return record.bookingUrl;
+  if (record.resySlug) {
+    return `https://resy.com/cities/new-york-ny/venues/${record.resySlug}`;
+  }
+  return "https://resy.com";
+}
+
 async function notifyOutcome(record, outcome) {
   const label = `${record.restaurantName} (${record.diningDate}, party of ${record.partySize})`;
   if (outcome.status === "booked") {
@@ -284,6 +298,15 @@ async function notifyOutcome(record, outcome) {
       `Got a table at ${label} for ${outcome.slot?.time || "your window"}` +
         `${outcome.slot?.seatingType ? ` (${outcome.slot.seatingType})` : ""}. ` +
         `Confirmation ${outcome.reservation?.reservationId}.`
+    );
+  } else if (outcome.status === "available") {
+    const times = (outcome.slots || [])
+      .map((s) => `${s.time}${s.seatingType ? ` ${s.seatingType}` : ""}`)
+      .join(", ");
+    await notify(
+      `Tables open: ${record.restaurantName}`,
+      `Tables just opened for ${label}: ${times || "see the app"}. ` +
+        `Book now (they go fast): ${bookingUrlFor(record)}`
     );
   } else if (outcome.status === "missed") {
     await notify(

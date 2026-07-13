@@ -195,9 +195,22 @@
     .badge.scheduled { background: #eef2ff; color: #3730a3; border-color: #c7d2fe; }
     .badge.armed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
     .badge.booked { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+    .badge.available { background: #ccfbf1; color: #0f766e; border-color: #99f6e4; }
     .badge.missed { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
     .badge.reminded { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
     .badge.failed { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+
+    .mode-pill {
+      display: inline-block;
+      font-size: 0.72rem;
+      border-radius: 999px;
+      padding: 0.12rem 0.55rem;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      background: #ffffff;
+      color: #374151;
+      white-space: nowrap;
+    }
+    .mode-pill.autobook { border-color: #fecaca; color: #b91c1c; background: #fff5f5; }
 
     .delete-btn {
       padding: 0.25rem 0.7rem;
@@ -297,6 +310,18 @@
             </div>
           </div>
 
+          <div style="margin-top: 0.9rem; display: grid; gap: 0.5rem;">
+            <span style="font-size: 0.8rem; color: #374151;">Mode</span>
+            <label class="row-inline">
+              <input type="radio" name="mode" value="notify" checked />
+              Notify me the moment it opens — I book by hand (recommended, lower risk)
+            </label>
+            <label class="row-inline">
+              <input type="radio" name="mode" value="autobook" />
+              Auto-book it for me (turn on once you trust it)
+            </label>
+          </div>
+
           <div style="margin-top: 0.9rem; display: grid; gap: 0.6rem;">
             <label class="row-inline">
               <input id="bestInWindow" type="checkbox" checked />
@@ -343,6 +368,7 @@
                 <th>Dining date</th>
                 <th>Party</th>
                 <th>Window</th>
+                <th>Mode</th>
                 <th>Opens (ET)</th>
                 <th>Status</th>
                 <th>Notes</th>

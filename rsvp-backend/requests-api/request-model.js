@@ -83,6 +83,10 @@ function validateRequestBody(body) {
 
   const bestInWindow = body.bestInWindow === undefined ? true : Boolean(body.bestInWindow);
 
+  // Per-snipe behavior: "notify" (default, lower risk) watches for the table
+  // and alerts you to book by hand; "autobook" places the reservation itself.
+  const mode = body.mode === "autobook" ? "autobook" : "notify";
+
   const resyVenueId =
     body.resyVenueId !== undefined && body.resyVenueId !== null && `${body.resyVenueId}`.trim()
       ? Number(body.resyVenueId)
@@ -121,6 +125,7 @@ function validateRequestBody(body) {
       latest,
       seatingPreference,
       bestInWindow,
+      mode,
       resyVenueId,
       resySlug,
       releaseRule,
@@ -168,6 +173,14 @@ function buildRecord(input, { id, nowMs }) {
     releaseEpochMs - WAKE_LEAD_SECONDS * 1000
   );
 
+  // Whether the venue can be auto-booked at all (Resy + not phone-only).
+  const autoBookCapable = restaurant
+    ? restaurant.platform === "resy" && restaurant.autoBook !== false
+    : true;
+  // Honor the requested mode, but fall back to notify when auto-book is not
+  // possible for this venue so we never promise a booking we can't place.
+  const mode = input.mode === "autobook" && autoBookCapable ? "autobook" : "notify";
+
   const nowIso = new Date(nowMs).toISOString();
   const record = {
     id,
@@ -178,9 +191,8 @@ function buildRecord(input, { id, nowMs }) {
     restaurantName:
       restaurant?.name || input.restaurantName || input.restaurantSlug || "Custom venue",
     platform: restaurant?.platform || "resy",
-    autoBook: restaurant
-      ? restaurant.platform === "resy" && restaurant.autoBook !== false
-      : true,
+    autoBook: autoBookCapable,
+    mode,
     resyVenueId: input.resyVenueId || restaurant?.resyVenueId || null,
     resySlug: input.resySlug || restaurant?.resySlug || null,
     bookingUrl: restaurant?.bookingUrl || null,

@@ -237,7 +237,9 @@ Resources:
       PackageType: Image
       ImageUri: !Ref SniperImageUri
       MemorySize: 1024
-      Timeout: 150
+      # Covers the ~90s early wake plus the bounded poll window (notify mode
+      # watches read-only for up to ~45s) with headroom for cold start.
+      Timeout: 180
       ReservedConcurrentExecutions: 3
       Role: !Ref SniperRoleArn
       Environment:

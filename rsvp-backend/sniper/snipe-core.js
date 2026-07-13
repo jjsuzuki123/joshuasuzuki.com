@@ -10,16 +10,24 @@ const DEFAULTS = {
   // Start firing this far before the computed release so the first request
   // lands right at (or a hair before) the open, covering our own send latency.
   preReleaseLeadMs: 250,
-  // Cadence of find() calls once we start. Jitter is added so the pattern is
-  // not perfectly periodic.
-  pollIntervalMs: 200,
   jitterMs: 80,
-  // How long after the release to keep trying before giving up.
-  maxPollMs: 90_000,
   // Most candidate slots to attempt booking on a single find() result.
   maxAttempts: 4,
   // Brief backoff when Resy rate-limits/blocks mid-drop.
   backoffMs: 750,
+  // How many in-window slots to include in a notify alert.
+  notifyListLimit: 6,
+};
+
+// Per-mode cadence and window. Both are bounded so this is a clean scheduled
+// job, not a sustained hammer:
+//   - autobook fires a short burst (booking is the risk-bearing action, so we
+//     keep the footprint minimal and give up fast if we lose the race);
+//   - notify makes read-only availability checks at a calmer cadence over a
+//     somewhat longer bounded window, stopping the instant a table appears.
+const MODE_DEFAULTS = {
+  autobook: { pollIntervalMs: 250, maxPollMs: 6_000 },
+  notify: { pollIntervalMs: 500, maxPollMs: 45_000 },
 };
 
 // Local timestamp (our clock) at which to begin firing so the request arrives
@@ -55,7 +63,25 @@ function selectCandidates(slots, options) {
   return ranked.slice(0, limit);
 }
 
-// Run the drop-time booking loop. Returns an outcome describing what happened.
+// Rank the in-window slots for a notify alert (top N, no capping by attempts).
+function listInWindow(slots, options, limit) {
+  const ranked = ranking.rankSlots(slots, {
+    earliest: options.earliest,
+    latest: options.latest,
+    seatingPreference: options.seatingPreference,
+    targetTime: options.targetTime,
+  });
+  return ranked.slice(0, limit).map((c) => ({
+    time: c.time,
+    seatingType: c.seatingType,
+    start: c.start,
+    token: c.token,
+  }));
+}
+
+// Run the drop-time loop. In "autobook" mode it books the best in-window slot;
+// in "notify" mode it only watches (read-only) and reports the first
+// availability so the user can book by hand. Returns an outcome object.
 async function runSnipe(params) {
   const {
     record,
@@ -67,11 +93,12 @@ async function runSnipe(params) {
     config = {},
   } = params;
 
+  const mode = params.mode === "autobook" ? "autobook" : "notify";
   const now = deps.now;
   const sleep = deps.sleep;
   const log = deps.log || (() => {});
 
-  const cfg = { ...DEFAULTS, ...config };
+  const cfg = { ...DEFAULTS, ...MODE_DEFAULTS[mode], ...config };
   const day = record.diningDate;
   const partySize = record.partySize;
   const selectOptions = {
@@ -90,7 +117,7 @@ async function runSnipe(params) {
     preReleaseLeadMs: cfg.preReleaseLeadMs,
   });
   if (delayMs > 0) {
-    log("waiting to fire", { delayMs });
+    log("waiting to fire", { mode, delayMs });
     await sleep(delayMs);
   }
 
@@ -128,46 +155,65 @@ async function runSnipe(params) {
     const slots = found?.slots || [];
     if (slots.length > 0) {
       sawSlots = true;
-      const candidates = selectCandidates(slots, selectOptions);
-      for (const candidate of candidates) {
-        if (!candidate.token) continue;
-        bookAttempts += 1;
-        try {
-          const details = await client.getReservationDetails({
-            configToken: candidate.token,
-            day,
-            partySize,
-          });
-          const booking = await client.book({
-            bookToken: details.bookToken,
-            paymentMethodId,
-          });
-          log("booked", { reservationId: booking.reservationId, time: candidate.time });
+
+      if (mode === "notify") {
+        // Read-only: report availability, book nothing.
+        const available = listInWindow(slots, selectOptions, cfg.notifyListLimit);
+        if (available.length > 0) {
+          log("available", { count: available.length, best: available[0].time });
           return {
-            status: "booked",
-            reservation: booking,
-            slot: {
-              time: candidate.time,
-              seatingType: candidate.seatingType,
-              start: candidate.start,
-            },
+            status: "available",
+            slots: available.map((s) => ({
+              time: s.time,
+              seatingType: s.seatingType,
+              start: s.start,
+            })),
             findCalls,
-            bookAttempts,
+            bookAttempts: 0,
           };
-        } catch (err) {
-          lastError = err;
-          log("book attempt failed", {
-            code: err?.code,
-            message: err?.message,
-            time: candidate.time,
-          });
-          // Slot lost to a race or token expired: try the next candidate.
-          continue;
+        }
+      } else {
+        const candidates = selectCandidates(slots, selectOptions);
+        for (const candidate of candidates) {
+          if (!candidate.token) continue;
+          bookAttempts += 1;
+          try {
+            const details = await client.getReservationDetails({
+              configToken: candidate.token,
+              day,
+              partySize,
+            });
+            const booking = await client.book({
+              bookToken: details.bookToken,
+              paymentMethodId,
+            });
+            log("booked", { reservationId: booking.reservationId, time: candidate.time });
+            return {
+              status: "booked",
+              reservation: booking,
+              slot: {
+                time: candidate.time,
+                seatingType: candidate.seatingType,
+                start: candidate.start,
+              },
+              findCalls,
+              bookAttempts,
+            };
+          } catch (err) {
+            lastError = err;
+            log("book attempt failed", {
+              code: err?.code,
+              message: err?.message,
+              time: candidate.time,
+            });
+            // Slot lost to a race or token expired: try the next candidate.
+            continue;
+          }
         }
       }
     }
 
-    // Nothing bookable yet; poll again with jitter.
+    // Nothing actionable yet; poll again with jitter.
     const jitter = Math.floor(Math.random() * (cfg.jitterMs + 1));
     await sleep(cfg.pollIntervalMs + jitter);
   }
@@ -182,6 +228,15 @@ async function runSnipe(params) {
         "No availability appeared in the time window before the deadline.",
     };
   }
+  if (mode === "notify") {
+    // Saw slots but none inside the requested window.
+    return {
+      status: "missed",
+      findCalls,
+      bookAttempts,
+      message: "Tables opened but none fell inside your time window.",
+    };
+  }
   return {
     status: "failed",
     findCalls,
@@ -193,8 +248,10 @@ async function runSnipe(params) {
 
 module.exports = {
   DEFAULTS,
+  MODE_DEFAULTS,
   computeFireStartMs,
   computeDeadlineMs,
   selectCandidates,
+  listInWindow,
   runSnipe,
 };
