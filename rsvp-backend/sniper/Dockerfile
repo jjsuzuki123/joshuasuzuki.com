@@ -34,17 +34,20 @@ RUN set -eux; \
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 
-# Install sniper dependencies (impers + AWS SDK clients).
+# Install sniper dependencies (impers + AWS SDK clients) at the task root so
+# both the handler and the shared modules resolve node_modules by walking up.
 COPY sniper/package.json ./package.json
 RUN npm install --omit=dev --no-audit --no-fund
 
-# Shared modules + handler. Paths are relative to the build context
-# (rsvp-backend/), so the sniper can reuse the same client and ranking code.
+# Preserve the repo layout so the source's relative requires resolve:
+# sniper/index.js -> ../resy-client.js, ./snipe-core.js;
+# sniper/snipe-core.js -> ../slot-ranking.js. Build context is rsvp-backend/.
 COPY resy-client.js ./resy-client.js
 COPY slot-ranking.js ./slot-ranking.js
 COPY release-rules.js ./release-rules.js
 COPY data ./data
-COPY sniper/index.js ./index.js
+COPY sniper/index.js ./sniper/index.js
+COPY sniper/snipe-core.js ./sniper/snipe-core.js
 
 FROM public.ecr.aws/lambda/nodejs:22
 
@@ -56,4 +59,4 @@ COPY --from=build ${LAMBDA_TASK_ROOT} ${LAMBDA_TASK_ROOT}
 ENV LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
 RUN ldconfig || true
 
-CMD [ "index.handler" ]
+CMD [ "sniper/index.handler" ]
