@@ -24,6 +24,9 @@ jobs:
       FANTASY_IMPORT_STACK: rosterlab-fantasy-import-production
       SAM_ARTIFACT_BUCKET: rosterlab-deploy-artifacts-545095759709-us-east-1
       SOURCE_ENDPOINT: ${{ vars.ROSTERLAB_SOURCE_ENDPOINT }}
+      RSVP_STACK: rsvp-sniper-production
+      RSVP_BOOTSTRAP_STACK: rsvp-sniper-bootstrap-production
+      RSVP_ECR_REPO: rsvp-sniper-production
 
     steps:
       - name: Checkout
@@ -56,10 +59,23 @@ jobs:
           node scripts/fantasy-private-import.test.js
           node scripts/fantasy-relay-client.test.js
 
+      - name: Test RSVP sniper
+        run: |
+          node scripts/rsvp-release-rules.test.js
+          node scripts/rsvp-slot-ranking.test.js
+          node scripts/rsvp-resy-client.test.js
+          node scripts/rsvp-requests-api.test.js
+          node scripts/rsvp-sniper-core.test.js
+
       - name: Validate fantasy import infrastructure
         run: |
           sam validate --lint --template-file fantasy-backend/bootstrap-template.yaml
           sam validate --lint --template-file fantasy-backend/template.yaml
+
+      - name: Validate RSVP sniper infrastructure
+        run: |
+          sam validate --lint --template-file rsvp-backend/bootstrap-template.yaml
+          sam validate --lint --template-file rsvp-backend/template.yaml
 
       - name: Build and package fantasy import relay
         if: steps.fantasy-backend.outputs.ready == 'true'
@@ -96,6 +112,85 @@ jobs:
             SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
             node scripts/write-fantasy-config.js
 
+      - name: Check RSVP backend bootstrap
+        id: rsvp-backend
+        run: |
+          if aws ecr describe-repositories --repository-names "${RSVP_ECR_REPO}" >/dev/null 2>&1; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            echo "RSVP bootstrap not ready; skipping sniper backend deploy. Run rsvp-backend/deploy-rsvp.sh bootstrap once."
+          fi
+
+      - name: Build and push sniper image
+        if: steps.rsvp-backend.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO_URI="${REGISTRY}/${RSVP_ECR_REPO}"
+          TAG="${GITHUB_SHA::12}"
+          # Register arm64 emulation so the arm64 Lambda image builds on x86 runners.
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
+          docker buildx create --use --name rsvpbuilder 2>/dev/null || docker buildx use rsvpbuilder
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${REGISTRY}"
+          docker buildx build \
+            --platform linux/arm64 \
+            --provenance=false \
+            --build-arg CURL_IMPERSONATE_ARCH=aarch64 \
+            -f rsvp-backend/sniper/Dockerfile \
+            -t "${REPO_URI}:${TAG}" \
+            --push \
+            rsvp-backend
+          echo "SNIPER_IMAGE_URI=${REPO_URI}:${TAG}" >> "${GITHUB_ENV}"
+
+      - name: Package and deploy RSVP sniper stack
+        if: steps.rsvp-backend.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          npm ci --omit=dev --prefix rsvp-backend
+          OUTPUTS="$(aws cloudformation describe-stacks \
+            --stack-name "${RSVP_BOOTSTRAP_STACK}" \
+            --query "Stacks[0].Outputs" --output json)"
+          out() { node -e "const o=JSON.parse(process.env.O||'[]');const f=o.find(x=>x.OutputKey===process.argv[1]);process.stdout.write(f?f.OutputValue:'')" "$1"; }
+          export O="${OUTPUTS}"
+          API_ROLE_ARN="$(out RequestsApiRoleArn)"
+          SNIPER_ROLE_ARN="$(out SniperRoleArn)"
+          SCHED_ROLE_ARN="$(out SchedulerInvokeRoleArn)"
+          sam package \
+            --template-file rsvp-backend/template.yaml \
+            --s3-bucket "${SAM_ARTIFACT_BUCKET}" \
+            --s3-prefix "rsvp-sniper" \
+            --output-template-file rsvp-backend/packaged.yaml
+          sam deploy \
+            --template-file rsvp-backend/packaged.yaml \
+            --stack-name "${RSVP_STACK}" \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              Environment=production \
+              SniperImageUri="${SNIPER_IMAGE_URI}" \
+              RequestsApiRoleArn="${API_ROLE_ARN}" \
+              SniperRoleArn="${SNIPER_ROLE_ARN}" \
+              SchedulerInvokeRoleArn="${SCHED_ROLE_ARN}" \
+              NotificationEmail="${{ vars.RSVP_NOTIFICATION_EMAIL }}" \
+              NotificationSms="${{ vars.RSVP_NOTIFICATION_SMS }}"
+
+      - name: Configure RSVP endpoint
+        run: |
+          set -euo pipefail
+          RSVP_API=""
+          if [[ "${{ steps.rsvp-backend.outputs.ready }}" == "true" ]]; then
+            RSVP_API="$(aws cloudformation describe-stacks \
+              --stack-name "${RSVP_STACK}" \
+              --query "Stacks[0].Outputs[?OutputKey=='ApiBaseUrl'].OutputValue | [0]" \
+              --output text 2>/dev/null || true)"
+            if [[ "${RSVP_API}" == "None" ]]; then RSVP_API=""; fi
+          fi
+          RSVP_API_ENDPOINT="${RSVP_API}" node scripts/write-rsvp-config.js
+
       - name: Sync to S3
         run: |
           aws s3 sync . s3://${S3_BUCKET} \
@@ -112,6 +207,7 @@ jobs:
             --exclude "*.zip" \
             --exclude "admin-backend/*" \
             --exclude "fantasy-backend/*" \
+            --exclude "rsvp-backend/*" \
             --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
@@ -139,10 +235,15 @@ jobs:
           set_cache "admin/index.html"
           set_cache "sunset/index.html"
           set_cache "fantasy/index.html"
+          set_cache "rsvp/index.html"
 
       - name: Disable caching for runtime configuration
         run: |
           aws s3 cp "s3://${S3_BUCKET}/fantasy/config.js" "s3://${S3_BUCKET}/fantasy/config.js" \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "application/javascript; charset=utf-8"
+          aws s3 cp "s3://${S3_BUCKET}/rsvp/config.js" "s3://${S3_BUCKET}/rsvp/config.js" \
             --metadata-directive REPLACE \
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "application/javascript; charset=utf-8"
@@ -163,6 +264,14 @@ jobs:
               --bucket "${S3_BUCKET}" \
               --key "${key}" \
               --body "fantasy/index.html" \
+              --cache-control "no-cache, no-store, must-revalidate" \
+              --content-type "text/html; charset=utf-8" >/dev/null
+          done
+          for key in "rsvp" "rsvp/"; do
+            aws s3api put-object \
+              --bucket "${S3_BUCKET}" \
+              --key "${key}" \
+              --body "rsvp/index.html" \
               --cache-control "no-cache, no-store, must-revalidate" \
               --content-type "text/html; charset=utf-8" >/dev/null
           done
