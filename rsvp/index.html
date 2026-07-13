@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>RSVP Sniper · Josh Suzuki</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" />
+
+  <style>
+    :root {
+      --bg: #f7f7f8;
+      --panel: #ffffff;
+      --ink: #111111;
+      --muted: #6b7280;
+      --line: rgba(0, 0, 0, 0.12);
+      --accent: #0a0a0a;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Geist", system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    input, select, button {
+      font: inherit;
+      color: inherit;
+    }
+
+    .shell {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 3rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      gap: 1rem;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    header h1 .sub {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 400;
+      color: var(--muted);
+      margin-top: 0.15rem;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .home-link, .ghost-btn {
+      font-size: 0.85rem;
+      color: #374151;
+      text-decoration: none;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      padding: 0.35rem 0.85rem;
+      background: #ffffff;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+
+    .home-link:hover, .ghost-btn:hover {
+      background: #f3f4f6;
+      border-color: rgba(0, 0, 0, 0.3);
+      transform: translateY(-1px);
+    }
+
+    main { display: grid; gap: 1.5rem; }
+
+    .panel {
+      border-radius: 0.9rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    .panel h2 { margin: 0 0 0.4rem; font-size: 1rem; }
+    .panel p.hint { margin: 0 0 1rem; font-size: 0.85rem; color: var(--muted); }
+
+    .login-form { display: grid; gap: 0.7rem; max-width: 280px; }
+    .login-form label { font-size: 0.85rem; color: #374151; }
+
+    .field label {
+      display: block;
+      font-size: 0.8rem;
+      color: #374151;
+      margin-bottom: 0.25rem;
+    }
+
+    input[type="text"], input[type="password"], input[type="date"],
+    input[type="time"], input[type="number"], select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.5rem 0.6rem;
+      border-radius: 0.6rem;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      background: #ffffff;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(10, 10, 10, 0.25);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.9rem;
+    }
+
+    .row-inline {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: #374151;
+    }
+    .row-inline input[type="checkbox"] { width: auto; }
+
+    .primary-btn {
+      margin-top: 0.4rem;
+      padding: 0.6rem 1.3rem;
+      border-radius: 999px;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      transition: background 120ms ease, transform 120ms ease;
+    }
+    .primary-btn:hover { background: #1f1f1f; transform: translateY(-1px); }
+    .primary-btn:disabled { opacity: 0.6; cursor: default; transform: none; }
+
+    .status-line { font-size: 0.8rem; color: var(--muted); min-height: 1.2rem; margin-top: 0.4rem; }
+    .release-preview {
+      font-size: 0.82rem;
+      color: #374151;
+      background: #f3f4f6;
+      border-radius: 0.5rem;
+      padding: 0.5rem 0.7rem;
+      margin-top: 0.2rem;
+    }
+
+    .requests-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      gap: 1rem;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.84rem; }
+    thead { background: #f3f4f6; }
+    th, td {
+      padding: 0.55rem 0.6rem;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      vertical-align: top;
+      text-align: left;
+    }
+    th { font-weight: 500; color: var(--muted); white-space: nowrap; }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 500;
+      border-radius: 999px;
+      padding: 0.12rem 0.55rem;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .badge.scheduled { background: #eef2ff; color: #3730a3; border-color: #c7d2fe; }
+    .badge.armed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+    .badge.booked { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+    .badge.available { background: #ccfbf1; color: #0f766e; border-color: #99f6e4; }
+    .badge.missed { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
+    .badge.reminded { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+    .badge.failed { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+
+    .mode-pill {
+      display: inline-block;
+      font-size: 0.72rem;
+      border-radius: 999px;
+      padding: 0.12rem 0.55rem;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      background: #ffffff;
+      color: #374151;
+      white-space: nowrap;
+    }
+    .mode-pill.autobook { border-color: #fecaca; color: #b91c1c; background: #fff5f5; }
+
+    .delete-btn {
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid rgba(239, 68, 68, 0.6);
+      background: #ffffff;
+      color: #b91c1c;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+    .delete-btn:hover { background: #fee2e2; }
+
+    .notes { color: var(--muted); font-size: 0.78rem; max-width: 260px; }
+    .hidden { display: none; }
+    .pill-muted {
+      font-size: 0.75rem; color: var(--muted);
+      border-radius: 999px; border: 1px solid rgba(0, 0, 0, 0.2);
+      padding: 0.15rem 0.55rem; background: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <h1>
+        RSVP Sniper
+        <span class="sub">Auto-book hard NYC reservations the moment they drop</span>
+      </h1>
+      <div class="header-actions">
+        <button type="button" id="logout-btn" class="ghost-btn hidden">Log out</button>
+        <a href="/" class="home-link">← Back to site</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- Login -->
+      <section id="login-view" class="panel">
+        <h2>Log in</h2>
+        <p class="hint">Enter the RSVP sniper password to manage your reservation snipes.</p>
+        <form id="login-form" class="login-form">
+          <label>
+            Password
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button type="submit" class="primary-btn">Log in</button>
+          <p id="login-status" class="status-line"></p>
+        </form>
+      </section>
+
+      <!-- New snipe -->
+      <section id="new-view" class="panel hidden">
+        <h2>New snipe</h2>
+        <p class="hint">Pick a restaurant, your dining date, party size, and time window. The bot wakes ~90s before the drop and fires at the exact release instant.</p>
+        <form id="snipe-form">
+          <div class="grid">
+            <div class="field" style="grid-column: 1 / -1;">
+              <label for="restaurant">Restaurant</label>
+              <select id="restaurant" name="restaurant" required></select>
+            </div>
+          </div>
+
+          <div id="custom-fields" class="grid hidden" style="margin-top: 0.9rem;">
+            <div class="field">
+              <label for="restaurantName">Venue name</label>
+              <input id="restaurantName" type="text" placeholder="e.g. Some Spot" />
+            </div>
+            <div class="field">
+              <label for="resySlug">Resy URL slug</label>
+              <input id="resySlug" type="text" placeholder="e.g. some-spot" />
+            </div>
+            <div class="field">
+              <label for="resyVenueId">Resy venue id (optional)</label>
+              <input id="resyVenueId" type="number" min="1" placeholder="numeric id" />
+            </div>
+          </div>
+
+          <div class="grid" style="margin-top: 0.9rem;">
+            <div class="field">
+              <label for="diningDate">Dining date</label>
+              <input id="diningDate" type="date" required />
+            </div>
+            <div class="field">
+              <label for="partySize">Party size</label>
+              <input id="partySize" type="number" min="1" max="20" value="2" required />
+            </div>
+            <div class="field">
+              <label for="earliest">Earliest time</label>
+              <input id="earliest" type="time" value="19:00" required />
+            </div>
+            <div class="field">
+              <label for="latest">Latest time</label>
+              <input id="latest" type="time" value="21:00" required />
+            </div>
+            <div class="field">
+              <label for="seatingPreference">Seating (optional)</label>
+              <input id="seatingPreference" type="text" placeholder="e.g. Dining Room" />
+            </div>
+          </div>
+
+          <div style="margin-top: 0.9rem; display: grid; gap: 0.5rem;">
+            <span style="font-size: 0.8rem; color: #374151;">Mode</span>
+            <label class="row-inline">
+              <input type="radio" name="mode" value="notify" checked />
+              Notify me the moment it opens — I book by hand (recommended, lower risk)
+            </label>
+            <label class="row-inline">
+              <input type="radio" name="mode" value="autobook" />
+              Auto-book it for me (turn on once you trust it)
+            </label>
+          </div>
+
+          <div style="margin-top: 0.9rem; display: grid; gap: 0.6rem;">
+            <label class="row-inline">
+              <input id="bestInWindow" type="checkbox" checked />
+              Book the best available slot in my window (uncheck to only take the closest-to-ideal slot)
+            </label>
+            <label class="row-inline">
+              <input id="overrideToggle" type="checkbox" />
+              Set the release date/time manually (override the schedule from nycrsvps.com)
+            </label>
+          </div>
+
+          <div id="override-fields" class="grid hidden" style="margin-top: 0.4rem;">
+            <div class="field">
+              <label for="releaseDate">Release date (ET)</label>
+              <input id="releaseDate" type="date" />
+            </div>
+            <div class="field">
+              <label for="releaseTime">Release time (ET)</label>
+              <input id="releaseTime" type="time" value="10:00" />
+            </div>
+          </div>
+
+          <div id="release-preview" class="release-preview hidden"></div>
+
+          <button type="submit" class="primary-btn" id="snipe-submit">Schedule snipe</button>
+          <p id="snipe-status" class="status-line"></p>
+        </form>
+      </section>
+
+      <!-- Requests -->
+      <section id="requests-view" class="panel hidden">
+        <div class="requests-header">
+          <h2>Your snipes</h2>
+          <div class="header-actions">
+            <button type="button" id="refresh-btn" class="ghost-btn">Refresh</button>
+            <span class="pill-muted" id="requests-count">0</span>
+          </div>
+        </div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Restaurant</th>
+                <th>Dining date</th>
+                <th>Party</th>
+                <th>Window</th>
+                <th>Mode</th>
+                <th>Opens (ET)</th>
+                <th>Status</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="requests-body"></tbody>
+          </table>
+        </div>
+        <p id="requests-status" class="status-line"></p>
+      </section>
+    </main>
+  </div>
+
+  <script src="/rsvp/config.js"></script>
+  <script src="/rsvp/app.js"></script>
+</body>
+</html>

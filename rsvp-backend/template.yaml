@@ -1,0 +1,281 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: NYC RSVP sniper - requests API, drop-time sniper, schedules, notifications
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://joshuasuzuki.com,https://www.joshuasuzuki.com
+  SniperImageUri:
+    Type: String
+    Description: ECR image URI (with tag) for the sniper container image
+  RequestsApiRoleArn:
+    Type: String
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/rsvp-sniper-api-[a-z0-9-]+$
+  SniperRoleArn:
+    Type: String
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/rsvp-sniper-exec-[a-z0-9-]+$
+  SchedulerInvokeRoleArn:
+    Type: String
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/rsvp-sniper-scheduler-[a-z0-9-]+$
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: Optional email address to subscribe for booking notifications
+  NotificationSms:
+    Type: String
+    Default: ""
+    Description: Optional E.164 phone number for SMS booking notifications
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref NotificationEmail, ""]]
+  HasSms: !Not [!Equals [!Ref NotificationSms, ""]]
+
+Globals:
+  Function:
+    # Runtime/Handler are set per-function: the sniper is a container image and
+    # cannot carry a managed Runtime.
+    Architectures:
+      - arm64
+    LoggingConfig:
+      ApplicationLogLevel: INFO
+      LogFormat: JSON
+      SystemLogLevel: WARN
+
+Resources:
+  # ---- Storage -------------------------------------------------------------
+  RequestsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub rsvp-sniper-requests-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # ---- Secrets -------------------------------------------------------------
+  # Holds Resy credentials, optional proxy URL, the /rsvp admin password, and a
+  # generated JWT signing secret. Real credential values are written out of
+  # band after the first deploy (see README); the JWT secret is generated once
+  # here and preserved across stack updates.
+  ConfigSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub rsvp-sniper-${Environment}
+      Description: Resy credentials, proxy, admin password, and JWT secret for the RSVP sniper
+      GenerateSecretString:
+        SecretStringTemplate: '{"resyEmail":"","resyPassword":"","resyAuthToken":"","proxyUrl":"","adminPassword":""}'
+        GenerateStringKey: "jwtSecret"
+        PasswordLength: 48
+        ExcludePunctuation: true
+
+  # ---- Notifications -------------------------------------------------------
+  NotificationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub rsvp-sniper-notifications-${Environment}
+      DisplayName: NYC RSVP sniper
+
+  NotificationEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      TopicArn: !Ref NotificationsTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  NotificationSmsSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasSms
+    Properties:
+      TopicArn: !Ref NotificationsTopic
+      Protocol: sms
+      Endpoint: !Ref NotificationSms
+
+  # ---- Schedules -----------------------------------------------------------
+  # Namespaced group so one-time drop schedules can be IAM-scoped and bulk
+  # inspected. The requests API creates/deletes schedules inside this group.
+  ScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: !Sub rsvp-sniper-${Environment}
+
+  # ---- Requests API --------------------------------------------------------
+  RequestsApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/rsvp-sniper-${Environment}
+      RetentionInDays: 14
+
+  RequestsApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+        MaxAge: 300
+      AccessLogSettings:
+        DestinationArn: !GetAtt RequestsApiAccessLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 5
+      FailOnWarnings: true
+
+  RequestsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/rsvp-sniper-api-${Environment}
+      RetentionInDays: 14
+
+  RequestsFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - RequestsFunctionLogGroup
+    Properties:
+      FunctionName: !Sub rsvp-sniper-api-${Environment}
+      Description: RSVP sniper requests API (auth, CRUD, schedule management)
+      Runtime: nodejs22.x
+      # CodeUri is the backend root so the function can bundle the shared
+      # release-rules module and the nycrsvps snapshot alongside its handler.
+      CodeUri: ./
+      Handler: requests-api/index.handler
+      MemorySize: 256
+      Timeout: 15
+      ReservedConcurrentExecutions: 5
+      Role: !Ref RequestsApiRoleArn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          REQUESTS_TABLE: !Ref RequestsTable
+          CONFIG_SECRET_NAME: !Sub rsvp-sniper-${Environment}
+          SCHEDULE_GROUP: !Sub rsvp-sniper-${Environment}
+          SNIPER_FUNCTION_ARN: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:rsvp-sniper-exec-${Environment}
+          SCHEDULER_ROLE_ARN: !Ref SchedulerInvokeRoleArn
+          NOTIFICATIONS_TOPIC_ARN: !Ref NotificationsTopic
+          ALLOWED_ORIGINS: !Join [",", !Ref AllowedOrigins]
+      Events:
+        Login:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RequestsApi
+            Path: /rsvp/login
+            Method: POST
+        ListRestaurants:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RequestsApi
+            Path: /rsvp/restaurants
+            Method: GET
+        ListRequests:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RequestsApi
+            Path: /rsvp/requests
+            Method: GET
+        CreateRequest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RequestsApi
+            Path: /rsvp/requests
+            Method: POST
+        DeleteRequest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RequestsApi
+            Path: /rsvp/requests/{id}
+            Method: DELETE
+
+  # ---- Sniper (container image) --------------------------------------------
+  SniperFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/rsvp-sniper-exec-${Environment}
+      RetentionInDays: 14
+
+  SniperFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - SniperFunctionLogGroup
+    Properties:
+      FunctionName: !Sub rsvp-sniper-exec-${Environment}
+      Description: Drop-time Resy sniper (wakes early, fires at the exact release ms)
+      PackageType: Image
+      ImageUri: !Ref SniperImageUri
+      MemorySize: 1024
+      # Covers the ~90s early wake plus the bounded poll window (notify mode
+      # watches read-only for up to ~45s) with headroom for cold start.
+      Timeout: 180
+      ReservedConcurrentExecutions: 3
+      Role: !Ref SniperRoleArn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          REQUESTS_TABLE: !Ref RequestsTable
+          CONFIG_SECRET_NAME: !Sub rsvp-sniper-${Environment}
+          NOTIFICATIONS_TOPIC_ARN: !Ref NotificationsTopic
+          # Writable cache for impers in case it ever needs to stage the
+          # curl-impersonate lib; the image already bundles it at /usr/local/lib.
+          IMPER_CACHE_DIR: /tmp/impers-cache
+
+  SniperFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rsvp-sniper-exec-${Environment}-errors
+      AlarmDescription: RSVP sniper Lambda errors
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SniperFunction
+
+Outputs:
+  ApiBaseUrl:
+    Description: Base URL for the RSVP requests API
+    Value: !Sub https://${RequestsApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}
+  RequestsTableName:
+    Value: !Ref RequestsTable
+  ConfigSecretArn:
+    Value: !Ref ConfigSecret
+  NotificationsTopicArn:
+    Value: !Ref NotificationsTopic

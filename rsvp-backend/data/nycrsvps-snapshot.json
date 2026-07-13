@@ -1,0 +1,236 @@
+{
+  "meta": {
+    "source": "https://www.nycrsvps.com/",
+    "lastReviewed": "2026-07-13",
+    "note": "Reservation release schedules for hard-to-book NYC restaurants. nycrsvps.com is the source of truth and restaurants change schedules often, so accuracy is not guaranteed. Every field is overridable per request in the UI. resyVenueId is intentionally null: the sniper resolves the numeric venue id from resySlug/name at run time and verifies the venue name before booking, so a stale slug fails safe instead of booking the wrong place.",
+    "releaseTypes": {
+      "daily": "Opens `daysOut` calendar days before the dining date, every day at `time`.",
+      "weekly": "Opens on the first `weekday` that is on/after (diningDate - daysOut), at `time`.",
+      "monthly": "Opens `monthsBefore` month(s) before the dining month, on `dayOfMonth`, at `time`.",
+      "manual": "Fixed `releaseDate` at `time` (used for one-off overrides)."
+    }
+  },
+  "restaurants": [
+    {
+      "name": "Carbone",
+      "slug": "carbone",
+      "neighborhood": "Greenwich Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/carbone",
+      "resySlug": "carbone",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 30, "time": "10:00", "tz": "America/New_York" },
+      "verified": true
+    },
+    {
+      "name": "Lilia",
+      "slug": "lilia",
+      "neighborhood": "Williamsburg",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/lilia",
+      "resySlug": "lilia",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 28, "time": "10:00", "tz": "America/New_York" },
+      "verified": true
+    },
+    {
+      "name": "Torrisi",
+      "slug": "torrisi",
+      "neighborhood": "Nolita",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/torrisi",
+      "resySlug": "torrisi",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 30, "time": "10:00", "tz": "America/New_York" },
+      "verified": true
+    },
+    {
+      "name": "Via Carota",
+      "slug": "via-carota",
+      "neighborhood": "West Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/via-carota",
+      "resySlug": "via-carota",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 30, "time": "10:00", "tz": "America/New_York" },
+      "verified": true
+    },
+    {
+      "name": "Don Angie",
+      "slug": "don-angie",
+      "neighborhood": "West Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/don-angie",
+      "resySlug": "don-angie",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 30, "time": "10:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "I Sodi",
+      "slug": "i-sodi",
+      "neighborhood": "West Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/i-sodi",
+      "resySlug": "i-sodi",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 13, "time": "10:00", "tz": "America/New_York" },
+      "verified": true
+    },
+    {
+      "name": "COQODAQ",
+      "slug": "coqodaq",
+      "neighborhood": "Flatiron",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/coqodaq",
+      "resySlug": "coqodaq",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 14, "time": "10:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "COTE Korean Steakhouse",
+      "slug": "cote",
+      "neighborhood": "Flatiron",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/cote",
+      "resySlug": "cote",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 30, "time": "10:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "4 Charles Prime Rib",
+      "slug": "4-charles-prime-rib",
+      "neighborhood": "West Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/4-charles-prime-rib",
+      "resySlug": "4-charles-prime-rib",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 20, "time": "09:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Semma",
+      "slug": "semma",
+      "neighborhood": "Greenwich Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/semma",
+      "resySlug": "semma",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 15, "time": "10:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "L'Artusi",
+      "slug": "lartusi",
+      "neighborhood": "West Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/lartusi",
+      "resySlug": "lartusi",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 14, "time": "10:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Minetta Tavern",
+      "slug": "minetta-tavern",
+      "neighborhood": "Greenwich Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/minetta-tavern",
+      "resySlug": "minetta-tavern",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 30, "time": "10:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Tatiana by Kwame Onwuachi",
+      "slug": "tatiana",
+      "neighborhood": "Lincoln Center",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/tatiana",
+      "resySlug": "tatiana",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 28, "time": "12:00", "tz": "America/New_York" },
+      "verified": true
+    },
+    {
+      "name": "Jeju Noodle Bar",
+      "slug": "jeju-noodle-bar",
+      "neighborhood": "West Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/jeju-noodle-bar",
+      "resySlug": "jeju-noodle-bar",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 28, "time": "00:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Atoboy",
+      "slug": "atoboy",
+      "neighborhood": "NoMad",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/atoboy",
+      "resySlug": "atoboy",
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 29, "time": "00:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Balthazar",
+      "slug": "balthazar",
+      "neighborhood": "SoHo",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/balthazar",
+      "resySlug": "balthazar",
+      "resyVenueId": null,
+      "release": { "type": "weekly", "weekday": "saturday", "daysOut": 30, "time": "00:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Bungalow",
+      "slug": "bungalow",
+      "neighborhood": "East Village",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/bungalow",
+      "resySlug": "bungalow",
+      "resyVenueId": null,
+      "release": { "type": "weekly", "weekday": "wednesday", "daysOut": 20, "time": "11:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Eleven Madison Park",
+      "slug": "eleven-madison-park",
+      "neighborhood": "Flatiron",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/eleven-madison-park",
+      "resySlug": "eleven-madison-park",
+      "resyVenueId": null,
+      "release": { "type": "monthly", "monthsBefore": 1, "dayOfMonth": 1, "time": "10:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "Per Se",
+      "slug": "per-se",
+      "neighborhood": "Columbus Circle",
+      "platform": "resy",
+      "bookingUrl": "https://resy.com/cities/new-york-ny/venues/per-se",
+      "resySlug": "per-se",
+      "resyVenueId": null,
+      "release": { "type": "monthly", "monthsBefore": 1, "dayOfMonth": 1, "time": "07:00", "tz": "America/New_York" },
+      "verified": false
+    },
+    {
+      "name": "The Polo Bar",
+      "slug": "the-polo-bar",
+      "neighborhood": "Midtown East",
+      "platform": "phone",
+      "bookingUrl": "https://www.ralphlauren.com/rl-restaurants-the-polo-bar",
+      "resySlug": null,
+      "resyVenueId": null,
+      "release": { "type": "daily", "daysOut": 30, "time": "10:00", "tz": "America/New_York" },
+      "autoBook": false,
+      "verified": false
+    }
+  ]
+}

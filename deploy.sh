@@ -4,6 +4,7 @@ set -euo pipefail
 S3_BUCKET="josh-personal-site-1"
 CF_DISTRIBUTION_ID="E3LDS3FK17E3JF"
 FANTASY_IMPORT_STACK="rosterlab-fantasy-import-production"
+RSVP_STACK="${RSVP_STACK:-rsvp-sniper-production}"
 AWS_PROFILE="${AWS_PROFILE:-default}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 SOURCE_ENDPOINT="${SOURCE_ENDPOINT:-}"
@@ -33,6 +34,23 @@ else
     node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
 fi
 
+RSVP_CONFIG_FILE="$(mktemp)"
+trap 'rm -f "${FANTASY_CONFIG_FILE}" "${RSVP_CONFIG_FILE}"' EXIT
+cp "rsvp/config.js" "${RSVP_CONFIG_FILE}"
+if RSVP_API_ENDPOINT="$(aws cloudformation describe-stacks \
+    --stack-name "${RSVP_STACK}" \
+    --query "Stacks[0].Outputs[?OutputKey=='ApiBaseUrl'].OutputValue | [0]" \
+    --output text \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" 2>/dev/null)" &&
+    [[ "${RSVP_API_ENDPOINT}" == https://* ]]; then
+  RSVP_API_ENDPOINT="${RSVP_API_ENDPOINT}" \
+    node "scripts/write-rsvp-config.js" "${RSVP_CONFIG_FILE}"
+else
+  echo "RSVP sniper backend is not ready; deploying the /rsvp page without an API endpoint."
+  RSVP_API_ENDPOINT="" node "scripts/write-rsvp-config.js" "${RSVP_CONFIG_FILE}"
+fi
+
 aws s3 sync . "s3://${S3_BUCKET}" \
   --delete \
   --exclude ".git/*" \
@@ -47,7 +65,9 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude "*.zip" \
   --exclude "admin-backend/*" \
   --exclude "fantasy-backend/*" \
+  --exclude "rsvp-backend/*" \
   --exclude "fantasy/config.js" \
+  --exclude "rsvp/config.js" \
   --exclude "_deploy/*" \
   --exclude "scripts/*" \
   --exclude "permissions-policy.json" \
@@ -56,6 +76,12 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --region "${AWS_REGION}"
 
 aws s3 cp "${FANTASY_CONFIG_FILE}" "s3://${S3_BUCKET}/fantasy/config.js" \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "application/javascript; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}"
+
+aws s3 cp "${RSVP_CONFIG_FILE}" "s3://${S3_BUCKET}/rsvp/config.js" \
   --cache-control "no-cache, no-store, must-revalidate" \
   --content-type "application/javascript; charset=utf-8" \
   --profile "${AWS_PROFILE}" \
@@ -96,6 +122,13 @@ aws s3 cp "s3://${S3_BUCKET}/fantasy/index.html" "s3://${S3_BUCKET}/fantasy/inde
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
 
+aws s3 cp "s3://${S3_BUCKET}/rsvp/index.html" "s3://${S3_BUCKET}/rsvp/index.html" \
+  --metadata-directive REPLACE \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "text/html; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}"
+
 for key in "sunset" "sunset/"; do
   aws s3api put-object \
     --bucket "${S3_BUCKET}" \
@@ -112,6 +145,17 @@ for key in "fantasy" "fantasy/"; do
     --bucket "${S3_BUCKET}" \
     --key "${key}" \
     --body "fantasy/index.html" \
+    --cache-control "no-cache, no-store, must-revalidate" \
+    --content-type "text/html; charset=utf-8" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" >/dev/null
+done
+
+for key in "rsvp" "rsvp/"; do
+  aws s3api put-object \
+    --bucket "${S3_BUCKET}" \
+    --key "${key}" \
+    --body "rsvp/index.html" \
     --cache-control "no-cache, no-store, must-revalidate" \
     --content-type "text/html; charset=utf-8" \
     --profile "${AWS_PROFILE}" \
