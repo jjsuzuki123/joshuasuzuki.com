@@ -1,0 +1,17 @@
+{
+  "name": "rsvp-sniper",
+  "version": "1.0.0",
+  "description": "Drop-time Resy sniper Lambda (container image)",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.948.0",
+    "@aws-sdk/client-secrets-manager": "^3.948.0",
+    "@aws-sdk/client-sns": "^3.948.0",
+    "impers": "^0.0.9"
+  },
+  "license": "ISC"
+}

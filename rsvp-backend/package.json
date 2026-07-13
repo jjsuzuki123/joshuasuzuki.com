@@ -1,0 +1,17 @@
+{
+  "name": "rsvp-backend",
+  "version": "1.0.0",
+  "description": "NYC RSVP sniper backend (requests API + shared release-rule engine)",
+  "main": "requests-api/index.js",
+  "scripts": {
+    "test": "node ../scripts/rsvp-release-rules.test.js && node ../scripts/rsvp-slot-ranking.test.js && node ../scripts/rsvp-resy-client.test.js && node ../scripts/rsvp-requests-api.test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.948.0",
+    "@aws-sdk/client-scheduler": "^3.948.0",
+    "@aws-sdk/client-secrets-manager": "^3.948.0",
+    "@aws-sdk/client-sns": "^3.948.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "license": "ISC"
+}
