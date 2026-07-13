@@ -4,7 +4,7 @@
   "description": "NYC RSVP sniper backend (requests API + shared release-rule engine)",
   "main": "requests-api/index.js",
   "scripts": {
-    "test": "node ../scripts/rsvp-release-rules.test.js && node ../scripts/rsvp-slot-ranking.test.js && node ../scripts/rsvp-resy-client.test.js && node ../scripts/rsvp-requests-api.test.js"
+    "test": "node ../scripts/rsvp-release-rules.test.js && node ../scripts/rsvp-slot-ranking.test.js && node ../scripts/rsvp-resy-client.test.js && node ../scripts/rsvp-requests-api.test.js && node ../scripts/rsvp-sniper-core.test.js && node ../scripts/rsvp-e2e.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.948.0",

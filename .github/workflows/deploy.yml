@@ -66,6 +66,7 @@ jobs:
           node scripts/rsvp-resy-client.test.js
           node scripts/rsvp-requests-api.test.js
           node scripts/rsvp-sniper-core.test.js
+          node scripts/rsvp-e2e.test.js
 
       - name: Validate fantasy import infrastructure
         run: |
