@@ -36,6 +36,21 @@ describe("parseTargetUrl", () => {
     expect(parseTargetUrl("localhost").ok).toBe(false);
     expect(parseTargetUrl("http://intranet").ok).toBe(false);
   });
+  it("rejects malformed domains found in hostile QA", () => {
+    expect(parseTargetUrl("http://.com").ok).toBe(false);
+    expect(parseTargetUrl("https://").ok).toBe(false);
+    expect(parseTargetUrl("http://-bad-.com").ok).toBe(false);
+    expect(parseTargetUrl("http://a..com").ok).toBe(false);
+  });
+  it("normalizes hex/decimal IP obfuscation to a dotted IP (caught by SSRF layer)", () => {
+    const r = parseTargetUrl("http://0x7f000001");
+    // WHATWG URL turns this into 127.0.0.1; the SSRF check then rejects it.
+    expect(r.ok && new URL(r.value.origin).hostname).toBe("127.0.0.1");
+  });
+  it("accepts punycode/IDN domains", () => {
+    const r = parseTargetUrl("https://日本語.example");
+    expect(r.ok && new URL(r.value.origin).hostname.startsWith("xn--")).toBe(true);
+  });
   it("rejects embedded credentials", () => {
     expect(parseTargetUrl("https://user:pass@example.com").ok).toBe(false);
   });

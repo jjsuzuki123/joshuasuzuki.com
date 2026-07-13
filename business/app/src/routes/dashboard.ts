@@ -38,9 +38,14 @@ export function registerDashboardRoutes(app: FastifyInstance, ctx: AppContext): 
       setFlash(reply, "error", planInactiveMessage(ent.reason));
       return reply.redirect("/billing");
     }
-    const body = z
+    const parsedBody = z
       .object({ url: z.string().max(2000).default(""), name: z.string().max(120).default("") })
-      .parse(req.body ?? {});
+      .safeParse(req.body ?? {});
+    if (!parsedBody.success) {
+      setFlash(reply, "error", "That website address or label is too long. Please shorten it and try again.");
+      return reply.redirect("/dashboard");
+    }
+    const body = parsedBody.data;
 
     if (ctx.repo.countSites(user.id) >= ent.limits.maxSites) {
       setFlash(

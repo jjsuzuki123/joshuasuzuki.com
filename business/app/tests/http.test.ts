@@ -137,12 +137,30 @@ describe("sites", () => {
   it("rejects invalid and private URLs with friendly flashes", async () => {
     const agent = makeAgent();
     await signupAgent(world.app, agent);
-    for (const url of ["not a url", "javascript:alert(1)", "http://127.0.0.1", "http://10.0.0.5/x"]) {
+    for (const url of ["not a url", "javascript:alert(1)", "http://127.0.0.1", "http://10.0.0.5/x", "http://.com", "http://0x7f000001"]) {
       const res = await post(agent, "/sites", { url });
       expect(res.statusCode).toBe(302);
       expect(res.headers.location).toBe("/dashboard");
     }
     expect(world.repo.countSites(1)).toBe(0);
+  });
+
+  it("handles absurdly long URLs without a 500", async () => {
+    const agent = makeAgent();
+    await signupAgent(world.app, agent);
+    const res = await post(agent, "/sites", { url: "https://a.com/" + "x".repeat(3000) });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe("/dashboard");
+    expect(world.repo.countSites(1)).toBe(0);
+  });
+
+  it("escapes hostile site names in HTML output", async () => {
+    const agent = makeAgent();
+    await signupAgent(world.app, agent);
+    await post(agent, "/sites", { url: "https://example.com", name: "<script>alert(1)</script>" });
+    const dash = await world.app.inject({ method: "GET", url: "/dashboard", headers: { cookie: agent.header() } });
+    expect(dash.body).not.toContain("<script>alert(1)</script>");
+    expect(dash.body).toContain("&lt;script&gt;");
   });
 
   it("rejects duplicates per user", async () => {

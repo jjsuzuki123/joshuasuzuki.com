@@ -42,8 +42,14 @@ export function parseTargetUrl(raw: string): { ok: true; value: ParsedTarget } |
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { ok: false, error: "Only http:// and https:// websites can be scanned." };
   }
-  if (!url.hostname.includes(".") || url.hostname.endsWith(".")) {
-    return { ok: false, error: "Please enter a full domain name, like example.com." };
+  const host = url.hostname;
+  const isIpLiteral = /^[\d.]+$/.test(host) || host.startsWith("[");
+  if (!isIpLiteral) {
+    const labels = host.split(".");
+    const labelRe = /^[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?$/i;
+    if (labels.length < 2 || labels.some((l) => l.length === 0 || !labelRe.test(l))) {
+      return { ok: false, error: "Please enter a full domain name, like example.com." };
+    }
   }
   if (url.username || url.password) {
     return { ok: false, error: "Website addresses with embedded credentials are not supported." };
