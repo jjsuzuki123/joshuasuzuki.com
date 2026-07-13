@@ -103,3 +103,26 @@ axe-core. Deploy target: one small VPS (Hetzner CX22-class, ~$5–9/mo) behind C
 - Postgres from day 1: adds an account + service for zero current benefit; revisit at scale.
 - Fly.io/Railway PaaS: acceptable fallbacks (documented in README); Hetzner chosen for cost
   and absence of platform magic. Final hosting account creation is a human action regardless.
+
+---
+
+## 2026-07-12 — D-005: Pricing $29/$59 flat monthly; payments via Stripe (Managed Payments if available, direct otherwise)
+
+**Decision:** Two flat tiers — Solo $29/mo (10 sites, 25 pages/scan) and Studio $59/mo
+(30 sites, 100 pages/scan) — 7-day cardless trial, monthly-only at launch, refund-first.
+Payment provider: Stripe. At account setup the operator checks whether **Stripe Managed
+Payments** (Stripe's merchant-of-record product, GA/public since Feb 2026 at 5% + $0.50) is
+available for the account; if yes, use it (zero sales-tax admin — relevant because the
+operator has NY physical nexus and NY taxes SaaS); if not, launch Stripe direct (code built
+and tested) + NY Certificate of Authority + Stripe Tax, and revisit MoR at $2k MRR.
+
+**Reasoning:** Full analysis with competitor anchors and cheaper/higher-tier analysis in
+LAUNCH.md §1–2. Key sources verified this session: Lemon Squeezy status post-acquisition
+(operational but effectively migration-mode; Stripe Managed Payments is the successor —
+devtonicstudios.com, cadence.withremote.ai, solooperatorstack.com) and NY SaaS taxability +
+nexus rules (numeral.com, nexusbystate.com, hellobooks.ai).
+
+**Alternatives rejected:** Lemon Squeezy (migration-mode risk for a brand-new account);
+Paddle (solid fallback, but a second vendor relationship and a checkout rewrite when Stripe
+covers both paths); $19 cheap tier and $99+ agency tier at launch (LAUNCH.md §1); annual
+plans at launch (refund-liability before PMF); one-time pricing (fights the monitoring loop).
