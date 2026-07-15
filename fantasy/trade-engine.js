@@ -11,6 +11,7 @@
 
   const VALUE_WEIGHTS = [1, 0.62, 0.38, 0.24];
   const REPLACEMENT_PERCENTILE = 0.2;
+  const REPLACEMENT_CATEGORY_PERCENTILE = 0.1;
   const POSITION_REQUIREMENTS = {
     C: { minimum: 1, cost: 10 },
     "1B": { minimum: 1, cost: 4 },
@@ -842,7 +843,7 @@
           .filter(Number.isFinite);
         const score = percentile(
           categoryScores,
-          REPLACEMENT_PERCENTILE
+          REPLACEMENT_CATEGORY_PERCENTILE
         );
         if (Number.isFinite(score)) scores[category.id] = round(score, 1);
 
@@ -852,8 +853,8 @@
         if (rawValues.length > 0) {
           const rawPercentile =
             category.direction === "lower"
-              ? 1 - REPLACEMENT_PERCENTILE
-              : REPLACEMENT_PERCENTILE;
+              ? 1 - REPLACEMENT_CATEGORY_PERCENTILE
+              : REPLACEMENT_CATEGORY_PERCENTILE;
           categoryValues[category.id] = round(
             percentile(rawValues, rawPercentile),
             category.aggregation === "rate" ? 4 : 1
@@ -901,10 +902,18 @@
     };
   }
 
-  function contextualRosterValue(roster, profile, context) {
+  function contextualRosterValue(
+    roster,
+    profile,
+    context,
+    scarcityRoster = profile?.roster
+  ) {
+    const scarcityProfile = profile
+      ? { ...profile, roster: scarcityRoster || roster }
+      : profile;
     return sum(
       roster.map((player) =>
-        contextualPlayerValue(player, profile, context)
+        contextualPlayerValue(player, scarcityProfile, context)
       )
     );
   }
@@ -933,6 +942,7 @@
     const droppedPlayers = [];
 
     while (roster.length > targetSize) {
+      const simulatedProfile = { ...profile, roster };
       const dropCandidates = roster.map((player, index) => {
         const afterDrop = roster.filter(
           (_candidate, candidateIndex) => candidateIndex !== index
@@ -943,7 +953,7 @@
           index,
           player,
           cost:
-            contextualPlayerValue(player, profile, context) +
+            contextualPlayerValue(player, simulatedProfile, context) +
             coverageCost,
         };
       });
@@ -990,8 +1000,7 @@
     );
     const depthPenalty =
       forcedDrops.length * 1.5 +
-      discardedIncoming.length * 2.5 +
-      replacementPlayers.length * 1.25;
+      discardedIncoming.length * 2.5;
 
     return {
       roster,
@@ -1303,7 +1312,12 @@
     const valueGapRatio = Math.abs(valueDelta) / comparisonValue;
     const fairness = clamp(Math.round(100 - valueGapRatio * 125), 0, 100);
     const teamValueDelta = round(
-      contextualRosterValue(teamAfter, teamProfile, leagueContext) -
+      contextualRosterValue(
+        teamAfter,
+        teamProfile,
+        leagueContext,
+        teamAfter
+      ) -
         contextualRosterValue(
           teamProfile.roster,
           teamProfile,
@@ -1315,7 +1329,8 @@
       contextualRosterValue(
         partnerAfter,
         partnerProfile,
-        leagueContext
+        leagueContext,
+        partnerAfter
       ) -
         contextualRosterValue(
           partnerProfile.roster,

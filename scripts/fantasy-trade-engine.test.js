@@ -744,6 +744,7 @@ assert.ok(
   )
 );
 assert.equal(threeForOne.partnerReplacementPlayers.length, 2);
+assert.equal(threeForOne.partnerDepthPenalty, 0);
 assert.ok(
   threeForOne.teamValueDelta <= twoForOne.teamValueDelta + 0.1
 );

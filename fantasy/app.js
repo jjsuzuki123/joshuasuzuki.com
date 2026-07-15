@@ -1585,6 +1585,23 @@
     if (!opportunity) return;
     const gainChips = opportunity.result.gains.slice(0, 3);
     const lossChips = opportunity.result.losses.slice(0, 2);
+    const rosterNotes = [
+      opportunity.result.droppedPlayers.length > 0
+        ? `${opportunity.result.droppedPlayers.length} cut${
+            opportunity.result.droppedPlayers.length === 1 ? "" : "s"
+          } required`
+        : null,
+      opportunity.result.discardedIncoming.length > 0
+        ? `${opportunity.result.discardedIncoming.length} incoming player${
+            opportunity.result.discardedIncoming.length === 1 ? "" : "s"
+          } below cutoff`
+        : null,
+      opportunity.result.replacementPlayers.length > 0
+        ? `${opportunity.result.replacementPlayers.length} waiver replacement${
+            opportunity.result.replacementPlayers.length === 1 ? "" : "s"
+          } assumed`
+        : null,
+    ].filter(Boolean);
     elements.tradeDialogContent.innerHTML = `
       <div class="trade-detail-heading">
         <div>
@@ -1634,6 +1651,16 @@
         <div class="detail-point">
           <span>Main risk</span>
           <p>${escapeHtml(opportunity.risk)}</p>
+        </div>
+      </div>
+      <div class="detail-category-row">
+        <span>Roster spot effect</span>
+        <div class="category-chips">
+          <span class="category-chip">${escapeHtml(
+            rosterNotes.length > 0
+              ? rosterNotes.join(" · ")
+              : "No cuts or waiver replacements required"
+          )}</span>
         </div>
       </div>
       <div class="detail-category-row">
