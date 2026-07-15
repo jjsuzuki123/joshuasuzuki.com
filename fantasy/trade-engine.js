@@ -9,7 +9,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createTradeEngine() {
   "use strict";
 
-  const VALUE_WEIGHTS = [1, 0.62, 0.38, 0.24];
+  const MAX_TRADE_PLAYERS_PER_SIDE = 8;
   const REPLACEMENT_PERCENTILE = 0.2;
   const REPLACEMENT_CATEGORY_PERCENTILE = 0.1;
   const POSITION_REQUIREMENTS = {
@@ -558,13 +558,19 @@
   }
 
   function bundleValue(players, valueForPlayer) {
+    const weightForIndex = (index) => {
+      if (index === 0) return 1;
+      if (index === 1) return 0.62;
+      if (index === 2) return 0.38;
+      return 0.24 * 0.65 ** (index - 3);
+    };
     return round(
       sum(
         [...players]
           .map((player) => valueForPlayer(player))
           .filter(Number.isFinite)
           .sort((left, right) => right - left)
-          .map((value, index) => value * (VALUE_WEIGHTS[index] || 0.35))
+          .map((value, index) => value * weightForIndex(index))
       ),
       1
     );
@@ -1260,6 +1266,15 @@
     const uniqueReceivingIds = [...new Set((receivingIds || []).map(String))];
     if (uniqueSendingIds.length === 0 || uniqueReceivingIds.length === 0) {
       return { valid: false, reason: "Add at least one player to each side." };
+    }
+    if (
+      uniqueSendingIds.length > MAX_TRADE_PLAYERS_PER_SIDE ||
+      uniqueReceivingIds.length > MAX_TRADE_PLAYERS_PER_SIDE
+    ) {
+      return {
+        valid: false,
+        reason: `Trade packages support up to ${MAX_TRADE_PLAYERS_PER_SIDE} players per side.`,
+      };
     }
     if (
       uniqueSendingIds.length !== (sendingIds || []).length ||

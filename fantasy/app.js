@@ -16,6 +16,7 @@
   const WATCHLIST_STORAGE_KEY = "rosterlab:watchlist:v1";
   const SAVED_TRADES_STORAGE_KEY = "rosterlab:saved-trades:v1";
   const STRATEGY_STORAGE_KEY = "rosterlab:strategies:v1";
+  const MAX_TRADE_PLAYERS_PER_SIDE = 8;
   const ROUTES = {
     overview: { title: "Overview", kicker: "Your league" },
     finder: { title: "Trade finder", kicker: "Opportunity board" },
@@ -1813,8 +1814,10 @@
     const key = String(playerId);
     if (collection.has(key)) {
       collection.delete(key);
-    } else if (collection.size >= 3) {
-      showToast("Trade scenarios support up to three players per side.");
+    } else if (collection.size >= MAX_TRADE_PLAYERS_PER_SIDE) {
+      showToast(
+        `Trade scenarios support up to ${MAX_TRADE_PLAYERS_PER_SIDE} players per side.`
+      );
       return;
     } else {
       collection.add(key);

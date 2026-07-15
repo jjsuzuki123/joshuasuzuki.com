@@ -761,4 +761,94 @@ assert.ok(
   )
 );
 
+const largePackageTeams = [
+  { id: "star-team", name: "Star team" },
+  { id: "depth-team", name: "Depth team" },
+];
+const largePackagePlayers = [
+  {
+    id: "large-star",
+    name: "Large-package star",
+    ownerTeamId: "star-team",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 96,
+    status: "Healthy",
+    scores: { runs: 96 },
+  },
+  ...Array.from({ length: 7 }, (_value, index) => ({
+    id: `incumbent-${index}`,
+    name: `Incumbent ${index}`,
+    ownerTeamId: "star-team",
+    type: "hitter",
+    positions: ["UTIL"],
+    marketValue: 55,
+    status: "Healthy",
+    scores: { runs: 55 },
+  })),
+  {
+    id: "useful-depth",
+    name: "Useful depth",
+    ownerTeamId: "depth-team",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 65,
+    status: "Healthy",
+    scores: { runs: 65 },
+  },
+  ...Array.from({ length: 8 }, (_value, index) => ({
+    id: `marginal-${index}`,
+    name: `Marginal ${index}`,
+    ownerTeamId: "depth-team",
+    type: "hitter",
+    positions: ["UTIL"],
+    marketValue: 10,
+    status: "Healthy",
+    scores: { runs: 10 },
+  })),
+];
+const eightPlayerIds = [
+  "useful-depth",
+  ...Array.from({ length: 7 }, (_value, index) => `marginal-${index}`),
+];
+const eightForOne = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: eightPlayerIds,
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
+const oneForOneDepth = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: ["useful-depth"],
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
+assert.equal(eightForOne.valid, true);
+assert.equal(eightForOne.droppedPlayers.length, 7);
+assert.equal(eightForOne.discardedIncoming.length, 7);
+assert.ok(eightForOne.valueIn - oneForOneDepth.valueIn < 17);
+assert.ok(
+  Math.abs(eightForOne.teamValueDelta - oneForOneDepth.teamValueDelta) <
+    0.1
+);
+assert.ok(eightForOne.teamScore < oneForOneDepth.teamScore);
+
+const nineForOne = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: [...eightPlayerIds, "marginal-7"],
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
+assert.equal(nineForOne.valid, false);
+assert.match(nineForOne.reason, /up to 8 players/);
+
 console.log("Fantasy trade engine tests passed.");
