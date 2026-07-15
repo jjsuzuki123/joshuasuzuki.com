@@ -719,4 +719,45 @@ assert.ok(
   )
 );
 
+const threeForOne = evaluateTrade({
+  teamId: "sellers",
+  partnerTeamId: "buyers",
+  sendingIds: ["star"],
+  receivingIds: ["mid-one", "mid-two", "buyer-filler"],
+  players: packagePlayers,
+  teams: packageTeams,
+  categories: packageCategories,
+});
+const twoForOne = evaluateTrade({
+  teamId: "sellers",
+  partnerTeamId: "buyers",
+  sendingIds: ["star"],
+  receivingIds: ["mid-one", "mid-two"],
+  players: packagePlayers,
+  teams: packageTeams,
+  categories: packageCategories,
+});
+assert.equal(threeForOne.droppedPlayers.length, 2);
+assert.ok(
+  threeForOne.discardedIncoming.some(
+    (player) => player.id === "buyer-filler"
+  )
+);
+assert.equal(threeForOne.partnerReplacementPlayers.length, 2);
+assert.ok(
+  threeForOne.teamValueDelta <= twoForOne.teamValueDelta + 0.1
+);
+assert.ok(threeForOne.teamScore < twoForOne.teamScore);
+assert.ok(
+  threeForOne.teamValueDelta <
+    threeForOne.listedValueIn - threeForOne.listedValueOut
+);
+assert.ok(
+  packageOpportunities.some(
+    (opportunity) =>
+      opportunity.sending.length === 3 &&
+      opportunity.receiving.length === 1
+  )
+);
+
 console.log("Fantasy trade engine tests passed.");

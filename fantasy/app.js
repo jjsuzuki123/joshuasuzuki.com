@@ -1053,7 +1053,15 @@
       )
       .slice(0, 5);
     const partnerFitText =
-      evaluation.partnerRosterFitPenalty >= 8
+      evaluation.partnerDiscardedIncoming.length > 0
+        ? `${evaluation.partnerDiscardedIncoming.length} incoming player${
+            evaluation.partnerDiscardedIncoming.length === 1 ? "" : "s"
+          } would fall below their roster cutoff and add no usable depth.`
+        : evaluation.partnerDroppedPlayers.length > 0
+          ? `They must cut ${evaluation.partnerDroppedPlayers.length} player${
+              evaluation.partnerDroppedPlayers.length === 1 ? "" : "s"
+            } before accepting this package.`
+          : evaluation.partnerRosterFitPenalty >= 8
         ? `The offer leaves their ${
             evaluation.partnerMissingPositions[0]?.position || "lineup"
           } slot uncovered, so the interest score is capped.`
@@ -1062,6 +1070,23 @@
           }${evaluation.partnerValueDelta} fit value and ${
             evaluation.partnerRotoPointGain >= 0 ? "+" : ""
           }${evaluation.partnerRotoPointGain} projected standings points.`;
+    const rosterEffects = [
+      evaluation.droppedPlayers.length > 0
+        ? `${evaluation.droppedPlayers.length} roster cut${
+            evaluation.droppedPlayers.length === 1 ? "" : "s"
+          } required`
+        : null,
+      evaluation.discardedIncoming.length > 0
+        ? `${evaluation.discardedIncoming.length} incoming player${
+            evaluation.discardedIncoming.length === 1 ? "" : "s"
+          } below your roster cutoff`
+        : null,
+      evaluation.replacementPlayers.length > 0
+        ? `${evaluation.replacementPlayers.length} waiver replacement${
+            evaluation.replacementPlayers.length === 1 ? "" : "s"
+          } assumed`
+        : null,
+    ].filter(Boolean);
     elements.labResult.innerHTML = `
       <div class="result-grade-header">
         <div class="result-grade-top">
@@ -1120,6 +1145,14 @@
                 : '<div class="impact-row"><span>Category mix</span><strong>Even</strong></div>'
             }
           </div>
+        </div>
+        <div class="result-section result-mutual-fit">
+          <span>Roster spot effect</span>
+          <p>${escapeHtml(
+            rosterEffects.length > 0
+              ? rosterEffects.join(" · ")
+              : "No cuts or waiver replacements are required."
+          )}</p>
         </div>
         <div class="result-meter-row">
           <div class="result-meter">
