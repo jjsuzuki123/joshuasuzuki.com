@@ -1829,7 +1829,13 @@
               grade: getGrade(adjustedScore),
             };
             if (realisticOnly && !adjustedResult.realistic) return;
-            if (adjustedResult.score < 49) return;
+            const minimumScore =
+              realisticOnly
+                ? 49
+                : maximumPackageSize >= 3
+                  ? 30
+                  : 44;
+            if (adjustedResult.score < minimumScore) return;
             candidates.push({
               id: opportunityKey(partnerTeam.id, sending, receiving),
               partnerTeam,
