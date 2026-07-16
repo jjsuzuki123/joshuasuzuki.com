@@ -15,3 +15,7 @@ HTML, CSS, and JavaScript.
 - `/fantasy/`: RosterLab fantasy baseball trade analysis
 - `/fantasy/football/`: Redraft football trade calculator
 - `/sunset/`: Afterglow sunset quality forecast
+
+## Internal tooling (not deployed)
+- `.cursor/canvases/`: Cursor analytics demo canvas + handoff doc, refreshed daily by
+  `scripts/cursor-analytics-refresh.mjs` (see `.cursor/canvases/cursor-analytics-canvas-handoff.md`)

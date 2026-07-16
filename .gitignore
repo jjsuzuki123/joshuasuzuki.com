@@ -5,3 +5,5 @@ node_modules/
 *.zip
 .aws-sam/
 fantasy-backend/packaged.yaml
+# Cursor analytics canvas data (real team analytics — never commit; repo is public)
+*.canvas.data.json
