@@ -1,6 +1,27 @@
 # RosterLab
 
-RosterLab is a browser-based fantasy baseball trade analyzer. It ships with an
+RosterLab is a browser-based fantasy trade toolkit.
+
+## Football (redraft calculator)
+
+`/fantasy/football/` is a FantasyCalc-style redraft trade calculator. It does
+**not** require ESPN or any league sync.
+
+- League settings: size, PPR / half / standard, Superflex, TE premium
+- Settings-aware player values from projected points + VORP, market anchors,
+  and fixture quantitative / qualitative sources
+- Two-sided trade calculator for multi-player packages
+- **Roster-slot / consolidation math**: receiving more players pays a
+  roster-space tax near replacement value; consolidating into fewer players
+  earns a premium so “more players” is never a free win
+- Rankings table that recomputes when settings change
+
+Player values and source cards are model/fixture based, not a live trade
+database and not a claim of FantasyCalc’s real-trade methodology.
+
+## Baseball
+
+The baseball app at `/fantasy/` is a category-league trade analyzer. It ships with an
 illustrative six-team league so every workflow is usable without an account.
 
 ## Included
@@ -10,27 +31,28 @@ illustrative six-team league so every workflow is usable without an account.
 - A multi-player trade lab with category impact and partner-fit estimates
 - Player search in the trade finder, both trade-lab rosters, and league market
 - A league-wide player market and local watchlist
-- Public ESPN league import for rosters, standings, ownership, and available
-  projections
-- ESPN lineup requirements and up to 100 highly rostered free agents or waiver
-  players for league-specific replacement estimates
+- Public and private ESPN league import for rosters, standings, ownership, and
+  available projections
 - Source and model pages that distinguish connected data from demo fixtures
 
 The analysis code is deterministic and runs in the browser. Saved scenarios,
-watchlists, and imported public-league data stay in local storage.
+watchlists, and imported league data stay in local storage.
 
 ## ESPN limits
 
 ESPN does not publish a supported fantasy API. Its web endpoints may block
-cross-origin browser requests, and private leagues require ESPN session values.
-RosterLab routes imports through a fixed-purpose Lambda relay. Private users
-provide `espn_s2` and `SWID` for one request; the app and relay do not store or
-log them. The browser clears both fields after every attempt.
+cross-origin browser requests, and it offers no OAuth flow for fantasy leagues.
+Public league URL imports use a fixed-purpose Lambda relay.
 
-ESPN has no OAuth flow for fantasy leagues, so handing an existing session to a
-relay is the only practical web connection today. RosterLab uses the values
-once, but ESPN may continue accepting them afterward. Users should treat both
-values like passwords and use them only on a trusted device.
+Private leagues can connect in two ways:
+1. **Browser connector (preferred):** the optional RosterLab ESPN Connector for
+   Chrome or Edge opens ESPN in another tab, reuses the browser session, and
+   returns league data directly to RosterLab without reading cookies or sending
+   credentials to a RosterLab server.
+2. **Session-value relay:** users may provide `espn_s2` and `SWID` for one
+   request through the Lambda relay. The app and relay do not store or log them,
+   and the browser clears both fields after every attempt. Treat those values
+   like passwords and use them only on a trusted device.
 
 The importer accepts standard and custom rotisserie or head-to-head category
 leagues. It reads ESPN's active categories, lower-is-better settings, and
@@ -42,10 +64,17 @@ Head-to-head category leagues use category-strength and standings leverage as
 an approximation; the model does not claim to simulate a particular future
 weekly matchup.
 
-To connect a supported league, open any ESPN page inside that league, copy its
-URL, select **Sync ESPN** in RosterLab, and paste the URL. The importer extracts
-the league, team, and season IDs when ESPN includes them in the link. If the
-link does not identify a team, choose yours from the team selector after import.
+To connect a private league with the connector, install the extension, select
+**Sync ESPN** in RosterLab, and choose **Connect with ESPN**. On the first
+connection, sign in on ESPN and open the league you want. Later syncs use the
+saved league and team IDs and finish in one click while the ESPN session remains
+active.
+
+For a public league (or private import via the relay), open any ESPN page inside
+that league, copy its URL, select **Sync ESPN**, and paste the URL. The importer
+extracts the league, team, and season IDs when ESPN includes them in the link.
+If the link does not identify a team, choose yours from the team selector after
+import.
 
 FanGraphs, Baseball Savant, and RotoWire values in the demo are fixtures, not
 live claims. Production evidence is accepted only from the configured
@@ -143,12 +172,16 @@ The client rejects unsupported schema versions, unlicensed source labels,
 unknown player IDs, unknown categories, oversized responses, and stale evidence
 adjustments. It never matches a player by name alone.
 
-Run the engine and ESPN parser tests from the repository root:
+Run the RosterLab tests from the repository root:
 
 ```sh
 node scripts/fantasy-trade-engine.test.js
 node scripts/fantasy-espn-client.test.js
+node scripts/fantasy-espn-connector.test.js
 node scripts/fantasy-source-client.test.js
 node scripts/fantasy-private-import.test.js
 node scripts/fantasy-relay-client.test.js
+node --test scripts/fantasy-football-trade.test.js
+npm test --prefix extensions/rosterlab-espn
+npm run check --prefix extensions/rosterlab-espn
 ```

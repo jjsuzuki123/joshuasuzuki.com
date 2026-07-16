@@ -46,6 +46,7 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude ".env.*" \
   --exclude "*.zip" \
   --exclude "admin-backend/*" \
+  --exclude "extensions/*" \
   --exclude "fantasy-backend/*" \
   --exclude "fantasy/config.js" \
   --exclude "_deploy/*" \
@@ -96,6 +97,27 @@ aws s3 cp "s3://${S3_BUCKET}/fantasy/index.html" "s3://${S3_BUCKET}/fantasy/inde
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
 
+aws s3 cp "s3://${S3_BUCKET}/fantasy/football/index.html" "s3://${S3_BUCKET}/fantasy/football/index.html" \
+  --metadata-directive REPLACE \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "text/html; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}"
+
+for key in \
+  "fantasy/connector/index.html" \
+  "fantasy/connector/privacy.html"; do
+  if aws s3api head-object --bucket "${S3_BUCKET}" --key "${key}" \
+    --profile "${AWS_PROFILE}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+    aws s3 cp "s3://${S3_BUCKET}/${key}" "s3://${S3_BUCKET}/${key}" \
+      --metadata-directive REPLACE \
+      --cache-control "no-cache, no-store, must-revalidate" \
+      --content-type "text/html; charset=utf-8" \
+      --profile "${AWS_PROFILE}" \
+      --region "${AWS_REGION}"
+  fi
+done
+
 for key in "sunset" "sunset/"; do
   aws s3api put-object \
     --bucket "${S3_BUCKET}" \
@@ -112,6 +134,17 @@ for key in "fantasy" "fantasy/"; do
     --bucket "${S3_BUCKET}" \
     --key "${key}" \
     --body "fantasy/index.html" \
+    --cache-control "no-cache, no-store, must-revalidate" \
+    --content-type "text/html; charset=utf-8" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" >/dev/null
+done
+
+for key in "fantasy/football" "fantasy/football/"; do
+  aws s3api put-object \
+    --bucket "${S3_BUCKET}" \
+    --key "${key}" \
+    --body "fantasy/football/index.html" \
     --cache-control "no-cache, no-store, must-revalidate" \
     --content-type "text/html; charset=utf-8" \
     --profile "${AWS_PROFILE}" \
