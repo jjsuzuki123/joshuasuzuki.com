@@ -12,6 +12,15 @@
   const MAX_TRADE_PLAYERS_PER_SIDE = 8;
   const REPLACEMENT_PERCENTILE = 0.2;
   const PACKAGE_VALUE_BLEND = 0.55;
+  const DAY_IN_MILLISECONDS = 86_400_000;
+  const INACTIVE_COVERAGE_KINDS = new Set([
+    "injured-list",
+    "short-term",
+    "medium-term",
+    "long-term",
+    "season-ending",
+    "suspended",
+  ]);
   const POSITION_REQUIREMENTS = {
     C: { minimum: 1, cost: 10 },
     "1B": { minimum: 1, cost: 4 },
@@ -83,7 +92,40 @@
 
   function scoresFor(player) {
     if (!player) return {};
-    return player.modelScores || player.scores || {};
+    const base = Object.prototype.hasOwnProperty.call(
+      player,
+      "baseModelScores"
+    )
+      ? player.baseModelScores || player.scores || {}
+      : player.modelScores || player.scores || {};
+    const evidence = quantitativeEvidence(player);
+    if (evidence.length === 0) return base;
+    const categoryIds = new Set(Object.keys(base));
+    evidence.forEach((item) => {
+      Object.keys(item.categoryScores || {}).forEach((id) => categoryIds.add(id));
+    });
+    return Object.fromEntries(
+      [...categoryIds].map((categoryId) => {
+        const entries = [];
+        if (Number.isFinite(base[categoryId])) {
+          entries.push({ value: base[categoryId], weight: 0.55 });
+        }
+        evidence.forEach((item) => {
+          const value = Number(item.categoryScores?.[categoryId]);
+          if (!Number.isFinite(value)) return;
+          entries.push({
+            value,
+            weight:
+              clamp(
+                Number.isFinite(item.confidence) ? item.confidence : 0.65,
+                0,
+                1
+              ) * item.freshness,
+          });
+        });
+        return [categoryId, weightedMean(entries)];
+      })
+    );
   }
 
   function scoreFor(player, categoryId) {
@@ -110,7 +152,14 @@
     if (relevantPlayers.length === 0) return false;
     if (
       relevantPlayers.some((player) =>
-        Number.isFinite(player?.modelScores?.[category.id])
+        Number.isFinite(
+          Object.prototype.hasOwnProperty.call(player, "baseModelScores")
+            ? player.baseModelScores?.[category.id]
+            : player?.modelScores?.[category.id]
+        ) ||
+        quantitativeEvidence(player).some((item) =>
+          Number.isFinite(item.categoryScores?.[category.id])
+        )
       )
     ) {
       return false;
@@ -138,13 +187,19 @@
     );
     if (scoredPlayers.length === 0) return null;
     const totalWeight = sum(
-      scoredPlayers.map((player) => weightForRate(player, categoryId))
+      scoredPlayers.map(
+        (player) =>
+          weightForRate(player, categoryId) * availabilityMultiplier(player)
+      )
     );
+    if (totalWeight <= 0) return null;
     return (
       sum(
         scoredPlayers.map(
           (player) =>
-            scoreFor(player, categoryId) * weightForRate(player, categoryId)
+            scoreFor(player, categoryId) *
+            weightForRate(player, categoryId) *
+            availabilityMultiplier(player)
         )
       ) / totalWeight
     );
@@ -156,14 +211,19 @@
     );
     if (valuedPlayers.length === 0) return null;
     const totalWeight = sum(
-      valuedPlayers.map((player) => weightForRate(player, categoryId))
+      valuedPlayers.map(
+        (player) =>
+          weightForRate(player, categoryId) * availabilityMultiplier(player)
+      )
     );
+    if (totalWeight <= 0) return null;
     return (
       sum(
         valuedPlayers.map(
           (player) =>
             categoryValueFor(player, categoryId) *
-            weightForRate(player, categoryId)
+            weightForRate(player, categoryId) *
+            availabilityMultiplier(player)
         )
       ) / totalWeight
     );
@@ -175,7 +235,12 @@
         return weightedRateValue(players, category.id);
       }
       const values = players
-        .map((player) => categoryValueFor(player, category.id))
+        .map((player) => {
+          const value = categoryValueFor(player, category.id);
+          return Number.isFinite(value)
+            ? value * availabilityMultiplier(player)
+            : null;
+        })
         .filter(Number.isFinite);
       return values.length > 0 ? sum(values) : null;
     }
@@ -183,7 +248,12 @@
       return weightedRateScore(players, category.id);
     }
     const values = players
-      .map((player) => scoreFor(player, category.id))
+      .map((player) => {
+        const value = scoreFor(player, category.id);
+        return Number.isFinite(value)
+          ? value * availabilityMultiplier(player)
+          : null;
+      })
       .filter(Number.isFinite);
     return values.length > 0 ? sum(values) : null;
   }
@@ -419,22 +489,200 @@
     return 0;
   }
 
-  function statusAdjustment(status) {
-    const normalized = String(status || "Healthy").toUpperCase();
-    if (normalized === "HEALTHY" || normalized === "ACTIVE") return 0;
-    if (normalized.includes("DAY") || normalized.includes("DTD")) return -3;
+  function activeInjuryFor(player, now) {
+    const injury = player?.injury;
+    if (!injury || typeof injury !== "object") return null;
+    const expiresAt = new Date(injury.expiresAt);
     if (
-      normalized.includes("IL") ||
-      normalized.includes("OUT") ||
-      normalized.includes("SUSP")
+      injury.expiresAt &&
+      !Number.isNaN(expiresAt.getTime()) &&
+      expiresAt.getTime() <= now.getTime()
     ) {
-      return -9;
+      return null;
     }
-    return -4;
+    return injury;
+  }
+
+  function normalizedAvailabilityStatus(player, now) {
+    const activeInjury = activeInjuryFor(player, now);
+    const newsExpiresAt = new Date(player?.news?.expiresAt);
+    const newsExpired =
+      player?.news?.expiresAt &&
+      !Number.isNaN(newsExpiresAt.getTime()) &&
+      newsExpiresAt.getTime() <= now.getTime();
+    const fallbackStatus =
+      ((player?.injury && !activeInjury) || newsExpired) && player?.baseStatus
+        ? player.baseStatus
+        : player?.status;
+    return String(
+      activeInjury?.status ||
+        fallbackStatus ||
+        (player?.isInjuredReserve ? "IL" : "Healthy")
+    )
+      .trim()
+      .toUpperCase()
+      .replaceAll("_", " ");
+  }
+
+  function severityFactor(severity) {
+    const normalized = String(severity || "").trim().toLowerCase();
+    const factors = {
+      healthy: 1,
+      active: 1,
+      "day-to-day": 0.93,
+      "short-term": 0.76,
+      "medium-term": 0.6,
+      "long-term": 0.38,
+      "season-ending": 0.08,
+    };
+    return Number.isFinite(factors[normalized])
+      ? factors[normalized]
+      : null;
+  }
+
+  function expectedReturnFactor(expectedReturn, now) {
+    const date = new Date(expectedReturn);
+    if (Number.isNaN(date.getTime()) || date.getTime() <= now.getTime()) {
+      return null;
+    }
+    const days = Math.ceil(
+      (date.getTime() - now.getTime()) / DAY_IN_MILLISECONDS
+    );
+    if (days > 60) return { days, factor: 0.28 };
+    if (days > 42) return { days, factor: 0.38 };
+    if (days > 28) return { days, factor: 0.48 };
+    if (days > 14) return { days, factor: 0.62 };
+    if (days > 7) return { days, factor: 0.76 };
+    return { days, factor: 0.88 };
+  }
+
+  function availabilityProfile(player, now = new Date()) {
+    const status = normalizedAvailabilityStatus(player, now);
+    const injury = activeInjuryFor(player, now) || {};
+    let factor = 1;
+    let kind = "healthy";
+
+    if (
+      /SEASON[\s_-]*ENDING|OUT[\s_-]*FOR[\s_-]*SEASON/.test(status)
+    ) {
+      factor = 0.08;
+      kind = "season-ending";
+    } else if (
+      /60[\s_-]*DAY|IL[\s_-]*60|IL60|D60/.test(status)
+    ) {
+      factor = 0.38;
+      kind = "long-term";
+    } else if (/15[\s_-]*DAY|IL[\s_-]*15|IL15|D15/.test(status)) {
+      factor = 0.68;
+      kind = "medium-term";
+    } else if (/10[\s_-]*DAY|IL[\s_-]*10|IL10|D10/.test(status)) {
+      factor = 0.74;
+      kind = "short-term";
+    } else if (/7[\s_-]*DAY|IL[\s_-]*7|IL7|D7/.test(status)) {
+      factor = 0.82;
+      kind = "short-term";
+    } else if (
+      status.includes("INJURY RESERVE") ||
+      status.includes("INJURED LIST") ||
+      /(^|[\s_-])IL(?=$|[\s_-])/.test(status) ||
+      status === "OUT"
+    ) {
+      factor = 0.65;
+      kind = "injured-list";
+    } else if (status.includes("SUSP")) {
+      factor = 0.55;
+      kind = "suspended";
+    } else if (
+      status.includes("DAY-TO-DAY") ||
+      status.includes("DAY TO DAY") ||
+      status.includes("DTD")
+    ) {
+      factor = 0.93;
+      kind = "day-to-day";
+    } else if (status.includes("DOUBTFUL")) {
+      factor = 0.75;
+      kind = "doubtful";
+    } else if (status.includes("QUESTIONABLE")) {
+      factor = 0.88;
+      kind = "questionable";
+    } else if (!["", "HEALTHY", "ACTIVE", "PROBABLE"].includes(status)) {
+      factor = 0.9;
+      kind = "limited";
+    }
+
+    const structuredFactor = severityFactor(injury.severity);
+    if (Number.isFinite(structuredFactor)) {
+      factor = Math.min(factor, structuredFactor);
+      kind = String(injury.severity).toLowerCase();
+    }
+    const ilDays = Number(injury.ilDays);
+    if (Number.isFinite(ilDays)) {
+      if (ilDays >= 60) {
+        factor = Math.min(factor, 0.38);
+        kind = "long-term";
+      } else if (ilDays >= 15) {
+        factor = Math.min(factor, 0.68);
+        kind = "medium-term";
+      } else if (ilDays >= 10) {
+        factor = Math.min(factor, 0.74);
+        kind = "short-term";
+      }
+    }
+    if (player?.isInjuredReserve) {
+      factor = Math.min(factor, 0.65);
+      if (kind === "healthy") kind = "injured-list";
+    }
+    const expectedReturn = expectedReturnFactor(injury.expectedReturn, now);
+    if (expectedReturn) {
+      factor = Math.min(factor, expectedReturn.factor);
+      if (expectedReturn.days > 28 && kind !== "season-ending") {
+        kind = "long-term";
+      }
+    }
+    const injuryLabel = String(injury.status || "").trim();
+    const explicitLabel =
+      !["", "HEALTHY", "ACTIVE"].includes(injuryLabel.toUpperCase())
+        ? injuryLabel
+        : status && !["HEALTHY", "ACTIVE"].includes(status)
+          ? String(player?.status || status)
+          : "";
+    const fallbackLabels = {
+      "day-to-day": "Day-to-day",
+      "short-term": "Short-term injury",
+      "medium-term": "Medium-term injury",
+      "long-term": "Long-term injury",
+      "season-ending": "Out for season",
+      "injured-list": "IL",
+      suspended: "Suspended",
+      doubtful: "Doubtful",
+      questionable: "Questionable",
+      limited: "Limited",
+    };
+
+    return {
+      factor: round(clamp(factor, 0.05, 1), 2),
+      kind,
+      label: explicitLabel || fallbackLabels[kind] || "Healthy",
+      expectedReturn: expectedReturn ? injury.expectedReturn : null,
+      daysUntilReturn: expectedReturn?.days || null,
+      longTerm: factor <= 0.5,
+    };
+  }
+
+  function availabilityMultiplier(player) {
+    return availabilityProfile(player).factor;
+  }
+
+  function countsTowardActiveCoverage(player) {
+    return (
+      !player?.isInjuredReserve &&
+      !INACTIVE_COVERAGE_KINDS.has(availabilityProfile(player).kind)
+    );
   }
 
   function positionCount(roster, position) {
     return roster.filter((player) =>
+      countsTowardActiveCoverage(player) &&
       Array.isArray(player.positions)
         ? player.positions.includes(position)
         : false
@@ -500,7 +748,7 @@
     return bonuses.length > 0 ? Math.max(...bonuses) : 0;
   }
 
-  function qualitativeAdjustment(player) {
+  function qualitativeAdjustment(player, now = new Date()) {
     const evidence = Array.isArray(player?.insights?.qualitative)
       ? player.insights.qualitative
       : [];
@@ -508,26 +756,69 @@
       return clamp(
         sum(
           evidence.map((item) => {
+            if (item.modelEligible === false) return 0;
+            const expiresAt = new Date(item.expiresAt);
+            if (
+              item.expiresAt &&
+              !Number.isNaN(expiresAt.getTime()) &&
+              expiresAt.getTime() <= now.getTime()
+            ) {
+              return 0;
+            }
             const confidence = Number.isFinite(item.confidence)
               ? clamp(item.confidence, 0, 1)
               : 0.7;
-            const freshness = Number.isFinite(item.freshness)
-              ? clamp(item.freshness, 0, 1)
-              : 1;
-            return impactValue(item.impact) * confidence * freshness;
+            const freshness = evidenceFreshness(item, 3, now);
+            const availabilityWeight = item.isInjury ? 0.25 : 1;
+            return (
+              impactValue(item.impact) *
+              confidence *
+              freshness *
+              availabilityWeight
+            );
           })
         ),
         -1,
         1
       );
     }
+    if (player?.news?.modelEligible === false) return 0;
+    const newsExpiresAt = new Date(player?.news?.expiresAt);
+    if (
+      player?.news?.expiresAt &&
+      !Number.isNaN(newsExpiresAt.getTime()) &&
+      newsExpiresAt.getTime() <= now.getTime()
+    ) {
+      return 0;
+    }
     return impactValue(player?.news?.impact) * 0.6;
   }
 
   function quantitativeEvidence(player) {
-    return Array.isArray(player?.insights?.quantitative)
+    return (Array.isArray(player?.insights?.quantitative)
       ? player.insights.quantitative
-      : [];
+      : []
+    )
+      .map((item) => ({
+        ...item,
+        freshness: evidenceFreshness(item, 14),
+      }))
+      .filter((item) => item.freshness > 0);
+  }
+
+  function evidenceFreshness(item, maxAgeDays, now = new Date()) {
+    const asOf = new Date(item?.asOf);
+    const storedFreshness = Number.isFinite(item?.freshness)
+      ? clamp(item.freshness, 0, 1)
+      : 1;
+    if (Number.isNaN(asOf.getTime())) return storedFreshness;
+    const age = Math.max(0, now.getTime() - asOf.getTime());
+    const timeFreshness = clamp(
+      1 - age / (maxAgeDays * DAY_IN_MILLISECONDS),
+      0,
+      1
+    );
+    return Math.min(timeFreshness, storedFreshness);
   }
 
   function ratePlayer(player, categories = []) {
@@ -551,10 +842,11 @@
           clamp(Number.isFinite(item.freshness) ? item.freshness : 1, 0, 1),
       }))
       .filter((entry) => Number.isFinite(entry.value));
+    const baseSignals = player?.baseSignals || player?.signals || {};
     const signalEntries = [
-      { value: Number(player?.signals?.projection), weight: 0.9 },
-      { value: Number(player?.signals?.underlying), weight: 0.65 },
-      { value: Number(player?.signals?.consensus), weight: 0.8 },
+      { value: Number(baseSignals.projection), weight: 0.9 },
+      { value: Number(baseSignals.underlying), weight: 0.65 },
+      { value: Number(baseSignals.consensus), weight: 0.8 },
       ...evidenceEntries,
     ].filter((entry) => Number.isFinite(entry.value));
     const signalComposite = weightedMean(signalEntries);
@@ -566,10 +858,11 @@
       components.push({ value: signalComposite, weight: 0.2 });
     }
     const base = weightedMean(components) ?? marketAnchor;
-    const availability = statusAdjustment(player?.status);
     const qualitative = qualitativeAdjustment(player) * 7;
     const trend = clamp(Number(player?.trend) || 0, -12, 12) * 0.2;
-    const rating = clamp(base + availability + qualitative + trend, 1, 99);
+    const preAvailability = clamp(base + qualitative + trend, 1, 99);
+    const availability = availabilityProfile(player);
+    const rating = clamp(preAvailability * availability.factor, 1, 99);
     const expectedCategoryCount = Math.max(1, relevantCategories.length);
     const coverage = categoryScores.length / expectedCategoryCount;
     const evidenceConfidence =
@@ -588,9 +881,11 @@
         market: round(marketAnchor, 1),
         categories: round(categoryComposite, 1),
         signals: round(signalComposite, 1),
-        availability: round(availability, 1),
+        availability: round(rating - preAvailability, 1),
+        availabilityFactor: availability.factor,
         qualitative: round(qualitative, 1),
       },
+      availability,
     };
   }
 
@@ -861,7 +1156,11 @@
       profile,
       context.positionRequirements
     );
-    return round(clamp(base + fit * 8 + scarcity, 1, 110), 1);
+    const availability = availabilityMultiplier(player);
+    return round(
+      clamp(base + fit * 8 * availability + scarcity * availability, 1, 110),
+      1
+    );
   }
 
   function ratePlayerForTeam({
@@ -1564,6 +1863,12 @@
           leagueContext.playerRatings.get(String(player.id))?.confidence || 0.5
       )
     );
+    const incomingAvailability = receiving
+      .map((player) => ({
+        player,
+        ...availabilityProfile(player),
+      }))
+      .filter((entry) => entry.factor < 0.95);
 
     const teamScore = clamp(
       Math.round(
@@ -1667,6 +1972,7 @@
       rotoPointGain: round(rotoPointGain, 1),
       partnerRotoPointGain: round(partnerRotoPointGain, 1),
       trendDelta: round(trendDelta, 1),
+      incomingAvailability,
       dataConfidence: Math.round(confidence * 100),
       rosterFitPenalty: teamCoverage.penalty,
       partnerRosterFitPenalty: partnerCoverage.penalty,
@@ -1781,8 +2087,14 @@
       risk = `You give back some ${categoryNames(losses)} production.`;
     } else if (result.valueDelta < -5) {
       risk = "You pay a premium in the evidence-based player values.";
-    } else if (result.receiving.some((player) => statusAdjustment(player.status) < 0)) {
-      risk = "The incoming side carries a current availability flag.";
+    } else if (result.incomingAvailability.length > 0) {
+      const availability = result.incomingAvailability[0];
+      const returnText = availability.expectedReturn
+        ? ` with an expected return around ${availability.expectedReturn}`
+        : "";
+      risk = `${availability.player.name} is ${availability.label}${returnText}; only ${Math.round(
+        availability.factor * 100
+      )}% of current-season value is credited.`;
     }
     if (result.puntEffects.some((delta) => delta.raw < 0)) {
       const punted = result.puntEffects
@@ -2003,7 +2315,7 @@
               strategyAdjustment = clamp(result.trendDelta * 1.25, -8, 8);
             } else if (strategy === "win-now") {
               strategyAdjustment = receiving.some(
-                (player) => statusAdjustment(player.status) < 0
+                (player) => availabilityProfile(player).factor < 0.9
               )
                 ? -8
                 : 3;

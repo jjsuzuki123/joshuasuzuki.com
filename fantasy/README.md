@@ -33,6 +33,9 @@ illustrative six-team league so every workflow is usable without an account.
 - A league-wide player market and local watchlist
 - Public and private ESPN league import for rosters, standings, ownership, and
   available projections
+- ESPN lineup requirements and up to 100 highly rostered free agents or waiver
+  players for league-specific replacement estimates
+- ESPN injury designations and lineup-slot status in current-season player value
 - Source and model pages that distinguish connected data from demo fixtures
 
 The analysis code is deterministic and runs in the browser. Saved scenarios,
@@ -83,6 +86,15 @@ official, or user-provided. RotoWire's commercial XML/JSON feeds require a
 syndication agreement; the browser never scrapes RotoWire or stores provider
 credentials.
 
+The optional Firecrawl research service searches a seven-day window across a
+deployment allowlist that can include ESPN, Yahoo Sports, MLB, NBC Sports, CBS
+Sports, and FantasyPros. Firecrawl runs only behind the AWS endpoint; its key is
+stored in Secrets Manager. RosterLab does not call undocumented publisher APIs,
+authenticated pages, or paywalled pages. A single media report is displayed
+with its source link and supporting excerpt. Firecrawl-discovered web text is
+always context-only and cannot alter player value; imported ESPN roster status
+or an explicitly licensed structured feed must supply model-changing state.
+
 ## Model
 
 Player value uses inputs that are actually present:
@@ -90,7 +102,16 @@ Player value uses inputs that are actually present:
 - 50% league market, ownership, or rank anchor
 - 30% category production
 - 20% connected projection and underlying-skill evidence
-- bounded adjustments for availability and dated role news
+- duration-aware availability and dated role-news adjustments
+
+Availability scales the complete current-season value instead of applying a
+small flat deduction. A day-to-day player retains 93% of value, a generic ESPN
+IL designation 65%, a 60-day or independently confirmed long-term injury 38%,
+and a season-ending injury 8%. A structured expected-return date can reduce the
+factor further when a long absence remains. Counting-category production is
+scaled by the same factor, while rate-category sample weight is reduced, so an
+injured player no longer contributes a healthy full-season line to a simulated
+roster. These factors are decision-model estimates, not medical forecasts.
 
 The team layer is separate. Strategy defaults to `Auto`. The engine infers a
 punt only when a category is a clear performance outlier versus that team's
@@ -121,11 +142,17 @@ Recommendations must clear minimum fairness and partner-interest thresholds.
 The score is an explainable decision aid, not a claimed probability that
 another manager will accept.
 
-## Licensed evidence endpoint
+## Evidence endpoint
 
-Set `SOURCE_ENDPOINT` during deployment to write `sourceEndpoint` into
-`config.js`. RosterLab sends league categories and provider IDs to that
-HTTPS endpoint, with no ESPN session values. The response uses schema version
+Set `SOURCE_ENDPOINT` during deployment to write the primary endpoint into
+`config.js`; `SECONDARY_SOURCE_ENDPOINT` preserves a licensed feed alongside
+Firecrawl. RosterLab sends league/category metadata and player IDs, names,
+MLB teams, roster ownership, availability, and value priority to that HTTPS
+endpoint, with no ESPN session values. Relay imports also attach a short-lived
+signed authorization that permits research only for players returned by ESPN,
+but only when the operator supplies the private research access code created by
+the AWS bootstrap stack.
+The response uses schema version
 1:
 
 ```json
@@ -156,10 +183,16 @@ HTTPS endpoint, with no ESPN session values. The response uses schema version
       "qualitative": [
         {
           "sourceId": "rotowire",
-          "type": "role",
-          "summary": "Moved into a closing role.",
-          "impact": 0.7,
-          "confidence": 0.9,
+          "type": "injury",
+          "summary": "Transferred to the 60-day injured list.",
+          "impact": "injured",
+          "injuryStatus": "60-day IL",
+          "severity": "long-term",
+          "ilDays": 60,
+          "expectedReturn": "2026-08-15T00:00:00Z",
+          "sourceUrl": "https://provider.example/player/101",
+          "confidence": 0.95,
+          "modelEligible": true,
           "asOf": "2026-07-06T18:45:00Z"
         }
       ]
@@ -170,7 +203,21 @@ HTTPS endpoint, with no ESPN session values. The response uses schema version
 
 The client rejects unsupported schema versions, unlicensed source labels,
 unknown player IDs, unknown categories, oversized responses, and stale evidence
-adjustments. It never matches a player by name alone.
+adjustments. It never matches a player by name alone. Ordinary headlines affect
+the model for three days. Structured injury state can remain usable for up to
+the reported return horizon (capped at 120 days), but only while the provider
+source itself remains current. A non-injury role note cannot silently clear an
+ESPN IL status. Set `modelEligible: false` for display-only reporting; it remains
+cited in the UI but cannot change status or value. Firecrawl always emits that
+display-only flag, together with `publisher`, `evidenceQuote`, `reportType`,
+`corroborated`, and `publicationVerified`.
+
+The included `fantasy-insights/` service fulfills this contract with a
+cache-first API, DynamoDB, SQS, and up to two Firecrawl workers. The
+signed import request can queue uncached players for at most two workers; the
+browser polls quietly while cited results arrive. See
+`fantasy-insights/README.md` for the source policy, daily
+credit cap, AWS secret setup, and deployment switch.
 
 Run the RosterLab tests from the repository root:
 
@@ -179,6 +226,7 @@ node scripts/fantasy-trade-engine.test.js
 node scripts/fantasy-espn-client.test.js
 node scripts/fantasy-espn-connector.test.js
 node scripts/fantasy-source-client.test.js
+node scripts/fantasy-insights.test.js
 node scripts/fantasy-private-import.test.js
 node scripts/fantasy-relay-client.test.js
 node --test scripts/fantasy-football-trade.test.js

@@ -16,6 +16,14 @@ Parameters:
     Type: String
     Default: arn:aws:iam::545095759709:role/rosterlab-espn-import-production
     AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/rosterlab-espn-import-[a-z0-9-]+$
+  ResearchSigningSecretName:
+    Type: String
+    Default: rosterlab/research-signing/production
+    AllowedPattern: ^[A-Za-z0-9/_+=.@-]{1,512}$
+  ResearchAccessSecretName:
+    Type: String
+    Default: rosterlab/research-access/production
+    AllowedPattern: ^[A-Za-z0-9/_+=.@-]{1,512}$
 
 Resources:
   ImportApiAccessLogGroup:
@@ -66,6 +74,8 @@ Resources:
       Environment:
         Variables:
           ALLOWED_ORIGINS: !Join [",", !Ref AllowedOrigins]
+          RESEARCH_SIGNING_SECRET_NAME: !Ref ResearchSigningSecretName
+          RESEARCH_ACCESS_SECRET_NAME: !Ref ResearchAccessSecretName
       LoggingConfig:
         ApplicationLogLevel: ERROR
         LogFormat: JSON

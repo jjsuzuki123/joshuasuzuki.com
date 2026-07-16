@@ -9,14 +9,35 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createSourceClient(config) {
   "use strict";
 
-  const SOURCE_ENDPOINT =
+  const PRIMARY_SOURCE_ENDPOINT =
     typeof config.sourceEndpoint === "string"
       ? config.sourceEndpoint.trim()
       : "";
+  const RESEARCH_ENDPOINT =
+    typeof config.researchEndpoint === "string"
+      ? config.researchEndpoint.trim()
+      : "";
+  const SOURCE_ENDPOINTS = [
+    ...(Array.isArray(config.sourceEndpoints) ? config.sourceEndpoints : []),
+    PRIMARY_SOURCE_ENDPOINT,
+  ]
+    .map((endpoint) => String(endpoint || "").trim())
+    .filter((endpoint, index, values) => endpoint && values.indexOf(endpoint) === index);
   const ACTIVE_ACCESS = new Set(["licensed", "official", "user-provided"]);
   const MAX_PLAYERS = 5000;
   const MAX_RESPONSE_BYTES = 2_000_000;
   const MAX_TEXT = 500;
+  const DAY_IN_MILLISECONDS = 86_400_000;
+  const INJURY_TYPES = new Set(["injury", "availability", "transaction"]);
+  const INJURY_SEVERITIES = new Set([
+    "healthy",
+    "active",
+    "day-to-day",
+    "short-term",
+    "medium-term",
+    "long-term",
+    "season-ending",
+  ]);
 
   class SourceDataError extends Error {
     constructor(message, code) {
@@ -61,8 +82,14 @@
   }
 
   function validDate(value) {
+    if (value === null || value === undefined || value === "") return null;
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function validHttpsUrl(value) {
+    const text = String(value || "").trim();
+    return /^https:\/\//i.test(text) ? text.slice(0, 2048) : "";
   }
 
   function freshnessFor(value, maxAgeDays, now) {
@@ -76,7 +103,13 @@
   function normalizeSource(source, now) {
     const id = validSourceId(source?.id);
     const access = String(source?.access || "").toLowerCase();
-    if (!id || !ACTIVE_ACCESS.has(access)) return null;
+    if (
+      !id ||
+      !ACTIVE_ACCESS.has(access) ||
+      (id === "rotowire" && access !== "licensed")
+    ) {
+      return null;
+    }
     const updatedAt = validDate(source.updatedAt)?.toISOString() || null;
     const kind = ["quantitative", "qualitative", "mixed"].includes(source.kind)
       ? source.kind
@@ -173,25 +206,110 @@
     if (!source || !["qualitative", "mixed"].includes(source.kind)) return null;
     const asOf = validDate(item.asOf || source.updatedAt)?.toISOString();
     if (!asOf) return null;
-    const freshness = Math.min(source.freshness, freshnessFor(asOf, 3, now));
+    const type = cleanText(item.type, "role").toLowerCase();
+    const expectedReturnDate = validDate(item.expectedReturn);
+    const expectedReturn = expectedReturnDate?.toISOString() || null;
+    const hasIlDays =
+      item.ilDays !== null &&
+      item.ilDays !== undefined &&
+      item.ilDays !== "" &&
+      Number.isFinite(Number(item.ilDays)) &&
+      Number(item.ilDays) > 0;
+    const ilDays = hasIlDays ? Number(item.ilDays) : null;
+    const severity = String(item.severity || "")
+      .trim()
+      .toLowerCase();
+    const normalizedSeverity = INJURY_SEVERITIES.has(severity) ? severity : "";
+    const isInjury =
+      INJURY_TYPES.has(type) ||
+      Boolean(expectedReturn) ||
+      hasIlDays ||
+      Boolean(normalizedSeverity) ||
+      Boolean(item.injuryStatus);
+    const qualitativeSourceFreshness = freshnessFor(
+      source.updatedAt,
+      3,
+      now
+    );
+    const freshness = Math.min(
+      qualitativeSourceFreshness,
+      freshnessFor(asOf, 3, now)
+    );
+    let stateMaxAgeDays = 3;
+    if (isInjury) {
+      stateMaxAgeDays = 30;
+      const asOfDate = validDate(asOf);
+      if (expectedReturnDate && asOfDate && expectedReturnDate > asOfDate) {
+        stateMaxAgeDays = clamp(
+          Math.ceil(
+            (expectedReturnDate.getTime() - asOfDate.getTime()) /
+              DAY_IN_MILLISECONDS
+          ) + 7,
+          14,
+          120
+        );
+      }
+    }
+    const stateFreshness = isInjury
+      ? Math.min(
+          qualitativeSourceFreshness,
+          freshnessFor(asOf, stateMaxAgeDays, now)
+        )
+      : freshness;
+    const sourceUpdatedDate = validDate(source.updatedAt) || validDate(asOf);
+    const asOfDate = validDate(asOf);
+    const expiresAt = new Date(
+      Math.min(
+        sourceUpdatedDate.getTime() + 3 * DAY_IN_MILLISECONDS,
+        asOfDate.getTime() + 3 * DAY_IN_MILLISECONDS
+      )
+    ).toISOString();
+    const stateExpiresAt = new Date(
+      Math.min(
+        sourceUpdatedDate.getTime() + 3 * DAY_IN_MILLISECONDS,
+        asOfDate.getTime() + stateMaxAgeDays * DAY_IN_MILLISECONDS
+      )
+    ).toISOString();
     const summary = cleanText(item.summary || item.headline);
-    if (!summary && !item.status && !Number.isFinite(Number(item.impact))) {
+    const status = cleanText(item.injuryStatus || item.status);
+    if (
+      !summary &&
+      !status &&
+      !Number.isFinite(Number(item.impact)) &&
+      !expectedReturn &&
+      !Number.isFinite(ilDays) &&
+      !normalizedSeverity
+    ) {
       return null;
     }
     return {
       sourceId,
       asOf,
       freshness,
+      stateFreshness,
+      expiresAt,
+      stateExpiresAt,
       confidence: clamp(
         Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : 0.7,
         0,
         1
       ),
-      type: cleanText(item.type, "role"),
+      type,
+      isInjury,
       summary,
       impact: normalizeImpact(item.impact),
-      status: cleanText(item.status),
+      status,
       role: cleanText(item.role),
+      severity: normalizedSeverity,
+      ilDays: hasIlDays ? clamp(Math.round(ilDays), 1, 365) : null,
+      expectedReturn,
+      sourceUrl: validHttpsUrl(item.sourceUrl || item.url),
+      evidenceQuote: cleanText(item.evidenceQuote),
+      publisher: cleanText(item.publisher),
+      reportType: cleanText(item.reportType),
+      corroborated: item.corroborated === true,
+      publicationVerified: item.publicationVerified === true,
+      modelEligible: item.modelEligible !== false,
     };
   }
 
@@ -285,6 +403,25 @@
       )[0];
   }
 
+  function bestInjuryEvidence(qualitative) {
+    return [...qualitative]
+      .filter(
+        (item) =>
+          item.isInjury && item.modelEligible !== false && item.stateFreshness > 0
+      )
+      .sort(
+        (left, right) =>
+          new Date(right.asOf).getTime() - new Date(left.asOf).getTime() ||
+          right.confidence - left.confidence
+      )[0];
+  }
+
+  function isHealthyStatus(status) {
+    return ["", "ACTIVE", "HEALTHY", "PROBABLE"].includes(
+      String(status || "").trim().toUpperCase()
+    );
+  }
+
   function mergeSources(existingSources, normalizedSources) {
     const merged = new Map(
       (Array.isArray(existingSources) ? existingSources : []).map((source) => [
@@ -303,6 +440,21 @@
           : source.cadence,
       });
     });
+    return [...merged.values()];
+  }
+
+  function mergeEvidence(existing, incoming, type) {
+    const merged = new Map();
+    [...(Array.isArray(existing) ? existing : []), ...incoming].forEach(
+      (item) => {
+        const key = [
+          item.sourceId,
+          item.asOf,
+          type === "qualitative" ? item.sourceUrl || item.summary : item.overall,
+        ].join("|");
+        merged.set(key, item);
+      }
+    );
     return [...merged.values()];
   }
 
@@ -365,22 +517,94 @@
     });
     const players = league.players.map((player) => {
       const evidence = evidenceByPlayerId.get(String(player.id));
-      if (!evidence) return player;
+      const baseStatus = player.baseStatus || player.status;
+      const baseSignals = player.baseSignals || player.signals;
+      const baseModelScores = Object.prototype.hasOwnProperty.call(
+        player,
+        "baseModelScores"
+      )
+        ? player.baseModelScores
+        : player.modelScores || null;
+      const baseNews = Object.prototype.hasOwnProperty.call(player, "baseNews")
+        ? player.baseNews
+        : player.news || null;
+      const baseInjury = Object.prototype.hasOwnProperty.call(
+        player,
+        "baseInjury"
+      )
+        ? player.baseInjury
+        : player.injury || null;
+      const baseInsights =
+        player.insights && typeof player.insights === "object"
+          ? player.insights
+          : { quantitative: [], qualitative: [] };
+      if (!evidence) {
+        return {
+          ...player,
+          baseStatus,
+          baseSignals,
+          baseModelScores,
+          baseNews,
+          baseInjury,
+          status: baseStatus,
+          signals: baseSignals,
+          modelScores: baseModelScores,
+          news: baseNews,
+          injury: baseInjury,
+          insights: snapshot.partial || snapshot.preserveExisting
+            ? baseInsights
+            : { quantitative: [], qualitative: [] },
+        };
+      }
       const modelScores =
         evidence.quantitative.length > 0
           ? blendCategoryScores(player, evidence.quantitative, categoryIds)
           : {};
       const qualitative = bestQualitative(evidence.qualitative);
-      const baseStatus = player.baseStatus || player.status;
-      const baseSignals = player.baseSignals || player.signals;
+      const injuryEvidence = bestInjuryEvidence(evidence.qualitative);
+      let evidenceStatus =
+        injuryEvidence?.status ||
+        (qualitative?.modelEligible !== false ? qualitative?.status : "") ||
+        "";
+      if (
+        evidenceStatus &&
+        !isHealthyStatus(baseStatus) &&
+        !injuryEvidence
+      ) {
+        evidenceStatus = "";
+      }
+      const injury = injuryEvidence
+        ? {
+            source:
+              sourceMap.get(injuryEvidence.sourceId)?.name ||
+              injuryEvidence.sourceId,
+            sourceId: injuryEvidence.sourceId,
+            sourceUrl:
+              injuryEvidence.sourceUrl ||
+              sourceMap.get(injuryEvidence.sourceId)?.url ||
+              "",
+            status: injuryEvidence.status || baseStatus,
+            severity: injuryEvidence.severity || "",
+            ilDays: injuryEvidence.ilDays,
+            expectedReturn: injuryEvidence.expectedReturn,
+            updated: injuryEvidence.asOf,
+            confidence: injuryEvidence.confidence,
+            freshness: injuryEvidence.stateFreshness,
+            expiresAt: injuryEvidence.stateExpiresAt,
+          }
+        : baseInjury;
       return {
         ...player,
         baseStatus,
         baseSignals,
+        baseModelScores,
+        baseNews,
+        baseInjury,
         modelScores:
-          Object.keys(modelScores).length > 0 ? modelScores : player.modelScores,
+          Object.keys(modelScores).length > 0 ? modelScores : baseModelScores,
         signals: blendSignals(player, evidence.quantitative),
-        status: qualitative?.status || baseStatus,
+        status: evidenceStatus || baseStatus,
+        injury,
         news:
           evidence.qualitative.length > 0
             ? qualitative?.summary
@@ -392,13 +616,38 @@
                   impact: qualitative.impact,
                   updated: qualitative.asOf,
                   type: qualitative.type,
+                  sourceUrl:
+                    qualitative.sourceUrl ||
+                    sourceMap.get(qualitative.sourceId)?.url ||
+                    "",
+                  freshness: qualitative.freshness,
+                  expiresAt: qualitative.expiresAt,
+                  evidenceQuote: qualitative.evidenceQuote,
+                  publisher: qualitative.publisher,
+                  reportType: qualitative.reportType,
+                  corroborated: qualitative.corroborated,
+                  publicationVerified: qualitative.publicationVerified,
+                  modelEligible: qualitative.modelEligible,
                 }
-              : null
-            : player.news,
-        insights: {
-          quantitative: evidence.quantitative,
-          qualitative: evidence.qualitative,
-        },
+              : baseNews
+            : baseNews,
+        insights: snapshot.partial || snapshot.preserveExisting
+          ? {
+              quantitative: mergeEvidence(
+                baseInsights.quantitative,
+                evidence.quantitative,
+                "quantitative"
+              ),
+              qualitative: mergeEvidence(
+                baseInsights.qualitative,
+                evidence.qualitative,
+                "qualitative"
+              ),
+            }
+          : {
+              quantitative: evidence.quantitative,
+              qualitative: evidence.qualitative,
+            },
       };
     });
     const connectedSources = [...sourceMap.values()];
@@ -414,9 +663,39 @@
         schemaVersion: 1,
         generatedAt: generatedAt.toISOString(),
         matchedPlayers: evidenceByPlayerId.size,
+        research:
+          snapshot.research && typeof snapshot.research === "object"
+            ? {
+                provider: cleanText(snapshot.research.provider),
+                status: cleanText(snapshot.research.status),
+                requested: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.requested) || 0)
+                ),
+                cached: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.cached) || 0)
+                ),
+                queued: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.queued) || 0)
+                ),
+                pending: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.pending) || 0)
+                ),
+                authorized: snapshot.research.authorized === true,
+                returned: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.returned) || 0)
+                ),
+                truncated: snapshot.research.truncated === true,
+              }
+            : null,
+        partial: snapshot.partial === true,
       },
       model: {
-        version: "2.1 evidence model",
+        version: "2.2 evidence model",
         weights: [
           { label: "Market and rank anchor", value: 50 },
           { label: "Category production", value: 30 },
@@ -427,9 +706,63 @@
     };
   }
 
-  function requestBody(league) {
+  function authorizedResearchPlayers(league) {
+    const token = String(league.researchToken || "");
+    let authorized = null;
+    try {
+      const encodedPayload = token.split(".")[0];
+      const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+      const decoded = JSON.parse(
+        new TextDecoder().decode(
+          Uint8Array.from(
+            atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")),
+            (character) => character.charCodeAt(0)
+          )
+        )
+      );
+      authorized = new Set(
+        (Array.isArray(decoded.players) ? decoded.players : []).map((key) => {
+          const parts = String(key).split(":");
+          return `${parts[0]}:${parts.at(-1)}`;
+        })
+      );
+    } catch (_error) {
+      authorized = null;
+    }
+    return [...league.players]
+      .filter((player) => {
+        if (!authorized) return true;
+        const espnId = String(player.externalIds?.espn || player.id);
+        const team = cleanText(player.mlbTeam).toUpperCase();
+        return authorized.has(`${espnId}:${team}`);
+      })
+      .sort(
+        (left, right) =>
+          Number(String(right.ownerTeamId) === String(league.activeTeamId)) -
+            Number(String(left.ownerTeamId) === String(league.activeTeamId)) ||
+          Number(right.ownerTeamId !== null && right.ownerTeamId !== undefined) -
+            Number(left.ownerTeamId !== null && left.ownerTeamId !== undefined) ||
+          (Number(right.marketValue) || 0) - (Number(left.marketValue) || 0)
+      )
+      .slice(0, 500);
+  }
+
+  function requestBody(league, options = {}) {
+    const research =
+      options.research === undefined
+        ? Boolean(RESEARCH_ENDPOINT)
+        : options.research === true;
+    const requestPlayers = research
+      ? authorizedResearchPlayers(league)
+      : league.players;
     return {
       schemaVersion: 1,
+      researchToken:
+        research &&
+        typeof league.researchToken === "string" &&
+        /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(league.researchToken)
+          ? league.researchToken.slice(0, 40_000)
+          : "",
       league: {
         id: String(league.league.id),
         season: Number(league.league.season),
@@ -441,21 +774,40 @@
         aggregation: category.aggregation,
         direction: category.direction || "higher",
       })),
-      players: league.players.map((player) => ({
+      players: requestPlayers.map((player) => ({
         id: String(player.id),
         externalIds: player.externalIds || {
           espn: league.mode === "espn" ? String(player.id) : null,
         },
         name: cleanText(player.name),
         mlbTeam: cleanText(player.mlbTeam),
+        ownerTeamId:
+          player.ownerTeamId === null || player.ownerTeamId === undefined
+            ? null
+            : String(player.ownerTeamId),
+        status: cleanText(player.status),
+        activeRoster:
+          player.ownerTeamId !== null &&
+          player.ownerTeamId !== undefined &&
+          String(player.ownerTeamId) === String(league.activeTeamId),
+        priority: clamp(
+          Number(player.marketValue) || Number(player.ownership) || 0,
+          0,
+          100
+        ),
       })),
     };
   }
 
-  async function fetchSnapshot({ league, signal, timeout = 10000 }) {
-    if (!SOURCE_ENDPOINT) {
+  async function fetchEndpointSnapshot({
+    endpoint,
+    league,
+    signal,
+    timeout = 10000,
+  }) {
+    if (!endpoint) {
       throw new SourceDataError(
-        "Licensed source data is not configured in this environment.",
+        "Player research is not configured in this environment.",
         "SOURCE_NOT_CONFIGURED"
       );
     }
@@ -471,13 +823,17 @@
       else signal.addEventListener("abort", abortFromParent, { once: true });
     }
     try {
-      const response = await fetch(SOURCE_ENDPOINT, {
+      const isResearchEndpoint =
+        Boolean(RESEARCH_ENDPOINT) && endpoint === RESEARCH_ENDPOINT;
+      const payload = requestBody(league, { research: isResearchEndpoint });
+      if (!isResearchEndpoint) delete payload.researchToken;
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody(league)),
+        body: JSON.stringify(payload),
         signal: controller.signal,
         credentials: "omit",
         cache: "no-store",
@@ -499,7 +855,7 @@
         );
       }
       const text = await response.text();
-      if (text.length > MAX_RESPONSE_BYTES) {
+      if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) {
         throw new SourceDataError(
           "The source response is too large.",
           "SOURCE_DATA_TOO_LARGE"
@@ -532,8 +888,135 @@
     }
   }
 
-  async function enrichLeague({ league, signal, timeout, now }) {
-    const snapshot = await fetchSnapshot({ league, signal, timeout });
+  function mergeSnapshots(
+    snapshots,
+    league,
+    { partial = false, preserveExisting = false } = {}
+  ) {
+    const sources = new Map();
+    const players = new Map();
+    const aliases = new Map();
+    league.players.forEach((player) => {
+      const canonical = String(player.id);
+      aliases.set(canonical, canonical);
+      if (player.externalIds?.espn) {
+        aliases.set(String(player.externalIds.espn), canonical);
+      }
+    });
+    let research = null;
+    let generatedAt = null;
+    snapshots.forEach((snapshot) => {
+      if (
+        !snapshot ||
+        Number(snapshot.schemaVersion) !== 1 ||
+        !Array.isArray(snapshot.sources) ||
+        !Array.isArray(snapshot.players)
+      ) {
+        throw new SourceDataError(
+          "The source response has an unsupported schema.",
+          "INVALID_SOURCE_DATA"
+        );
+      }
+      (snapshot.sources || []).forEach((source) => {
+        if (source?.id) sources.set(String(source.id), source);
+      });
+      (snapshot.players || []).forEach((entry) => {
+        const identifier = String(
+          entry?.externalIds?.espn || entry?.playerId || ""
+        ).trim();
+        const key = aliases.get(identifier) || identifier;
+        if (!key) return;
+        const existing = players.get(key) || {
+          ...entry,
+          quantitative: [],
+          qualitative: [],
+        };
+        players.set(key, {
+          ...existing,
+          ...entry,
+          playerId: key,
+          quantitative: [
+            ...(existing.quantitative || []),
+            ...(Array.isArray(entry.quantitative) ? entry.quantitative : []),
+          ],
+          qualitative: [
+            ...(existing.qualitative || []),
+            ...(Array.isArray(entry.qualitative) ? entry.qualitative : []),
+          ],
+        });
+      });
+      if (snapshot.research) research = snapshot.research;
+      const candidateDate = validDate(snapshot.generatedAt);
+      if (
+        candidateDate &&
+        (!generatedAt || candidateDate.getTime() > generatedAt.getTime())
+      ) {
+        generatedAt = candidateDate;
+      }
+    });
+    return {
+      schemaVersion: 1,
+      generatedAt: (generatedAt || new Date()).toISOString(),
+      sources: [...sources.values()],
+      players: [...players.values()],
+      research,
+      partial,
+      preserveExisting,
+    };
+  }
+
+  async function fetchSnapshot({
+    league,
+    signal,
+    timeout = 10000,
+    researchOnly = false,
+  }) {
+    if (SOURCE_ENDPOINTS.length === 0) {
+      throw new SourceDataError(
+        "Player research is not configured in this environment.",
+        "SOURCE_NOT_CONFIGURED"
+      );
+    }
+    const requestedEndpoints =
+      researchOnly && RESEARCH_ENDPOINT
+        ? [RESEARCH_ENDPOINT]
+        : SOURCE_ENDPOINTS;
+    const results = await Promise.allSettled(
+      requestedEndpoints.map((endpoint) =>
+        fetchEndpointSnapshot({ endpoint, league, signal, timeout })
+      )
+    );
+    const snapshots = results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+    if (snapshots.length === 0) {
+      throw results[0]?.reason;
+    }
+    const validSnapshots = snapshots.filter(
+      (snapshot) =>
+        Number(snapshot?.schemaVersion) === 1 &&
+        Array.isArray(snapshot?.sources) &&
+        Array.isArray(snapshot?.players)
+    );
+    if (validSnapshots.length === 0) {
+      throw new SourceDataError(
+        "The source response has an unsupported schema.",
+        "INVALID_SOURCE_DATA"
+      );
+    }
+    return mergeSnapshots(validSnapshots, league, {
+      partial: validSnapshots.length < requestedEndpoints.length,
+      preserveExisting: researchOnly,
+    });
+  }
+
+  async function enrichLeague({ league, signal, timeout, now, researchOnly }) {
+    const snapshot = await fetchSnapshot({
+      league,
+      signal,
+      timeout,
+      researchOnly,
+    });
     return applySnapshot(league, snapshot, { now });
   }
 
@@ -541,7 +1024,7 @@
     applySnapshot,
     enrichLeague,
     fetchSnapshot,
-    hasSourceEndpoint: Boolean(SOURCE_ENDPOINT),
+    hasSourceEndpoint: SOURCE_ENDPOINTS.length > 0,
     requestBody,
     SourceDataError,
   };

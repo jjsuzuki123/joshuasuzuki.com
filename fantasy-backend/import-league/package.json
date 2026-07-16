@@ -8,5 +8,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "3.1088.0"
   }
 }

@@ -4,9 +4,12 @@ set -euo pipefail
 S3_BUCKET="josh-personal-site-1"
 CF_DISTRIBUTION_ID="E3LDS3FK17E3JF"
 FANTASY_IMPORT_STACK="rosterlab-fantasy-import-production"
+FANTASY_INSIGHTS_STACK="rosterlab-fantasy-insights-production"
 AWS_PROFILE="${AWS_PROFILE:-default}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 SOURCE_ENDPOINT="${SOURCE_ENDPOINT:-}"
+SECONDARY_SOURCE_ENDPOINT="${SECONDARY_SOURCE_ENDPOINT:-}"
+RESEARCH_ENDPOINT="${RESEARCH_ENDPOINT:-}"
 
 if [[ ! -f "index.html" ]]; then
   echo "ERROR: index.html not found. Run from repo root."
@@ -16,6 +19,20 @@ fi
 FANTASY_CONFIG_FILE="$(mktemp)"
 trap 'rm -f "${FANTASY_CONFIG_FILE}"' EXIT
 cp "fantasy/config.js" "${FANTASY_CONFIG_FILE}"
+if DISCOVERED_SOURCE_ENDPOINT="$(aws cloudformation describe-stacks \
+      --stack-name "${FANTASY_INSIGHTS_STACK}" \
+      --query "Stacks[0].Outputs[?OutputKey=='SourceEndpoint'].OutputValue | [0]" \
+      --output text \
+      --profile "${AWS_PROFILE}" \
+      --region "${AWS_REGION}" 2>/dev/null)" &&
+    [[ "${DISCOVERED_SOURCE_ENDPOINT}" == https://* ]]; then
+  if [[ -n "${SOURCE_ENDPOINT}" ]] &&
+      [[ "${SOURCE_ENDPOINT}" != "${DISCOVERED_SOURCE_ENDPOINT}" ]]; then
+    SECONDARY_SOURCE_ENDPOINT="${SOURCE_ENDPOINT}"
+  fi
+  SOURCE_ENDPOINT="${DISCOVERED_SOURCE_ENDPOINT}"
+  RESEARCH_ENDPOINT="${DISCOVERED_SOURCE_ENDPOINT}"
+fi
 if IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
     --stack-name "${FANTASY_IMPORT_STACK}" \
     --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
@@ -25,11 +42,15 @@ if IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
     [[ "${IMPORT_ENDPOINT}" == https://* ]]; then
   IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" \
     SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
+    SECONDARY_SOURCE_ENDPOINT="${SECONDARY_SOURCE_ENDPOINT}" \
+    RESEARCH_ENDPOINT="${RESEARCH_ENDPOINT}" \
     node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
 else
   echo "Fantasy backend is not ready; deploying the static app without private import."
   IMPORT_ENDPOINT="" \
     SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
+    SECONDARY_SOURCE_ENDPOINT="${SECONDARY_SOURCE_ENDPOINT}" \
+    RESEARCH_ENDPOINT="${RESEARCH_ENDPOINT}" \
     node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
 fi
 
@@ -48,13 +69,28 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude "admin-backend/*" \
   --exclude "extensions/*" \
   --exclude "fantasy-backend/*" \
+  --exclude "fantasy-insights/*" \
+  --exclude "*/node_modules/*" \
   --exclude "fantasy/config.js" \
   --exclude "_deploy/*" \
   --exclude "scripts/*" \
   --exclude "permissions-policy.json" \
+  --exclude "permissions-policy-expanded.json" \
   --exclude "trust-policy.json" \
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
+
+# `aws s3 sync --delete` skips excluded keys for deletion too, so excluding the
+# IAM policy files does not remove copies a prior deploy may have published.
+# Delete them explicitly so they can never remain publicly reachable.
+for infra_object in \
+  "permissions-policy.json" \
+  "permissions-policy-expanded.json" \
+  "trust-policy.json"; do
+  aws s3 rm "s3://${S3_BUCKET}/${infra_object}" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" >/dev/null 2>&1 || true
+done
 
 aws s3 cp "${FANTASY_CONFIG_FILE}" "s3://${S3_BUCKET}/fantasy/config.js" \
   --cache-control "no-cache, no-store, must-revalidate" \

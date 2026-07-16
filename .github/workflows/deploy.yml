@@ -22,8 +22,11 @@ jobs:
       CF_DISTRIBUTION_ID: E3LDS3FK17E3JF
       AWS_REGION: us-east-1
       FANTASY_IMPORT_STACK: rosterlab-fantasy-import-production
+      FANTASY_INSIGHTS_STACK: rosterlab-fantasy-insights-production
+      FANTASY_BOOTSTRAP_STACK: rosterlab-fantasy-import-bootstrap
       SAM_ARTIFACT_BUCKET: rosterlab-deploy-artifacts-545095759709-us-east-1
       SOURCE_ENDPOINT: ${{ vars.ROSTERLAB_SOURCE_ENDPOINT }}
+      ENABLE_FANTASY_INSIGHTS: ${{ vars.ROSTERLAB_FIRECRAWL_ENABLED || 'true' }}
 
     steps:
       - name: Checkout
@@ -48,6 +51,35 @@ jobs:
             echo "Fantasy backend bootstrap is not ready; continuing with static deployment."
           fi
 
+      - name: Check fantasy research bootstrap
+        id: fantasy-insights
+        run: |
+          set -euo pipefail
+          if [[ "${ENABLE_FANTASY_INSIGHTS}" != "true" ]]; then
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          API_ROLE="$(aws cloudformation describe-stacks \
+            --stack-name "${FANTASY_BOOTSTRAP_STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='InsightsApiRuntimeRoleArn'].OutputValue | [0]" \
+            --output text 2>/dev/null || true)"
+          WORKER_ROLE="$(aws cloudformation describe-stacks \
+            --stack-name "${FANTASY_BOOTSTRAP_STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='InsightsWorkerRuntimeRoleArn'].OutputValue | [0]" \
+            --output text 2>/dev/null || true)"
+          SECRET_CURRENT="$(aws secretsmanager describe-secret \
+            --secret-id rosterlab/firecrawl/production \
+            --query "VersionIdsToStages" \
+            --output json 2>/dev/null || echo '{}')"
+          if [[ "${API_ROLE}" == arn:aws:iam::*:role/* ]] &&
+              [[ "${WORKER_ROLE}" == arn:aws:iam::*:role/* ]] &&
+              [[ "${SECRET_CURRENT}" == *AWSCURRENT* ]]; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            echo "Firecrawl research is enabled but its bootstrap role or API-key secret is not ready; continuing without it."
+          fi
+
       - name: Validate RosterLab
         run: |
           set -euo pipefail
@@ -58,6 +90,10 @@ jobs:
           node --check fantasy/espn-connector.js
           node --check fantasy/source-client.js
           node --check fantasy/trade-engine.js
+          node --check fantasy-insights/service/core.js
+          node --check fantasy-insights/service/api.js
+          node --check fantasy-insights/service/worker.js
+          node --check fantasy-backend/import-league/index.js
           node --check fantasy/football-data.js
           node --check fantasy/football-value.js
           node --check fantasy/football-trade.js
@@ -66,16 +102,18 @@ jobs:
           node scripts/fantasy-espn-client.test.js
           node scripts/fantasy-espn-connector.test.js
           node scripts/fantasy-source-client.test.js
+          node scripts/fantasy-insights.test.js
           node scripts/fantasy-private-import.test.js
           node scripts/fantasy-relay-client.test.js
           node --test scripts/fantasy-football-trade.test.js
           npm run check --prefix extensions/rosterlab-espn
           npm test --prefix extensions/rosterlab-espn
 
-      - name: Validate fantasy import infrastructure
+      - name: Validate fantasy infrastructure
         run: |
           sam validate --lint --template-file fantasy-backend/bootstrap-template.yaml
           sam validate --lint --template-file fantasy-backend/template.yaml
+          sam validate --lint --template-file fantasy-insights/template.yaml
 
       - name: Build and package fantasy import relay
         if: steps.fantasy-backend.outputs.ready == 'true'
@@ -98,18 +136,58 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
+      - name: Build fantasy research service
+        run: |
+          set -euo pipefail
+          sam build \
+            --template-file fantasy-insights/template.yaml \
+            --build-dir .aws-sam/insights-build
+
+      - name: Package fantasy research service
+        if: steps.fantasy-backend.outputs.ready == 'true' && steps.fantasy-insights.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          sam package \
+            --template-file .aws-sam/insights-build/template.yaml \
+            --s3-bucket "${SAM_ARTIFACT_BUCKET}" \
+            --s3-prefix "rosterlab/insights" \
+            --output-template-file fantasy-insights/packaged.yaml
+
+      - name: Deploy fantasy research service
+        if: steps.fantasy-backend.outputs.ready == 'true' && steps.fantasy-insights.outputs.ready == 'true'
+        run: |
+          sam deploy \
+            --template-file fantasy-insights/packaged.yaml \
+            --stack-name "${FANTASY_INSIGHTS_STACK}" \
+            --parameter-overrides Environment=production \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
       - name: Configure fantasy data endpoints
         run: |
           set -euo pipefail
           IMPORT_ENDPOINT=""
+          RESOLVED_SOURCE_ENDPOINT="${SOURCE_ENDPOINT}"
+          SECONDARY_SOURCE_ENDPOINT=""
+          RESEARCH_ENDPOINT=""
           if [[ "${{ steps.fantasy-backend.outputs.ready }}" == "true" ]]; then
             IMPORT_ENDPOINT="$(aws cloudformation describe-stacks \
               --stack-name "${FANTASY_IMPORT_STACK}" \
               --query "Stacks[0].Outputs[?OutputKey=='ImportEndpoint'].OutputValue | [0]" \
               --output text)"
           fi
+          if [[ "${{ steps.fantasy-insights.outputs.ready }}" == "true" ]]; then
+            SECONDARY_SOURCE_ENDPOINT="${RESOLVED_SOURCE_ENDPOINT}"
+            RESOLVED_SOURCE_ENDPOINT="$(aws cloudformation describe-stacks \
+              --stack-name "${FANTASY_INSIGHTS_STACK}" \
+              --query "Stacks[0].Outputs[?OutputKey=='SourceEndpoint'].OutputValue | [0]" \
+              --output text)"
+            RESEARCH_ENDPOINT="${RESOLVED_SOURCE_ENDPOINT}"
+          fi
           IMPORT_ENDPOINT="${IMPORT_ENDPOINT}" \
-            SOURCE_ENDPOINT="${SOURCE_ENDPOINT}" \
+            SOURCE_ENDPOINT="${RESOLVED_SOURCE_ENDPOINT}" \
+            SECONDARY_SOURCE_ENDPOINT="${SECONDARY_SOURCE_ENDPOINT}" \
+            RESEARCH_ENDPOINT="${RESEARCH_ENDPOINT}" \
             node scripts/write-fantasy-config.js
 
       - name: Sync to S3
@@ -129,10 +207,24 @@ jobs:
             --exclude "admin-backend/*" \
             --exclude "extensions/*" \
             --exclude "fantasy-backend/*" \
+            --exclude "fantasy-insights/*" \
             --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
+            --exclude "permissions-policy-expanded.json" \
             --exclude "trust-policy.json"
+
+      - name: Purge infra policy files from the public bucket
+        run: |
+          # `aws s3 sync --delete` skips excluded keys for deletion too, so
+          # excluding the IAM policy files does not remove copies a prior
+          # deploy may have published. Delete them explicitly.
+          for infra_object in \
+            "permissions-policy.json" \
+            "permissions-policy-expanded.json" \
+            "trust-policy.json"; do
+            aws s3 rm "s3://${S3_BUCKET}/${infra_object}" >/dev/null 2>&1 || true
+          done
 
       - name: Publish RosterLab route and config
         run: |

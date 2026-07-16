@@ -9,7 +9,7 @@
     />
     <meta name="theme-color" content="#f6f7f2" />
     <title>RosterLab | Fantasy baseball trade analysis</title>
-    <link rel="stylesheet" href="/fantasy/styles.css?v=5" />
+    <link rel="stylesheet" href="/fantasy/styles.css?v=7" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -513,6 +513,20 @@
 
             <div id="source-cards" class="source-cards"></div>
 
+            <section class="panel evidence-panel" aria-labelledby="evidence-heading">
+              <div class="panel-heading">
+                <div>
+                  <p class="section-label">Player reporting</p>
+                  <h3 id="evidence-heading">Recent cited evidence</h3>
+                </div>
+              </div>
+              <p class="model-note">
+                Web research is context-only. ESPN roster status and explicitly licensed structured
+                feeds remain the model inputs.
+              </p>
+              <div id="research-evidence" class="research-evidence-list"></div>
+            </section>
+
             <div class="model-grid">
               <section class="panel model-panel" aria-labelledby="model-heading">
                 <div class="panel-heading">
@@ -524,9 +538,10 @@
                 </div>
                 <div id="model-weights" class="model-weights"></div>
                 <p class="model-note">
-                  The base value uses only connected evidence. Availability and role reports adjust
-                  it after the weighted blend. Team strategy is applied separately, so a punted
-                  category cannot inflate a trade recommendation.
+                  The base value uses only connected evidence. Injury duration scales player value
+                  and category contribution after the weighted blend; dated role reports make
+                  smaller adjustments. Team strategy is applied separately, so a punted category
+                  cannot inflate a trade recommendation.
                 </p>
               </section>
 
@@ -537,11 +552,14 @@
                   <li>Private ESPN requests pass through a stateless, rate-limited relay.</li>
                   <li>Projection and news feeds enter through one versioned, normalized endpoint.</li>
                   <li>RotoWire data is accepted only when the endpoint marks it as licensed.</li>
+                  <li>Firecrawl searches only configured public sources; its key stays server-side.</li>
+                  <li>Firecrawl web reports are cited context; they never change model value.</li>
                   <li>Every provider record carries an update time, confidence, and provenance.</li>
                 </ul>
                 <p>
-                  Imported league data stays on your device. Private ESPN session values are used
-                  for one request and are never written to application storage or logs.
+                  The imported league snapshot stays on your device. The evidence service receives
+                  league metadata plus player IDs, names, teams, statuses, ownership, and value
+                  priority; private ESPN session values are never sent to it or stored.
                 </p>
                 <button class="button button-secondary" type="button" data-action="reset-demo">
                   Restore demo league
@@ -635,6 +653,23 @@
           </label>
         </div>
 
+        <label class="field research-access-field">
+          Research access code <span>Optional</span>
+          <input
+            id="research-access-code"
+            name="researchAccessCode"
+            type="password"
+            maxlength="256"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Required only for new Firecrawl research"
+          />
+          <small>
+            This private code authorizes paid web research. It is used for this import and never
+            saved in your browser.
+          </small>
+        </label>
+
         <div id="private-credentials" class="private-credentials" hidden>
           <div class="private-credentials-heading">
             <div>
@@ -716,11 +751,11 @@
       </div>
     </noscript>
 
-    <script src="/fantasy/config.js?v=2" defer></script>
-    <script src="/fantasy/data.js?v=2" defer></script>
-    <script src="/fantasy/trade-engine.js?v=2" defer></script>
-    <script src="/fantasy/espn-client.js?v=2" defer></script>
-    <script src="/fantasy/source-client.js?v=2" defer></script>
-    <script src="/fantasy/app.js?v=2" defer></script>
+    <script src="/fantasy/config.js?v=7" defer></script>
+    <script src="/fantasy/data.js?v=7" defer></script>
+    <script src="/fantasy/trade-engine.js?v=7" defer></script>
+    <script src="/fantasy/espn-client.js?v=7" defer></script>
+    <script src="/fantasy/source-client.js?v=7" defer></script>
+    <script src="/fantasy/app.js?v=7" defer></script>
   </body>
 </html>

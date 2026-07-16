@@ -95,7 +95,7 @@ const fixture = {
       roster: {
         entries: [
           {
-            lineupSlotId: 5,
+            lineupSlotId: 17,
             playerPoolEntry: {
               player: {
                 id: 101,
@@ -147,7 +147,7 @@ const fixture = {
                 proTeamId: 20,
                 defaultPositionId: 1,
                 eligibleSlots: [13, 14],
-                injuryStatus: "ACTIVE",
+                injuryStatus: "SEVEN_DAY_DL",
                 ownership: { percentOwned: 97, percentChange: 1.1 },
                 draftRanksByRankType: {
                   STANDARD: { overallRank: 18 },
@@ -183,7 +183,7 @@ const fixture = {
         proTeamId: 15,
         defaultPositionId: 9,
         eligibleSlots: [5, 11],
-        injuryStatus: "ACTIVE",
+        injuryStatus: "SIXTY_DAY_DL",
         ownership: { percentOwned: 44, percentChange: 2.3 },
         draftRanksByRankType: {
           STANDARD: { overallRank: 145 },
@@ -229,11 +229,31 @@ assert.equal(hitter.mlbTeam, "NYY");
 assert.equal(pitcher.mlbTeam, "WSH");
 assert.equal(hitter.externalIds.espn, "101");
 assert.equal(pitcher.externalIds.espn, "202");
-assert.equal(hitter.lineupSlot, "OF");
+assert.equal(hitter.lineupSlot, "IL");
+assert.equal(hitter.status, "IL");
+assert.equal(hitter.isInjuredReserve, true);
+assert.equal(hitter.provenance.espn.injuryStatus, "ACTIVE");
 assert.equal(pitcher.lineupSlot, "SP");
+assert.equal(pitcher.status, "7-day IL");
+assert.equal(pitcher.provenance.espn.injuryStatus, "SEVEN_DAY_DL");
 assert.equal(availableHitter.ownerTeamId, null);
 assert.equal(availableHitter.availability, "freeagent");
+assert.equal(availableHitter.status, "60-day IL");
 assert.equal(availableHitter.type, "hitter");
+const injuryReserveFixture = JSON.parse(JSON.stringify(fixture));
+injuryReserveFixture.teams[0].roster.entries[0].lineupSlotId = 5;
+injuryReserveFixture.teams[0].roster.entries[0].playerPoolEntry.player.injuryStatus =
+  "INJURY_RESERVE";
+const injuryReserveLeague = parseLeague(injuryReserveFixture, {
+  leagueId: "123456",
+  season: "2026",
+  teamId: "1",
+});
+const injuryReserveHitter = injuryReserveLeague.players.find(
+  (player) => player.id === "101"
+);
+assert.equal(injuryReserveHitter.status, "IL");
+assert.equal(injuryReserveHitter.isInjuredReserve, false);
 assert.equal(hitter.trend, 0);
 assert.equal(hitter.rateWeight, 545);
 assert.equal(pitcher.rateWeight, 510);
@@ -251,7 +271,7 @@ assert.equal(hitter.signals.consensus, hitter.marketValue);
 assert.equal(pitcher.signals.consensus, pitcher.marketValue);
 assert.ok(hitter.dataQuality.categoryCoverage > 0.9);
 assert.equal(hitter.provenance.espn.playerId, "101");
-assert.equal(league.model.version, "2.1 evidence model");
+assert.equal(league.model.version, "2.2 evidence model");
 assert.equal(league.sourceSnapshot.schemaVersion, 1);
 assert.equal(league.sourceSnapshot.categorySources.homeRuns, "projection");
 assert.equal(league.sourceSnapshot.matchedPlayers, 2);
