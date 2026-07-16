@@ -9,7 +9,7 @@
     />
     <meta name="theme-color" content="#f6f7f2" />
     <title>RosterLab | Fantasy baseball trade analysis</title>
-    <link rel="stylesheet" href="/fantasy/styles.css?v=8" />
+    <link rel="stylesheet" href="/fantasy/styles.css?v=9" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -552,14 +552,17 @@
                   <li>Private ESPN requests pass through a stateless, rate-limited relay.</li>
                   <li>Projection and news feeds enter through one versioned, normalized endpoint.</li>
                   <li>RotoWire data is accepted only when the endpoint marks it as licensed.</li>
-                  <li>Firecrawl searches only configured public sources; its key stays server-side.</li>
+                  <li>
+                    Firecrawl checks at most 12 relevant players per refresh: active injuries,
+                    watchlist players, open trade scenarios, and current trade targets.
+                  </li>
                   <li>Firecrawl web reports are cited context; they never change model value.</li>
                   <li>Every provider record carries an update time, confidence, and provenance.</li>
                 </ul>
                 <p>
                   The imported league snapshot stays on your device. The evidence service receives
-                  league metadata plus player IDs, names, teams, statuses, ownership, and value
-                  priority; private ESPN session values are never sent to it or stored.
+                  league metadata plus details for at most 12 relevant players. Saved notes come
+                  from the server cache; private ESPN session values are never sent to it or stored.
                 </p>
                 <button class="button button-secondary" type="button" data-action="reset-demo">
                   Restore demo league
@@ -751,11 +754,11 @@
       </div>
     </noscript>
 
-    <script src="/fantasy/config.js?v=8" defer></script>
-    <script src="/fantasy/data.js?v=8" defer></script>
-    <script src="/fantasy/trade-engine.js?v=8" defer></script>
-    <script src="/fantasy/espn-client.js?v=8" defer></script>
-    <script src="/fantasy/source-client.js?v=8" defer></script>
-    <script src="/fantasy/app.js?v=8" defer></script>
+    <script src="/fantasy/config.js?v=9" defer></script>
+    <script src="/fantasy/data.js?v=9" defer></script>
+    <script src="/fantasy/trade-engine.js?v=9" defer></script>
+    <script src="/fantasy/espn-client.js?v=9" defer></script>
+    <script src="/fantasy/source-client.js?v=9" defer></script>
+    <script src="/fantasy/app.js?v=9" defer></script>
   </body>
 </html>

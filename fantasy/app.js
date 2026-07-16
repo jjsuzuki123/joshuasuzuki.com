@@ -17,6 +17,7 @@
   const SAVED_TRADES_STORAGE_KEY = "rosterlab:saved-trades:v1";
   const STRATEGY_STORAGE_KEY = "rosterlab:strategies:v1";
   const MAX_TRADE_PLAYERS_PER_SIDE = 8;
+  const MAX_RESEARCH_PLAYERS = 12;
   const ROUTES = {
     overview: { title: "Overview", kicker: "Your league" },
     finder: { title: "Trade finder", kicker: "Opportunity board" },
@@ -292,6 +293,65 @@
     return state.data.players.find(
       (player) => String(player.id) === String(playerId)
     );
+  }
+
+  function relevantResearchPlayerIds(
+    data = state.data,
+    { includeCurrentState = true } = {}
+  ) {
+    const players = Array.isArray(data?.players) ? data.players : [];
+    const byId = new Map(players.map((player) => [String(player.id), player]));
+    const selected = [];
+    const selectedIds = new Set();
+    const add = (playerOrId) => {
+      const player =
+        typeof playerOrId === "object"
+          ? playerOrId
+          : byId.get(String(playerOrId));
+      if (!player || selected.length >= MAX_RESEARCH_PLAYERS) return;
+      const id = String(player.id);
+      if (selectedIds.has(id)) return;
+      selected.push(id);
+      selectedIds.add(id);
+    };
+    const priority = (player) =>
+      Number(player.marketValue) || Number(player.ownership) || 0;
+    const activeTeamId = String(data.activeTeamId || state.teamId);
+    const activeRoster = players
+      .filter((player) => String(player.ownerTeamId) === activeTeamId)
+      .sort((left, right) => priority(right) - priority(left));
+    const needsUpdate = (player) => {
+      const status = String(player.status || "").trim().toLowerCase();
+      return (
+        player.isInjuredReserve === true ||
+        (status &&
+          !["active", "healthy", "available", "probable"].includes(status))
+      );
+    };
+
+    activeRoster.filter(needsUpdate).forEach(add);
+    const sameLeague =
+      includeCurrentState &&
+      String(data?.league?.id) === String(state.data?.league?.id);
+    if (sameLeague) {
+      [...state.lab.sending, ...state.lab.receiving].forEach(add);
+      [...state.watchlist].forEach(add);
+      state.baseOpportunities.slice(0, 5).forEach((opportunity) => {
+        opportunity.receiving.forEach(add);
+        opportunity.sending.forEach(add);
+      });
+    }
+    activeRoster.slice(0, 6).forEach(add);
+    players
+      .filter(
+        (player) =>
+          player.ownerTeamId !== null &&
+          player.ownerTeamId !== undefined &&
+          String(player.ownerTeamId) !== activeTeamId
+      )
+      .sort((left, right) => priority(right) - priority(left))
+      .forEach(add);
+    return selected;
   }
 
   function playerMatchesSearch(player, query) {
@@ -2326,6 +2386,9 @@
           league = await sourceClient.enrichLeague({
             league,
             signal: controller.signal,
+            researchPlayerIds: relevantResearchPlayerIds(league, {
+              includeCurrentState: false,
+            }),
           });
           const research = researchStatusFor(league);
           if (
@@ -2440,6 +2503,7 @@
         league: state.data,
         signal: controller.signal,
         researchOnly: options.researchPoll === true,
+        researchPlayerIds: relevantResearchPlayerIds(),
       });
       if (
         attempt !== sourceRefreshAttempt ||

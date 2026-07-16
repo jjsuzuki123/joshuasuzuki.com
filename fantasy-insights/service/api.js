@@ -9,7 +9,7 @@ const {
 } = require("./core.js");
 
 const MAX_REQUEST_BYTES = 500_000;
-const MAX_QUEUE_PER_REQUEST = 25;
+const MAX_QUEUE_PER_REQUEST = 12;
 
 let injectedDependencies = null;
 let defaultDependencies = null;

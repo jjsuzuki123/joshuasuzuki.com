@@ -60,6 +60,12 @@ const researchToken = createResearchToken({
   now: researchNow,
 });
 assert.equal(
+  JSON.parse(
+    Buffer.from(researchToken.split(".")[0], "base64url").toString("utf8")
+  ).maxPlayers,
+  12
+);
+assert.equal(
   verifyResearchToken(
     researchToken,
     {

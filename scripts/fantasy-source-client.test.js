@@ -36,7 +36,29 @@ const cappedResearchBody = client.requestBody({
     marketValue: 50,
   })),
 });
-assert.equal(cappedResearchBody.players.length, 500);
+assert.equal(cappedResearchBody.players.length, 12);
+const requestedResearchIds = ["501", "500", "499"];
+const scopedResearchBody = client.requestBody(
+  {
+    ...league,
+    researchToken: "",
+    players: Array.from({ length: 501 }, (_value, index) => ({
+      ...league.players[0],
+      id: String(index + 1),
+      externalIds: { espn: String(index + 1) },
+      name: `Player ${index + 1}`,
+      mlbTeam: "FA",
+      ownerTeamId: index < 25 ? league.activeTeamId : null,
+      marketValue: index,
+    })),
+  },
+  { research: true, researchPlayerIds: requestedResearchIds }
+);
+assert.deepEqual(
+  scopedResearchBody.players.slice(0, 3).map((player) => player.id),
+  requestedResearchIds
+);
+assert.equal(scopedResearchBody.players.length, 12);
 const snapshot = {
   schemaVersion: 1,
   generatedAt: "2026-07-06T18:55:00.000Z",
@@ -535,18 +557,18 @@ async function runFetchTest() {
   const body = JSON.parse(request.options.body);
   assert.equal(body.schemaVersion, 1);
   assert.equal(body.researchToken, "abc.def");
-  assert.equal(body.players.length, league.players.length);
-  const firstLeaguePlayer = body.players.find(
-    (player) => player.id === String(league.players[0].id)
+  assert.equal(body.players.length, 12);
+  const firstLeaguePlayer = league.players.find(
+    (player) => String(player.id) === body.players[0].id
   );
-  assert.equal(firstLeaguePlayer.name, league.players[0].name);
-  assert.equal(firstLeaguePlayer.ownerTeamId, league.players[0].ownerTeamId);
-  assert.equal(firstLeaguePlayer.status, league.players[0].status);
+  assert.equal(body.players[0].name, firstLeaguePlayer.name);
+  assert.equal(body.players[0].ownerTeamId, firstLeaguePlayer.ownerTeamId);
+  assert.equal(body.players[0].status, firstLeaguePlayer.status);
   assert.equal(
-    firstLeaguePlayer.activeRoster,
-    String(league.players[0].ownerTeamId) === String(league.activeTeamId)
+    body.players[0].activeRoster,
+    String(firstLeaguePlayer.ownerTeamId) === String(league.activeTeamId)
   );
-  assert.equal(firstLeaguePlayer.priority, league.players[0].marketValue);
+  assert.equal(body.players[0].priority, firstLeaguePlayer.marketValue);
   assert.equal(fetched.sourceSnapshot.matchedPlayers, 3);
 
   delete require.cache[modulePath];
