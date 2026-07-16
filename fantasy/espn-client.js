@@ -329,7 +329,9 @@
       (url.hostname === "www.espn.com" &&
         /^\/fantasy\/baseball(?:\/|$)/.test(url.pathname)) ||
       (url.hostname === "fantasy.espn.com" &&
-        /^\/baseball(?:\/|$)/.test(url.pathname));
+        /^\/baseball(?:\/|$)/.test(url.pathname)) ||
+      (url.hostname === "lm-api-reads.fantasy.espn.com" &&
+        /^\/apis\/v3\/games\/flb(?:\/|$)/.test(url.pathname));
     if (url.protocol !== "https:" || !allowedPath) {
       throw new Error("Use an HTTPS link from ESPN fantasy baseball.");
     }
