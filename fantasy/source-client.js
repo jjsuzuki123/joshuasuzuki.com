@@ -17,6 +17,17 @@
   const MAX_PLAYERS = 5000;
   const MAX_RESPONSE_BYTES = 2_000_000;
   const MAX_TEXT = 500;
+  const DAY_IN_MILLISECONDS = 86_400_000;
+  const INJURY_TYPES = new Set(["injury", "availability", "transaction"]);
+  const INJURY_SEVERITIES = new Set([
+    "healthy",
+    "active",
+    "day-to-day",
+    "short-term",
+    "medium-term",
+    "long-term",
+    "season-ending",
+  ]);
 
   class SourceDataError extends Error {
     constructor(message, code) {
@@ -61,8 +72,14 @@
   }
 
   function validDate(value) {
+    if (value === null || value === undefined || value === "") return null;
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function validHttpsUrl(value) {
+    const text = String(value || "").trim();
+    return /^https:\/\//i.test(text) ? text.slice(0, 2048) : "";
   }
 
   function freshnessFor(value, maxAgeDays, now) {
@@ -76,7 +93,13 @@
   function normalizeSource(source, now) {
     const id = validSourceId(source?.id);
     const access = String(source?.access || "").toLowerCase();
-    if (!id || !ACTIVE_ACCESS.has(access)) return null;
+    if (
+      !id ||
+      !ACTIVE_ACCESS.has(access) ||
+      (id === "rotowire" && access !== "licensed")
+    ) {
+      return null;
+    }
     const updatedAt = validDate(source.updatedAt)?.toISOString() || null;
     const kind = ["quantitative", "qualitative", "mixed"].includes(source.kind)
       ? source.kind
@@ -173,25 +196,104 @@
     if (!source || !["qualitative", "mixed"].includes(source.kind)) return null;
     const asOf = validDate(item.asOf || source.updatedAt)?.toISOString();
     if (!asOf) return null;
-    const freshness = Math.min(source.freshness, freshnessFor(asOf, 3, now));
+    const type = cleanText(item.type, "role").toLowerCase();
+    const expectedReturnDate = validDate(item.expectedReturn);
+    const expectedReturn = expectedReturnDate?.toISOString() || null;
+    const hasIlDays =
+      item.ilDays !== null &&
+      item.ilDays !== undefined &&
+      item.ilDays !== "" &&
+      Number.isFinite(Number(item.ilDays)) &&
+      Number(item.ilDays) > 0;
+    const ilDays = hasIlDays ? Number(item.ilDays) : null;
+    const severity = String(item.severity || "")
+      .trim()
+      .toLowerCase();
+    const normalizedSeverity = INJURY_SEVERITIES.has(severity) ? severity : "";
+    const isInjury =
+      INJURY_TYPES.has(type) ||
+      Boolean(expectedReturn) ||
+      hasIlDays ||
+      Boolean(normalizedSeverity) ||
+      Boolean(item.injuryStatus);
+    const qualitativeSourceFreshness = freshnessFor(
+      source.updatedAt,
+      3,
+      now
+    );
+    const freshness = Math.min(
+      qualitativeSourceFreshness,
+      freshnessFor(asOf, 3, now)
+    );
+    let stateMaxAgeDays = 3;
+    if (isInjury) {
+      stateMaxAgeDays = 30;
+      const asOfDate = validDate(asOf);
+      if (expectedReturnDate && asOfDate && expectedReturnDate > asOfDate) {
+        stateMaxAgeDays = clamp(
+          Math.ceil(
+            (expectedReturnDate.getTime() - asOfDate.getTime()) /
+              DAY_IN_MILLISECONDS
+          ) + 7,
+          14,
+          120
+        );
+      }
+    }
+    const stateFreshness = isInjury
+      ? Math.min(
+          qualitativeSourceFreshness,
+          freshnessFor(asOf, stateMaxAgeDays, now)
+        )
+      : freshness;
+    const sourceUpdatedDate = validDate(source.updatedAt) || validDate(asOf);
+    const asOfDate = validDate(asOf);
+    const expiresAt = new Date(
+      Math.min(
+        sourceUpdatedDate.getTime() + 3 * DAY_IN_MILLISECONDS,
+        asOfDate.getTime() + 3 * DAY_IN_MILLISECONDS
+      )
+    ).toISOString();
+    const stateExpiresAt = new Date(
+      Math.min(
+        sourceUpdatedDate.getTime() + 3 * DAY_IN_MILLISECONDS,
+        asOfDate.getTime() + stateMaxAgeDays * DAY_IN_MILLISECONDS
+      )
+    ).toISOString();
     const summary = cleanText(item.summary || item.headline);
-    if (!summary && !item.status && !Number.isFinite(Number(item.impact))) {
+    const status = cleanText(item.injuryStatus || item.status);
+    if (
+      !summary &&
+      !status &&
+      !Number.isFinite(Number(item.impact)) &&
+      !expectedReturn &&
+      !Number.isFinite(ilDays) &&
+      !normalizedSeverity
+    ) {
       return null;
     }
     return {
       sourceId,
       asOf,
       freshness,
+      stateFreshness,
+      expiresAt,
+      stateExpiresAt,
       confidence: clamp(
         Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : 0.7,
         0,
         1
       ),
-      type: cleanText(item.type, "role"),
+      type,
+      isInjury,
       summary,
       impact: normalizeImpact(item.impact),
-      status: cleanText(item.status),
+      status,
       role: cleanText(item.role),
+      severity: normalizedSeverity,
+      ilDays: hasIlDays ? clamp(Math.round(ilDays), 1, 365) : null,
+      expectedReturn,
+      sourceUrl: validHttpsUrl(item.sourceUrl || item.url),
     };
   }
 
@@ -285,6 +387,22 @@
       )[0];
   }
 
+  function bestInjuryEvidence(qualitative) {
+    return [...qualitative]
+      .filter((item) => item.isInjury && item.stateFreshness > 0)
+      .sort(
+        (left, right) =>
+          new Date(right.asOf).getTime() - new Date(left.asOf).getTime() ||
+          right.confidence - left.confidence
+      )[0];
+  }
+
+  function isHealthyStatus(status) {
+    return ["", "ACTIVE", "HEALTHY", "PROBABLE"].includes(
+      String(status || "").trim().toUpperCase()
+    );
+  }
+
   function mergeSources(existingSources, normalizedSources) {
     const merged = new Map(
       (Array.isArray(existingSources) ? existingSources : []).map((source) => [
@@ -365,22 +483,85 @@
     });
     const players = league.players.map((player) => {
       const evidence = evidenceByPlayerId.get(String(player.id));
-      if (!evidence) return player;
+      const baseStatus = player.baseStatus || player.status;
+      const baseSignals = player.baseSignals || player.signals;
+      const baseModelScores = Object.prototype.hasOwnProperty.call(
+        player,
+        "baseModelScores"
+      )
+        ? player.baseModelScores
+        : player.modelScores || null;
+      const baseNews = Object.prototype.hasOwnProperty.call(player, "baseNews")
+        ? player.baseNews
+        : player.news || null;
+      const baseInjury = Object.prototype.hasOwnProperty.call(
+        player,
+        "baseInjury"
+      )
+        ? player.baseInjury
+        : player.injury || null;
+      if (!evidence) {
+        return {
+          ...player,
+          baseStatus,
+          baseSignals,
+          baseModelScores,
+          baseNews,
+          baseInjury,
+          status: baseStatus,
+          signals: baseSignals,
+          modelScores: baseModelScores,
+          news: baseNews,
+          injury: baseInjury,
+          insights: { quantitative: [], qualitative: [] },
+        };
+      }
       const modelScores =
         evidence.quantitative.length > 0
           ? blendCategoryScores(player, evidence.quantitative, categoryIds)
           : {};
       const qualitative = bestQualitative(evidence.qualitative);
-      const baseStatus = player.baseStatus || player.status;
-      const baseSignals = player.baseSignals || player.signals;
+      const injuryEvidence = bestInjuryEvidence(evidence.qualitative);
+      let evidenceStatus = injuryEvidence?.status || qualitative?.status || "";
+      if (
+        evidenceStatus &&
+        !isHealthyStatus(baseStatus) &&
+        !injuryEvidence
+      ) {
+        evidenceStatus = "";
+      }
+      const injury = injuryEvidence
+        ? {
+            source:
+              sourceMap.get(injuryEvidence.sourceId)?.name ||
+              injuryEvidence.sourceId,
+            sourceId: injuryEvidence.sourceId,
+            sourceUrl:
+              injuryEvidence.sourceUrl ||
+              sourceMap.get(injuryEvidence.sourceId)?.url ||
+              "",
+            status: injuryEvidence.status || baseStatus,
+            severity: injuryEvidence.severity || "",
+            ilDays: injuryEvidence.ilDays,
+            expectedReturn: injuryEvidence.expectedReturn,
+            updated: injuryEvidence.asOf,
+            confidence: injuryEvidence.confidence,
+            freshness: injuryEvidence.stateFreshness,
+            expiresAt: injuryEvidence.stateExpiresAt,
+          }
+        : baseInjury;
       return {
         ...player,
         baseStatus,
         baseSignals,
+        baseModelScores,
+        baseNews,
+        baseInjury,
         modelScores:
-          Object.keys(modelScores).length > 0 ? modelScores : player.modelScores,
+          Object.keys(modelScores).length > 0 ? modelScores : baseModelScores,
         signals: blendSignals(player, evidence.quantitative),
-        status: qualitative?.status || baseStatus,
+        status: evidenceStatus || baseStatus,
+        injury,
         news:
           evidence.qualitative.length > 0
             ? qualitative?.summary
@@ -392,9 +573,15 @@
                   impact: qualitative.impact,
                   updated: qualitative.asOf,
                   type: qualitative.type,
+                  sourceUrl:
+                    qualitative.sourceUrl ||
+                    sourceMap.get(qualitative.sourceId)?.url ||
+                    "",
+                  freshness: qualitative.freshness,
+                  expiresAt: qualitative.expiresAt,
                 }
-              : null
-            : player.news,
+              : baseNews
+            : baseNews,
         insights: {
           quantitative: evidence.quantitative,
           qualitative: evidence.qualitative,
@@ -416,7 +603,7 @@
         matchedPlayers: evidenceByPlayerId.size,
       },
       model: {
-        version: "2.1 evidence model",
+        version: "2.2 evidence model",
         weights: [
           { label: "Market and rank anchor", value: 50 },
           { label: "Category production", value: 30 },

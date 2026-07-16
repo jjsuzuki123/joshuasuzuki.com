@@ -1202,4 +1202,365 @@ const configuredCatcherRequirement = evaluateTrade({
 assert.equal(defaultCatcherRequirement.rosterFitPenalty, 0);
 assert.equal(configuredCatcherRequirement.rosterFitPenalty, 10);
 
+const injuryCalibrationTeams = [
+  { id: "okamoto-side", name: "Okamoto side" },
+  { id: "holmes-side", name: "Holmes side" },
+];
+const injuryRosterSettings = { positionRequirements: { "3B": 1 } };
+const injuryCategory = {
+  id: "impact",
+  label: "IMP",
+  name: "Neutral impact",
+  group: "all",
+  aggregation: "count",
+};
+function injuryPlayer({
+  id,
+  ownerTeamId,
+  value,
+  type = "hitter",
+  positions = ["UTIL"],
+}) {
+  return {
+    id,
+    name: id,
+    ownerTeamId,
+    type,
+    positions,
+    marketValue: value,
+    status: "Healthy",
+    trend: 0,
+    rateWeight: 100,
+    scores: { impact: value },
+    signals: {
+      projection: value,
+      underlying: value,
+      consensus: value,
+    },
+  };
+}
+const healthyOkamoto = {
+  ...injuryPlayer({
+    id: "kazuma-okamoto",
+    ownerTeamId: "okamoto-side",
+    value: 88,
+    positions: ["3B"],
+  }),
+  provenance: { espn: { rank: 5 } },
+};
+const healthyHolmes = injuryPlayer({
+  id: "clay-holmes",
+  ownerTeamId: "holmes-side",
+  value: 88,
+  type: "pitcher",
+  positions: ["SP"],
+});
+const injuredHolmes = {
+  ...healthyHolmes,
+  status: "60-day IL",
+  isInjuredReserve: true,
+  injury: {
+    status: "60-day IL",
+    severity: "long-term",
+    ilDays: 60,
+    source: "Licensed injury feed",
+    updated: "2026-07-11T14:00:00.000Z",
+  },
+};
+const injuryFillers = [
+  injuryPlayer({
+    id: "okamoto-spare-third",
+    ownerTeamId: "okamoto-side",
+    value: 40,
+    positions: ["3B"],
+  }),
+  injuryPlayer({
+    id: "okamoto-filler",
+    ownerTeamId: "okamoto-side",
+    value: 35,
+  }),
+  injuryPlayer({
+    id: "holmes-spare-pitcher",
+    ownerTeamId: "holmes-side",
+    value: 40,
+    type: "pitcher",
+    positions: ["SP"],
+  }),
+  injuryPlayer({
+    id: "holmes-filler",
+    ownerTeamId: "holmes-side",
+    value: 35,
+  }),
+];
+const healthyInjuryCalibrationPlayers = [
+  healthyOkamoto,
+  healthyHolmes,
+  ...injuryFillers,
+];
+const injuryCalibrationPlayers = [
+  healthyOkamoto,
+  injuredHolmes,
+  ...injuryFillers,
+];
+assert.equal(healthyOkamoto.provenance.espn.rank, 5);
+const okamotoRating = ratePlayer(healthyOkamoto, [injuryCategory]);
+const healthyHolmesRating = ratePlayer(healthyHolmes, [injuryCategory]);
+const holmesRating = ratePlayer(injuredHolmes, [injuryCategory]);
+assert.equal(healthyHolmesRating.value, okamotoRating.value);
+assert.equal(holmesRating.availability.kind, "long-term");
+assert.equal(holmesRating.availability.factor, 0.38);
+assert.ok(holmesRating.value < okamotoRating.value * 0.5);
+
+const genericIlRating = ratePlayer(
+  {
+    ...injuredHolmes,
+    status: "INJURY_RESERVE",
+    isInjuredReserve: false,
+    injury: undefined,
+  },
+  [injuryCategory]
+);
+const lineupIlRating = ratePlayer(
+  {
+    ...healthyOkamoto,
+    status: "Healthy",
+    isInjuredReserve: true,
+  },
+  [injuryCategory]
+);
+assert.equal(genericIlRating.availability.factor, 0.65);
+assert.equal(lineupIlRating.availability.factor, 0.65);
+assert.ok(genericIlRating.value < okamotoRating.value);
+
+const expiredInjuryRating = ratePlayer(
+  {
+    ...injuredHolmes,
+    status: "60-day IL",
+    baseStatus: "Healthy",
+    isInjuredReserve: false,
+    injury: {
+      ...injuredHolmes.injury,
+      expiresAt: "2020-01-01T00:00:00.000Z",
+    },
+  },
+  [injuryCategory]
+);
+assert.equal(expiredInjuryRating.availability.factor, 1);
+
+const healthyInjuryContext = computeLeagueContext({
+  teams: injuryCalibrationTeams,
+  categories: [injuryCategory],
+  players: healthyInjuryCalibrationPlayers,
+  rosterSettings: injuryRosterSettings,
+});
+const injuredCategoryContext = computeLeagueContext({
+  teams: injuryCalibrationTeams,
+  categories: [injuryCategory],
+  players: injuryCalibrationPlayers,
+  rosterSettings: injuryRosterSettings,
+});
+const healthyHolmesForOkamoto = evaluateTrade({
+  teamId: "okamoto-side",
+  partnerTeamId: "holmes-side",
+  sendingIds: ["kazuma-okamoto"],
+  receivingIds: ["clay-holmes"],
+  players: healthyInjuryCalibrationPlayers,
+  teams: injuryCalibrationTeams,
+  categories: [injuryCategory],
+  context: healthyInjuryContext,
+  rosterSettings: injuryRosterSettings,
+});
+const holmesForOkamoto = evaluateTrade({
+  teamId: "okamoto-side",
+  partnerTeamId: "holmes-side",
+  sendingIds: ["kazuma-okamoto"],
+  receivingIds: ["clay-holmes"],
+  players: injuryCalibrationPlayers,
+  teams: injuryCalibrationTeams,
+  categories: [injuryCategory],
+  context: injuredCategoryContext,
+  rosterSettings: injuryRosterSettings,
+});
+assert.equal(
+  healthyHolmesForOkamoto.realistic,
+  true,
+  JSON.stringify({
+    fairness: healthyHolmesForOkamoto.fairness,
+    acceptance: healthyHolmesForOkamoto.acceptance,
+    teamScore: healthyHolmesForOkamoto.teamScore,
+    teamDecisionValueDelta: healthyHolmesForOkamoto.teamDecisionValueDelta,
+    partnerDecisionValueDelta:
+      healthyHolmesForOkamoto.partnerDecisionValueDelta,
+    teamNeedGain: healthyHolmesForOkamoto.teamNeedGain,
+    partnerNeedGain: healthyHolmesForOkamoto.partnerNeedGain,
+    rosterFitPenalty: healthyHolmesForOkamoto.rosterFitPenalty,
+    partnerRosterFitPenalty:
+      healthyHolmesForOkamoto.partnerRosterFitPenalty,
+  })
+);
+assert.ok(healthyHolmesForOkamoto.fairness >= 90);
+assert.ok(holmesForOkamoto.valueIn < holmesForOkamoto.valueOut * 0.5);
+assert.equal(holmesForOkamoto.realistic, false);
+assert.equal(holmesForOkamoto.incomingAvailability.length, 1);
+assert.equal(holmesForOkamoto.incomingAvailability[0].longTerm, true);
+const injuryAwareOpportunities = findTradeOpportunities({
+  teamId: "okamoto-side",
+  players: injuryCalibrationPlayers,
+  teams: injuryCalibrationTeams,
+  categories: [injuryCategory],
+  realisticOnly: true,
+  includePackages: false,
+  rosterSettings: injuryRosterSettings,
+});
+assert.equal(
+  injuryAwareOpportunities.some(
+    (opportunity) =>
+      opportunity.sending.some((player) => player.id === "kazuma-okamoto") &&
+      opportunity.receiving.some((player) => player.id === "clay-holmes")
+  ),
+  false
+);
+
+const countAvailabilityPlayers = [
+  {
+    ...injuryPlayer({
+      id: "healthy-count",
+      ownerTeamId: "healthy-count-team",
+      value: 100,
+    }),
+    scores: { impact: 100 },
+  },
+  {
+    ...injuryPlayer({
+      id: "injured-count",
+      ownerTeamId: "injured-count-team",
+      value: 100,
+    }),
+    scores: { impact: 100 },
+    status: "60-day IL",
+    injury: { status: "60-day IL", ilDays: 60 },
+  },
+];
+const countAvailabilityContext = computeLeagueContext({
+  teams: [{ id: "healthy-count-team" }, { id: "injured-count-team" }],
+  categories: [injuryCategory],
+  players: countAvailabilityPlayers,
+});
+assert.equal(
+  countAvailabilityContext.profiles.get("healthy-count-team").categories.impact
+    .score,
+  100
+);
+assert.equal(
+  countAvailabilityContext.profiles.get("injured-count-team").categories.impact
+    .score,
+  38
+);
+
+const injuryRateCategory = {
+  ...injuryCategory,
+  id: "rateImpact",
+  aggregation: "rate",
+};
+const rateAvailabilityPlayers = [
+  ...["healthy-rate-team", "injured-rate-team"].map((ownerTeamId) => ({
+    ...injuryPlayer({
+      id: `${ownerTeamId}-core`,
+      ownerTeamId,
+      value: 50,
+    }),
+    scores: { rateImpact: 50 },
+  })),
+  {
+    ...injuryPlayer({
+      id: "healthy-rate-contributor",
+      ownerTeamId: "healthy-rate-team",
+      value: 100,
+    }),
+    scores: { rateImpact: 100 },
+  },
+  {
+    ...injuryPlayer({
+      id: "injured-rate-contributor",
+      ownerTeamId: "injured-rate-team",
+      value: 100,
+    }),
+    scores: { rateImpact: 100 },
+    status: "60-day IL",
+    injury: { status: "60-day IL", ilDays: 60 },
+  },
+];
+const rateAvailabilityContext = computeLeagueContext({
+  teams: [{ id: "healthy-rate-team" }, { id: "injured-rate-team" }],
+  categories: [injuryRateCategory],
+  players: rateAvailabilityPlayers,
+});
+assert.equal(
+  rateAvailabilityContext.profiles.get("healthy-rate-team").categories
+    .rateImpact.score,
+  75
+);
+assert.ok(
+  rateAvailabilityContext.profiles.get("injured-rate-team").categories
+    .rateImpact.score < 65
+);
+
+const coverageTeams = [{ id: "coverage-a" }, { id: "coverage-b" }];
+const outgoingThirdBaseman = injuryPlayer({
+  id: "outgoing-third-baseman",
+  ownerTeamId: "coverage-a",
+  value: 70,
+  positions: ["3B"],
+});
+const healthyIncomingThirdBaseman = injuryPlayer({
+  id: "incoming-third-baseman",
+  ownerTeamId: "coverage-b",
+  value: 70,
+  positions: ["3B"],
+});
+const healthyCoverageTrade = evaluateTrade({
+  teamId: "coverage-a",
+  partnerTeamId: "coverage-b",
+  sendingIds: ["outgoing-third-baseman"],
+  receivingIds: ["incoming-third-baseman"],
+  players: [outgoingThirdBaseman, healthyIncomingThirdBaseman],
+  teams: coverageTeams,
+  categories: [injuryCategory],
+});
+const injuredCoverageTrade = evaluateTrade({
+  teamId: "coverage-a",
+  partnerTeamId: "coverage-b",
+  sendingIds: ["outgoing-third-baseman"],
+  receivingIds: ["incoming-third-baseman"],
+  players: [
+    outgoingThirdBaseman,
+    {
+      ...healthyIncomingThirdBaseman,
+      status: "60-day IL",
+      injury: { status: "60-day IL", ilDays: 60 },
+    },
+  ],
+  teams: coverageTeams,
+  categories: [injuryCategory],
+});
+const lineupIlCoverageTrade = evaluateTrade({
+  teamId: "coverage-a",
+  partnerTeamId: "coverage-b",
+  sendingIds: ["outgoing-third-baseman"],
+  receivingIds: ["incoming-third-baseman"],
+  players: [
+    outgoingThirdBaseman,
+    {
+      ...healthyIncomingThirdBaseman,
+      status: "Day-to-day",
+      isInjuredReserve: true,
+    },
+  ],
+  teams: coverageTeams,
+  categories: [injuryCategory],
+});
+assert.equal(healthyCoverageTrade.rosterFitPenalty, 0);
+assert.ok(injuredCoverageTrade.rosterFitPenalty > 0);
+assert.ok(lineupIlCoverageTrade.rosterFitPenalty > 0);
+
 console.log("Fantasy trade engine tests passed.");

@@ -14,6 +14,7 @@ illustrative six-team league so every workflow is usable without an account.
   projections
 - ESPN lineup requirements and up to 100 highly rostered free agents or waiver
   players for league-specific replacement estimates
+- ESPN injury designations and lineup-slot status in current-season player value
 - Source and model pages that distinguish connected data from demo fixtures
 
 The analysis code is deterministic and runs in the browser. Saved scenarios,
@@ -52,7 +53,9 @@ live claims. Production evidence is accepted only from the configured
 first-party source endpoint. The endpoint must label each feed as licensed,
 official, or user-provided. RotoWire's commercial XML/JSON feeds require a
 syndication agreement; the browser never scrapes RotoWire or stores provider
-credentials.
+credentials. ESPN's undocumented news endpoints and Yahoo pages are not scraped.
+An approved Yahoo OAuth integration or another licensed provider can be
+normalized by the same endpoint.
 
 ## Model
 
@@ -61,7 +64,16 @@ Player value uses inputs that are actually present:
 - 50% league market, ownership, or rank anchor
 - 30% category production
 - 20% connected projection and underlying-skill evidence
-- bounded adjustments for availability and dated role news
+- duration-aware availability and dated role-news adjustments
+
+Availability scales the complete current-season value instead of applying a
+small flat deduction. A day-to-day player retains 93% of value, a generic ESPN
+IL designation 65%, a 60-day or independently confirmed long-term injury 38%,
+and a season-ending injury 8%. A structured expected-return date can reduce the
+factor further when a long absence remains. Counting-category production is
+scaled by the same factor, while rate-category sample weight is reduced, so an
+injured player no longer contributes a healthy full-season line to a simulated
+roster. These factors are decision-model estimates, not medical forecasts.
 
 The team layer is separate. Strategy defaults to `Auto`. The engine infers a
 punt only when a category is a clear performance outlier versus that team's
@@ -127,10 +139,15 @@ HTTPS endpoint, with no ESPN session values. The response uses schema version
       "qualitative": [
         {
           "sourceId": "rotowire",
-          "type": "role",
-          "summary": "Moved into a closing role.",
-          "impact": 0.7,
-          "confidence": 0.9,
+          "type": "injury",
+          "summary": "Transferred to the 60-day injured list.",
+          "impact": "injured",
+          "injuryStatus": "60-day IL",
+          "severity": "long-term",
+          "ilDays": 60,
+          "expectedReturn": "2026-08-15T00:00:00Z",
+          "sourceUrl": "https://provider.example/player/101",
+          "confidence": 0.95,
           "asOf": "2026-07-06T18:45:00Z"
         }
       ]
@@ -141,7 +158,11 @@ HTTPS endpoint, with no ESPN session values. The response uses schema version
 
 The client rejects unsupported schema versions, unlicensed source labels,
 unknown player IDs, unknown categories, oversized responses, and stale evidence
-adjustments. It never matches a player by name alone.
+adjustments. It never matches a player by name alone. Ordinary headlines affect
+the model for three days. Structured injury state can remain usable for up to
+the reported return horizon (capped at 120 days), but only while the provider
+source itself remains current. A non-injury role note cannot silently clear an
+ESPN IL status.
 
 Run the engine and ESPN parser tests from the repository root:
 
