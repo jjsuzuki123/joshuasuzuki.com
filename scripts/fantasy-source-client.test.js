@@ -7,11 +7,13 @@ const modulePath = require.resolve("../fantasy/source-client.js");
 delete require.cache[modulePath];
 global.RosterLabConfig = {
   sourceEndpoint: "https://insights.example.test/v1/fantasy/baseball",
+  researchEndpoint: "https://insights.example.test/v1/fantasy/baseball",
 };
 const client = require(modulePath);
 
 const league = {
   ...data,
+  researchToken: "abc.def",
   league: { ...data.league },
   players: data.players.map((player) => ({
     ...player,
@@ -21,9 +23,30 @@ const league = {
   sources: data.sources.map((source) => ({ ...source })),
 };
 const now = new Date("2026-07-06T19:00:00.000Z");
+const cappedResearchBody = client.requestBody({
+  ...league,
+  researchToken: "",
+  players: Array.from({ length: 501 }, (_value, index) => ({
+    ...league.players[0],
+    id: String(index + 1),
+    externalIds: { espn: String(index + 1) },
+    name: `Player ${index + 1}`,
+    mlbTeam: "FA",
+    ownerTeamId: index < 25 ? league.activeTeamId : null,
+    marketValue: 50,
+  })),
+});
+assert.equal(cappedResearchBody.players.length, 500);
 const snapshot = {
   schemaVersion: 1,
   generatedAt: "2026-07-06T18:55:00.000Z",
+  research: {
+    provider: "firecrawl",
+    status: "refreshing",
+    requested: 100,
+    cached: 3,
+    queued: 25,
+  },
   sources: [
     {
       id: "fangraphs",
@@ -131,6 +154,9 @@ const snapshot = {
           ilDays: 60,
           expectedReturn: "2026-08-15T00:00:00.000Z",
           sourceUrl: "https://www.rotowire.com/baseball/player/example",
+          evidenceQuote: "Transferred to the 60-day injured list.",
+          publisher: "RotoWire",
+          modelEligible: true,
         },
       ],
     },
@@ -157,6 +183,17 @@ const zackWheeler = enriched.players.find(
 );
 assert.equal(enriched.sourceSnapshot.matchedPlayers, 3);
 assert.equal(enriched.sourceSnapshot.schemaVersion, 1);
+assert.deepEqual(enriched.sourceSnapshot.research, {
+  provider: "firecrawl",
+  status: "refreshing",
+  requested: 100,
+  cached: 3,
+  queued: 25,
+  pending: 0,
+  authorized: false,
+  returned: 0,
+  truncated: false,
+});
 assert.equal(
   enriched.league.insightsUpdatedAt,
   "2026-07-06T18:55:00.000Z"
@@ -181,6 +218,11 @@ assert.equal(
   zackWheeler.news.sourceUrl,
   "https://www.rotowire.com/baseball/player/example"
 );
+assert.equal(
+  zackWheeler.news.evidenceQuote,
+  "Transferred to the 60-day injured list."
+);
+assert.equal(zackWheeler.news.modelEligible, true);
 assert.equal(
   enriched.sources.find((source) => source.id === "fangraphs").status,
   "connected"
@@ -419,6 +461,49 @@ assert.equal(
   );
 });
 
+const contextOnly = client.applySnapshot(
+  league,
+  {
+    schemaVersion: 1,
+    generatedAt: "2026-07-06T18:55:00.000Z",
+    sources: [
+      {
+        id: "web-espn",
+        name: "ESPN",
+        kind: "qualitative",
+        access: "user-provided",
+        updatedAt: "2026-07-06T18:45:00.000Z",
+      },
+    ],
+    players: [
+      {
+        playerId: "tanner-scott",
+        qualitative: [
+          {
+            sourceId: "web-espn",
+            type: "injury",
+            summary: "Context-only injury report",
+            status: "Out for season",
+            severity: "season-ending",
+            impact: -1,
+            modelEligible: false,
+            sourceUrl: "https://www.espn.com/mlb/story/example",
+            asOf: "2026-07-06T18:45:00.000Z",
+          },
+        ],
+      },
+    ],
+  },
+  { now }
+);
+const contextOnlyScott = contextOnly.players.find(
+  (player) => player.id === "tanner-scott"
+);
+assert.equal(contextOnlyScott.status, "Healthy");
+assert.equal(contextOnlyScott.injury, null);
+assert.equal(contextOnlyScott.news.modelEligible, false);
+assert.equal(contextOnlyScott.insights.qualitative[0].modelEligible, false);
+
 assert.throws(
   () =>
     client.applySnapshot(
@@ -449,9 +534,139 @@ async function runFetchTest() {
   assert.equal(request.options.cache, "no-store");
   const body = JSON.parse(request.options.body);
   assert.equal(body.schemaVersion, 1);
+  assert.equal(body.researchToken, "abc.def");
   assert.equal(body.players.length, league.players.length);
-  assert.equal(body.players[0].name, league.players[0].name);
+  const firstLeaguePlayer = body.players.find(
+    (player) => player.id === String(league.players[0].id)
+  );
+  assert.equal(firstLeaguePlayer.name, league.players[0].name);
+  assert.equal(firstLeaguePlayer.ownerTeamId, league.players[0].ownerTeamId);
+  assert.equal(firstLeaguePlayer.status, league.players[0].status);
+  assert.equal(
+    firstLeaguePlayer.activeRoster,
+    String(league.players[0].ownerTeamId) === String(league.activeTeamId)
+  );
+  assert.equal(firstLeaguePlayer.priority, league.players[0].marketValue);
   assert.equal(fetched.sourceSnapshot.matchedPlayers, 3);
+
+  delete require.cache[modulePath];
+  global.RosterLabConfig = {
+    sourceEndpoints: [
+      "https://licensed.example.test/evidence",
+      "https://research.example.test/evidence",
+    ],
+  };
+  const multiSourceClient = require(modulePath);
+  const multiSourceInput = {
+    ...league,
+    players: league.players.map((player, index) =>
+      index === 0
+        ? { ...player, externalIds: { espn: "999001" } }
+        : player
+    ),
+  };
+  const multiSourceBodies = [];
+  global.fetch = async (url, options) => {
+    multiSourceBodies.push(JSON.parse(options.body));
+    if (url.includes("licensed")) {
+      return new Response(JSON.stringify(snapshot), { status: 200 });
+    }
+    return new Response(
+      JSON.stringify({
+        schemaVersion: 1,
+        generatedAt: "2026-07-06T18:58:00.000Z",
+        research: {
+          provider: "firecrawl",
+          status: "current",
+          requested: league.players.length,
+          cached: 1,
+          queued: 0,
+          pending: 0,
+          authorized: true,
+        },
+        sources: [
+          {
+            id: "web-espn",
+            name: "ESPN",
+            kind: "qualitative",
+            access: "user-provided",
+            updatedAt: "2026-07-06T18:58:00.000Z",
+          },
+        ],
+        players: [
+          {
+            externalIds: { espn: "999001" },
+            qualitative: [
+              {
+                sourceId: "web-espn",
+                type: "report",
+                summary: "Cited context",
+                impact: 0,
+                modelEligible: false,
+                sourceUrl: "https://www.espn.com/mlb/story/example",
+                asOf: "2026-07-06T18:58:00.000Z",
+              },
+            ],
+          },
+        ],
+      }),
+      { status: 200 }
+    );
+  };
+  const multiSourceLeague = await multiSourceClient.enrichLeague({
+    league: multiSourceInput,
+    now,
+  });
+  assert.equal(
+    multiSourceLeague.sources.some((source) => source.id === "rotowire"),
+    true
+  );
+  assert.equal(
+    multiSourceLeague.sources.some((source) => source.id === "web-espn"),
+    true
+  );
+  assert.equal(
+    multiSourceLeague.players[0].insights.qualitative.some(
+      (item) => item.summary === "Cited context"
+    ),
+    true
+  );
+  assert.equal(
+    multiSourceBodies.every((body) => body.researchToken === undefined),
+    true
+  );
+  const priorQuantitativeCount = multiSourceLeague.players.reduce(
+    (total, player) =>
+      total + (player.insights?.quantitative?.length || 0),
+    0
+  );
+  global.fetch = async (url) => {
+    if (url.includes("licensed")) {
+      throw new TypeError("licensed endpoint unavailable");
+    }
+    return new Response(
+      JSON.stringify({
+        schemaVersion: 1,
+        generatedAt: "2026-07-06T18:59:00.000Z",
+        sources: [],
+        players: [],
+      }),
+      { status: 200 }
+    );
+  };
+  const partialLeague = await multiSourceClient.enrichLeague({
+    league: multiSourceLeague,
+    now,
+  });
+  assert.equal(partialLeague.sourceSnapshot.partial, true);
+  assert.equal(
+    partialLeague.players.reduce(
+      (total, player) =>
+        total + (player.insights?.quantitative?.length || 0),
+      0
+    ),
+    priorQuantitativeCount
+  );
   delete global.RosterLabConfig;
   console.log("Fantasy source client tests passed.");
 }

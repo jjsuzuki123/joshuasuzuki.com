@@ -5,3 +5,4 @@ node_modules/
 *.zip
 .aws-sam/
 fantasy-backend/packaged.yaml
+fantasy-insights/packaged.yaml

@@ -10,6 +10,7 @@ HTML, CSS, and JavaScript.
 - Backend APIs via AWS API Gateway + Lambdas (contact form + admin)
 - Optional Manifest V3 browser connector for private ESPN fantasy leagues
 - RosterLab private ESPN imports via a stateless API Gateway + Lambda relay
+- Cache-backed, cited Firecrawl research for current baseball player news
 
 ## Projects
 - `/fantasy/`: RosterLab fantasy baseball trade analysis

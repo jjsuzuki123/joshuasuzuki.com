@@ -10,8 +10,10 @@ values after the request, so users must still treat them like passwords.
 
 The relay imports the injury designation already present in the league payload,
 but it does not crawl ESPN, Yahoo, or other news pages. Recent player news and
-return timelines belong behind RosterLab's separate licensed evidence endpoint;
-provider credentials must remain server-side.
+return timelines belong behind RosterLab's separate `fantasy-insights/`
+service. That service uses a server-held Firecrawl key, an explicit publisher
+allowlist, citations, and corroboration rules; ESPN session values never cross
+into it.
 
 ## Security controls
 
@@ -36,7 +38,10 @@ An AWS administrator must run the bootstrap stack once. It creates the
 log-only Lambda execution role and a private, encrypted, versioned artifact
 bucket. The day-to-day GitHub role can pass that fixed role to Lambda but cannot
 create or modify IAM roles. Artifacts are retained so CloudFormation can always
-roll back to a previously deployed function package.
+roll back to a previously deployed function package. Updating the same
+bootstrap stack also creates separate narrowly scoped Firecrawl API/worker
+roles, an empty Firecrawl-key secret, and a generated request-signing secret; it
+does not enable or deploy web research.
 
 ```sh
 aws cloudformation deploy \

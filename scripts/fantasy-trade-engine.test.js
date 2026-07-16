@@ -1307,6 +1307,57 @@ const okamotoRating = ratePlayer(healthyOkamoto, [injuryCategory]);
 const healthyHolmesRating = ratePlayer(healthyHolmes, [injuryCategory]);
 const holmesRating = ratePlayer(injuredHolmes, [injuryCategory]);
 assert.equal(healthyHolmesRating.value, okamotoRating.value);
+const contextOnlyHolmesRating = ratePlayer(
+  {
+    ...healthyHolmes,
+    insights: {
+      qualitative: [
+        {
+          impact: -1,
+          confidence: 1,
+          freshness: 1,
+          modelEligible: false,
+        },
+      ],
+    },
+  },
+  [injuryCategory]
+);
+assert.equal(contextOnlyHolmesRating.value, healthyHolmesRating.value);
+const contextOnlyNewsRating = ratePlayer(
+  {
+    ...healthyHolmes,
+    news: {
+      impact: "negative",
+      modelEligible: false,
+    },
+  },
+  [injuryCategory]
+);
+assert.equal(contextOnlyNewsRating.value, healthyHolmesRating.value);
+const staleQuantitativeRating = ratePlayer(
+  {
+    ...healthyHolmes,
+    baseSignals: healthyHolmes.signals,
+    baseModelScores: healthyHolmes.scores,
+    signals: { projection: 99, underlying: 99, consensus: 99 },
+    modelScores: { neutral: 99 },
+    insights: {
+      quantitative: [
+        {
+          overall: 99,
+          categoryScores: { neutral: 99 },
+          confidence: 1,
+          freshness: 1,
+          asOf: "2000-01-01T00:00:00.000Z",
+        },
+      ],
+      qualitative: [],
+    },
+  },
+  [injuryCategory]
+);
+assert.equal(staleQuantitativeRating.value, healthyHolmesRating.value);
 assert.equal(holmesRating.availability.kind, "long-term");
 assert.equal(holmesRating.availability.factor, 0.38);
 assert.ok(holmesRating.value < okamotoRating.value * 0.5);

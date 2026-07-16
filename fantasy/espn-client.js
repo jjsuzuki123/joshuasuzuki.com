@@ -1050,6 +1050,7 @@
     teamId,
     espnS2,
     swid,
+    researchAccessCode,
     signal,
     timeout,
   }) {
@@ -1079,6 +1080,7 @@
           teamId: teamId || undefined,
           espnS2: espnS2 || undefined,
           swid: swid || undefined,
+          researchAccessCode: researchAccessCode || undefined,
         }),
         signal: controller.signal,
       });
@@ -1094,7 +1096,15 @@
       if (!body.payload) {
         throw new Error("The league import returned no ESPN data.");
       }
-      return parseLeague(body.payload, { leagueId, season, teamId });
+      const league = parseLeague(body.payload, { leagueId, season, teamId });
+      return {
+        ...league,
+        researchToken:
+          typeof body.researchToken === "string" &&
+          /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(body.researchToken)
+            ? body.researchToken.slice(0, 40_000)
+            : "",
+      };
     } catch (error) {
       if (timedOut) {
         throw new Error("The league import timed out. Try again.");
@@ -1173,6 +1183,7 @@
     teamId,
     espnS2,
     swid,
+    researchAccessCode,
     signal,
     timeout = 12000,
   }) {
@@ -1183,6 +1194,7 @@
         teamId,
         espnS2,
         swid,
+        researchAccessCode,
         signal,
         timeout,
       });

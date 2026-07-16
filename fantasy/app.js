@@ -80,6 +80,7 @@
     marketTableBody: document.getElementById("market-table-body"),
     marketEmpty: document.getElementById("market-empty"),
     sourceCards: document.getElementById("source-cards"),
+    researchEvidence: document.getElementById("research-evidence"),
     modelVersion: document.getElementById("model-version"),
     modelWeights: document.getElementById("model-weights"),
     refreshSourcesButton: document.getElementById("refresh-sources-button"),
@@ -95,6 +96,7 @@
     espnTeamId: document.getElementById("espn-team-id"),
     espnS2: document.getElementById("espn-s2"),
     espnSwid: document.getElementById("espn-swid"),
+    researchAccessCode: document.getElementById("research-access-code"),
     espnStatus: document.getElementById("espn-status"),
     espnSubmit: document.getElementById("espn-submit"),
     tradeDialog: document.getElementById("trade-dialog"),
@@ -198,6 +200,7 @@
       type: "ALL",
       sort: "value",
     },
+    evidenceLimit: 100,
     watchlist: new Set(Array.isArray(storedWatchlist) ? storedWatchlist.map(String) : []),
   };
   state.teamId = String(state.data.activeTeamId || state.data.teams[0].id);
@@ -209,6 +212,38 @@
   let inferredEspnTeam = null;
   let importAttempt = 0;
   let sourceRefreshAttempt = 0;
+  let researchRefreshTimer = null;
+  let researchRefreshPolls = 0;
+
+  function researchStatusFor(data = state.data) {
+    const research = data?.sourceSnapshot?.research;
+    return research && typeof research === "object" ? research : null;
+  }
+
+  function clearResearchRefresh() {
+    if (researchRefreshTimer) {
+      window.clearTimeout(researchRefreshTimer);
+      researchRefreshTimer = null;
+    }
+  }
+
+  function scheduleResearchRefresh(data = state.data) {
+    const research = researchStatusFor(data);
+    clearResearchRefresh();
+    if (
+      !research ||
+      !["queued", "refreshing"].includes(research.status) ||
+      (research.pending || research.queued) <= 0 ||
+      researchRefreshPolls >= 30
+    ) {
+      return;
+    }
+    researchRefreshTimer = window.setTimeout(() => {
+      researchRefreshTimer = null;
+      researchRefreshPolls += 1;
+      refreshSources({ quiet: true, researchPoll: true });
+    }, 30_000);
+  }
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -561,9 +596,30 @@
     const hasCurrentNews = state.data.sources.some(
       (source) =>
         ["qualitative", "mixed"].includes(source.kind) &&
-        source.status === "connected"
+        currentSourceStatus(source) === "connected"
     );
     const newsCoverageMissing = !isDemo && !hasCurrentNews;
+    const research = researchStatusFor();
+    const researchPending =
+      research &&
+      ["queued", "refreshing"].includes(research.status) &&
+      (research.pending || research.queued) > 0;
+    let evidenceNote = researchPending
+      ? ` Firecrawl research is updating allowlisted sources; ${research.cached} of ${research.requested} requested players currently have cached evidence.`
+      : research?.status === "read-only"
+        ? " Cached web research is shown, but new searches require a fresh ESPN import authorization."
+      : research?.status === "partial"
+        ? ` Cited web research is available for ${research.cached} of ${research.requested} requested players; remaining searches are waiting for capacity or configuration.`
+      : newsCoverageMissing
+        ? " ESPN injury designations affect values, but current player news and return timelines are not connected."
+        : "";
+    if (state.data.sourceSnapshot?.partial) {
+      evidenceNote +=
+        " One configured evidence service is unavailable; its prior evidence is retained only until normal freshness expiry.";
+    }
+    if (research?.truncated) {
+      evidenceNote += ` The response-size safety cap returned ${research.returned} cached players in this refresh.`;
+    }
     elements.sidebarTeamMark.textContent = team.abbreviation || initials(team.name);
     elements.sidebarTeamMark.style.background = safeColor(team.color);
     elements.sidebarTeamName.textContent = team.name;
@@ -580,7 +636,7 @@
       !isDemo &&
       unmodeledCategories.length === 0 &&
       !isHeadToHeadCategories &&
-      !newsCoverageMissing;
+      !evidenceNote;
     if (isDemo) {
       elements.dataNoticeMessage.textContent =
         "You are viewing an illustrative league. Values and news are demo fixtures, not live fantasy advice.";
@@ -595,23 +651,15 @@
         isHeadToHeadCategories
           ? " H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation."
           : ""
-      }${
-        newsCoverageMissing
-          ? " ESPN injury designations affect values, but current player news and return timelines are not connected."
-          : ""
-      }`;
+      }${evidenceNote}`;
       elements.dataNoticeAction.hidden = true;
     } else if (isHeadToHeadCategories) {
       elements.dataNoticeMessage.textContent =
-        `H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation.${
-          newsCoverageMissing
-            ? " ESPN injury designations affect values, but current player news and return timelines are not connected."
-            : ""
-        }`;
+        `H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation.${evidenceNote}`;
       elements.dataNoticeAction.hidden = true;
-    } else if (newsCoverageMissing) {
+    } else if (evidenceNote) {
       elements.dataNoticeMessage.textContent =
-        "ESPN injury designations affect player and category values. Current player news and return timelines require a configured licensed news source.";
+        evidenceNote.trim();
       elements.dataNoticeAction.hidden = true;
     }
     elements.dataStateDot.className = `status-dot ${
@@ -866,7 +914,11 @@
         const rating = playerRating(player);
         const availability = playerAvailabilityText(player);
         const detail = player.news
-          ? `${availability ? `${availability} · ` : ""}${player.news.headline}`
+          ? `${availability ? `${availability} · ` : ""}${player.news.headline}${
+              player.news.evidenceQuote
+                ? ` — “${player.news.evidenceQuote}”`
+                : ""
+            }`
           : `${player.projection} · ${Math.round(
               rating.confidence * 100
             )}% evidence confidence · model ${rating.value}${
@@ -1568,15 +1620,27 @@
     return labels[status] || status;
   }
 
+  function currentSourceStatus(source) {
+    if (source?.status !== "connected") return source?.status;
+    const updatedAt = new Date(source.updatedAt);
+    if (Number.isNaN(updatedAt.getTime())) return "stale";
+    const maxAgeDays = source.kind === "quantitative" ? 14 : 3;
+    return Date.now() - updatedAt.getTime() <= maxAgeDays * 86_400_000
+      ? "connected"
+      : "stale";
+  }
+
   function renderSources() {
     elements.sourceCards.innerHTML = state.data.sources
       .map(
-        (source) => `
+        (source) => {
+          const status = currentSourceStatus(source);
+          return `
           <article class="source-card">
             <div class="source-card-top">
               <span class="source-logo">${escapeHtml(initials(source.name))}</span>
-              <span class="source-status" data-status="${escapeHtml(source.status)}">
-                ${escapeHtml(sourceStatusLabel(source.status))}
+              <span class="source-status" data-status="${escapeHtml(status)}">
+                ${escapeHtml(sourceStatusLabel(status))}
               </span>
             </div>
             <h3>${escapeHtml(source.name)}</h3>
@@ -1595,12 +1659,87 @@
               }</span>
               <a href="${escapeHtml(
                 safeExternalUrl(source.url)
-              )}" target="_blank" rel="noopener noreferrer">Source</a>
+              )}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(
+                `${source.name} source (opens in a new tab)`
+              )}">Source</a>
             </div>
           </article>
-        `
+        `;
+        }
       )
       .join("");
+
+    const citedEvidence = state.data.players
+      .flatMap((player) =>
+        (Array.isArray(player.insights?.qualitative)
+          ? player.insights.qualitative
+          : []
+        ).map((item) => ({ item, player }))
+      )
+      .filter(({ item }) => {
+        if (safeExternalUrl(item.sourceUrl) === "#") return false;
+        const expiresAt = new Date(item.expiresAt);
+        return (
+          !item.expiresAt ||
+          Number.isNaN(expiresAt.getTime()) ||
+          expiresAt.getTime() > Date.now()
+        );
+      })
+      .sort(
+        (left, right) =>
+          new Date(right.item.asOf).getTime() -
+          new Date(left.item.asOf).getTime()
+      );
+    const visibleEvidence = citedEvidence.slice(0, state.evidenceLimit);
+    elements.researchEvidence.innerHTML =
+      citedEvidence.length > 0
+        ? visibleEvidence
+            .map(({ item, player }) => {
+              const publisher =
+                item.publisher ||
+                state.data.sources.find(
+                  (source) => source.id === item.sourceId
+                )?.name ||
+                item.sourceId;
+              return `
+                <article class="research-evidence-item">
+                  <div class="research-evidence-meta">
+                    <strong>${escapeHtml(player.name)}</strong>
+                    <span class="subtle-badge">${
+                      item.modelEligible === false
+                        ? "Context only"
+                        : "Model input"
+                    }</span>
+                  </div>
+                  <p>${escapeHtml(item.summary || "Player update")}</p>
+                  ${
+                    item.evidenceQuote
+                      ? `<blockquote>${escapeHtml(item.evidenceQuote)}</blockquote>`
+                      : ""
+                  }
+                  <div class="research-evidence-footer">
+                    <span>${escapeHtml(publisher)} · ${
+                      item.publicationVerified ? "Reported" : "Retrieved"
+                    } ${escapeHtml(
+                      formatUpdatedAt(item.asOf)
+                    )}</span>
+                    <a href="${escapeHtml(
+                      safeExternalUrl(item.sourceUrl)
+                    )}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(
+                      `${player.name} report from ${publisher} (opens in a new tab)`
+                    )}">Read report ↗</a>
+                  </div>
+                </article>
+              `;
+            })
+            .join("") +
+          (visibleEvidence.length < citedEvidence.length
+            ? `<div class="research-evidence-more">
+                <span>Showing ${visibleEvidence.length} of ${citedEvidence.length} current reports.</span>
+                <button class="button button-secondary" type="button" data-action="show-all-evidence">Show all cited reports</button>
+              </div>`
+            : "")
+        : '<p class="empty-state">No current cited player reports are cached yet.</p>';
 
     elements.modelVersion.textContent = state.data.model.version;
     const adjustmentText = Array.isArray(state.data.model.adjustments)
@@ -2006,6 +2145,10 @@
     elements.espnSwid.setCustomValidity("");
   }
 
+  function clearResearchAccessCode() {
+    elements.researchAccessCode.value = "";
+  }
+
   function setImportBusy(busy) {
     elements.espnForm.setAttribute("aria-busy", String(busy));
     [
@@ -2054,6 +2197,7 @@
     elements.espnStatus.textContent = "";
     elements.espnStatus.className = "form-status";
     clearEspnCredentials();
+    clearResearchAccessCode();
     privateVisibilityOption().disabled = !espnClient.hasImportRelay;
     elements.privateModeCaption.textContent = espnClient.hasImportRelay
       ? "Use your ESPN session for one request"
@@ -2079,6 +2223,7 @@
     }
     setImportBusy(false);
     clearEspnCredentials();
+    clearResearchAccessCode();
     if (elements.espnDialog.open) elements.espnDialog.close();
   }
 
@@ -2097,6 +2242,9 @@
       visibility === "private"
         ? String(formData.get("swid") || "").trim()
         : "";
+    const researchAccessCode = String(
+      formData.get("researchAccessCode") || ""
+    ).trim();
 
     elements.espnStatus.className = "form-status";
     elements.espnLeagueId.setCustomValidity("");
@@ -2141,6 +2289,8 @@
       visibility === "private"
         ? "Connecting to your private league..."
         : "Importing your league...";
+    clearResearchRefresh();
+    researchRefreshPolls = 0;
     sourceRefreshAttempt += 1;
     if (activeSourceController) {
       activeSourceController.abort();
@@ -2158,6 +2308,7 @@
         teamId,
         espnS2,
         swid,
+        researchAccessCode,
         signal: controller.signal,
       });
       if (attempt !== importAttempt) return;
@@ -2165,14 +2316,31 @@
         throw new Error("The imported league has no usable category data.");
       }
       let sourceWarning = "";
+      let researchMessage = "";
+      let researchQueued = false;
       if (sourceClient.hasSourceEndpoint) {
         elements.espnStatus.textContent =
-          "ESPN connected. Adding licensed projections and news...";
+          "ESPN connected. Checking cited player research...";
         try {
           league = await sourceClient.enrichLeague({
             league,
             signal: controller.signal,
           });
+          const research = researchStatusFor(league);
+          if (
+            research &&
+            ["queued", "refreshing"].includes(research.status) &&
+            (research.pending || research.queued) > 0
+          ) {
+            researchQueued = true;
+            researchMessage = ` Firecrawl research queued for ${
+              research.pending || research.queued
+            } players; cached updates will appear automatically.`;
+          } else if (research?.status === "read-only") {
+            researchMessage = researchAccessCode
+              ? " The research access code was not accepted; only cached reports are shown."
+              : " Only cached reports are shown; enter the private research access code to run new searches.";
+          }
         } catch (error) {
           if (error?.name === "AbortError") throw error;
           sourceWarning =
@@ -2183,6 +2351,7 @@
       }
       if (attempt !== importAttempt) return;
       state.data = league;
+      state.evidenceLimit = 100;
       state.teamId = String(league.activeTeamId);
       state.teamStrategies = strategiesForLeague(league);
       state.lab.partnerTeamId = null;
@@ -2191,16 +2360,21 @@
       resetPlayerSearches();
       renderAll();
       window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(league));
+      scheduleResearchRefresh(league);
       elements.espnStatus.className = "form-status is-success";
       elements.espnStatus.textContent = `Imported ${league.teams.length} teams and ${
         league.players.length
-      } players.${sourceWarning ? ` ${sourceWarning}` : ""}`;
+      } players.${researchMessage}${sourceWarning ? ` ${sourceWarning}` : ""}`;
       window.setTimeout(() => {
         if (attempt !== importAttempt) return;
         if (elements.espnDialog.open) elements.espnDialog.close();
         showToast(
           sourceWarning
-            ? `${league.league.name} imported, but licensed evidence was unavailable.`
+            ? `${league.league.name} imported, but cited player research was unavailable.`
+            : researchQueued
+            ? `${league.league.name} imported. Cited web research is updating.`
+            : researchMessage
+            ? `${league.league.name} imported with cached research only.`
             : league.teamSelectionRequired
             ? `${league.league.name} imported. Choose your team in the lower-left menu.`
             : `${league.league.name} is now connected.`
@@ -2234,6 +2408,7 @@
       }
     } finally {
       clearEspnCredentials();
+      clearResearchAccessCode();
       if (attempt === importAttempt) {
         activeImportController = null;
         setImportBusy(false);
@@ -2248,7 +2423,7 @@
       !isLeagueData(state.data)
     ) {
       if (!options.quiet) {
-        showToast("A licensed evidence endpoint is not configured here.");
+        showToast("A cited player-research endpoint is not configured here.");
       }
       return;
     }
@@ -2263,6 +2438,7 @@
       const enriched = await sourceClient.enrichLeague({
         league: state.data,
         signal: controller.signal,
+        researchOnly: options.researchPoll === true,
       });
       if (
         attempt !== sourceRefreshAttempt ||
@@ -2272,10 +2448,22 @@
       }
       state.data = enriched;
       window.localStorage.setItem(LEAGUE_STORAGE_KEY, JSON.stringify(enriched));
-      renderAll();
+      if (options.researchPoll) {
+        renderChrome();
+        renderMarketSignals();
+        renderSources();
+      } else {
+        renderAll();
+      }
+      scheduleResearchRefresh(enriched);
       if (!options.quiet) {
+        const research = researchStatusFor(enriched);
         showToast(
-          `Evidence refreshed for ${enriched.sourceSnapshot.matchedPlayers} players.`
+          research &&
+            ["queued", "refreshing"].includes(research.status) &&
+            (research.pending || research.queued) > 0
+            ? `Cited research is updating; ${research.cached} players are cached.`
+            : `Evidence refreshed for ${enriched.sourceSnapshot.matchedPlayers} players.`
         );
       }
     } catch (error) {
@@ -2302,6 +2490,8 @@
   }
 
   function resetDemo() {
+    clearResearchRefresh();
+    researchRefreshPolls = 0;
     sourceRefreshAttempt += 1;
     if (activeSourceController) {
       activeSourceController.abort();
@@ -2309,6 +2499,7 @@
     }
     window.localStorage.removeItem(LEAGUE_STORAGE_KEY);
     state.data = demoData;
+    state.evidenceLimit = 100;
     state.teamId = String(demoData.activeTeamId);
     state.teamStrategies = strategiesForLeague(demoData);
     state.lab.partnerTeamId = null;
@@ -2412,6 +2603,9 @@
       resetDemo();
     } else if (action === "refresh-sources") {
       refreshSources();
+    } else if (action === "show-all-evidence") {
+      state.evidenceLimit = Number.MAX_SAFE_INTEGER;
+      renderSources();
     } else if (action === "show-all-trades") {
       state.finder.realisticOnly = false;
       elements.finderRealistic.checked = false;

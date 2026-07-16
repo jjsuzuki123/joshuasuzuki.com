@@ -1,0 +1,274 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Cache-backed Firecrawl player research service for RosterLab
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://joshuasuzuki.com,https://www.joshuasuzuki.com
+  ApiExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::545095759709:role/rosterlab-fantasy-insights-production-api
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/rosterlab-fantasy-insights-[a-z0-9-]+-api$
+  WorkerExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::545095759709:role/rosterlab-fantasy-insights-production-worker
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/rosterlab-fantasy-insights-[a-z0-9-]+-worker$
+  FirecrawlSecretName:
+    Type: String
+    Default: rosterlab/firecrawl/production
+    AllowedPattern: ^[A-Za-z0-9/_+=.@-]{1,512}$
+  ResearchSigningSecretName:
+    Type: String
+    Default: rosterlab/research-signing/production
+    AllowedPattern: ^[A-Za-z0-9/_+=.@-]{1,512}$
+  FirecrawlAllowedDomains:
+    Type: String
+    Default: espn.com,sports.yahoo.com,mlb.com,nbcsports.com,cbssports.com,fantasypros.com
+  OfficialSourceDomains:
+    Type: String
+    Default: mlb.com
+  MaxDailyFirecrawlCredits:
+    Type: Number
+    Default: 350
+    MinValue: 7
+    MaxValue: 100000
+
+Resources:
+  InsightsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub rosterlab-fantasy-insights-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  ResearchDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub rosterlab-fantasy-insights-${Environment}-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  ResearchQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub rosterlab-fantasy-insights-${Environment}
+      MessageRetentionPeriod: 86400
+      VisibilityTimeout: 450
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ResearchDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  InsightsApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/rosterlab-fantasy-insights-${Environment}
+      RetentionInDays: 7
+
+  InsightsApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowHeaders:
+          - Content-Type
+        AllowMethods:
+          - POST
+          - OPTIONS
+        MaxAge: 300
+      AccessLogSettings:
+        DestinationArn: !GetAtt InsightsApiAccessLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 2
+        ThrottlingRateLimit: 0.5
+      FailOnWarnings: true
+
+  InsightsApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - InsightsApiFunctionLogGroup
+    Properties:
+      FunctionName: !Sub rosterlab-fantasy-insights-${Environment}-api
+      Description: Serves cached, cited fantasy baseball research
+      CodeUri: service/
+      Handler: api.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: 2
+      Role: !Ref ApiExecutionRoleArn
+      Environment:
+        Variables:
+          ALLOWED_ORIGINS: !Join [",", !Ref AllowedOrigins]
+          INSIGHTS_TABLE_NAME: !Ref InsightsTable
+          RESEARCH_QUEUE_URL: !Ref ResearchQueue
+          RESEARCH_SIGNING_SECRET_NAME: !Ref ResearchSigningSecretName
+      LoggingConfig:
+        ApplicationLogLevel: ERROR
+        LogFormat: JSON
+        SystemLogLevel: WARN
+      Events:
+        Insights:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref InsightsApi
+            Path: /v1/fantasy/baseball
+            Method: POST
+
+  InsightsWorkerFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - InsightsWorkerFunctionLogGroup
+    Properties:
+      FunctionName: !Sub rosterlab-fantasy-insights-${Environment}-worker
+      Description: Researches allowlisted player news through Firecrawl
+      CodeUri: service/
+      Handler: worker.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      MemorySize: 512
+      Timeout: 75
+      ReservedConcurrentExecutions: 2
+      Role: !Ref WorkerExecutionRoleArn
+      Environment:
+        Variables:
+          INSIGHTS_TABLE_NAME: !Ref InsightsTable
+          FIRECRAWL_SECRET_NAME: !Ref FirecrawlSecretName
+          FIRECRAWL_ALLOWED_DOMAINS: !Ref FirecrawlAllowedDomains
+          OFFICIAL_SOURCE_DOMAINS: !Ref OfficialSourceDomains
+          MAX_DAILY_FIRECRAWL_CREDITS: !Ref MaxDailyFirecrawlCredits
+      LoggingConfig:
+        ApplicationLogLevel: ERROR
+        LogFormat: JSON
+        SystemLogLevel: WARN
+      Events:
+        ResearchQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ResearchQueue.Arn
+            BatchSize: 1
+            ScalingConfig:
+              MaximumConcurrency: 2
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  InsightsApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/rosterlab-fantasy-insights-${Environment}-api
+      RetentionInDays: 7
+
+  InsightsWorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/rosterlab-fantasy-insights-${Environment}-worker
+      RetentionInDays: 7
+
+  InsightsApiErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rosterlab-fantasy-insights-${Environment}-api-errors
+      AlarmDescription: RosterLab insights API Lambda errors
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref InsightsApiFunction
+
+  InsightsWorkerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rosterlab-fantasy-insights-${Environment}-worker-errors
+      AlarmDescription: RosterLab Firecrawl worker errors
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref InsightsWorkerFunction
+
+  ResearchDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rosterlab-fantasy-insights-${Environment}-dead-letters
+      AlarmDescription: RosterLab Firecrawl research dead-letter messages
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 300
+      Statistic: Maximum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ResearchDeadLetterQueue.QueueName
+
+  ResearchQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub rosterlab-fantasy-insights-${Environment}-queue-age
+      AlarmDescription: RosterLab research queue has waited more than 15 minutes
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateAgeOfOldestMessage
+      Namespace: AWS/SQS
+      Period: 300
+      Statistic: Maximum
+      Threshold: 900
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ResearchQueue.QueueName
+
+Outputs:
+  SourceEndpoint:
+    Description: RosterLab cached player research endpoint
+    Value: !Sub https://${InsightsApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}/v1/fantasy/baseball
+  FirecrawlSecretName:
+    Description: Secrets Manager name that must contain the Firecrawl API key
+    Value: !Ref FirecrawlSecretName
