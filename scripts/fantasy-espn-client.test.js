@@ -251,7 +251,7 @@ assert.equal(hitter.signals.consensus, hitter.marketValue);
 assert.equal(pitcher.signals.consensus, pitcher.marketValue);
 assert.ok(hitter.dataQuality.categoryCoverage > 0.9);
 assert.equal(hitter.provenance.espn.playerId, "101");
-assert.equal(league.model.version, "2.0 evidence model");
+assert.equal(league.model.version, "2.1 evidence model");
 assert.equal(league.sourceSnapshot.schemaVersion, 1);
 assert.equal(league.sourceSnapshot.categorySources.homeRuns, "projection");
 assert.equal(league.sourceSnapshot.matchedPlayers, 2);

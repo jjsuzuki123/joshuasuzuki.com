@@ -416,7 +416,7 @@
         matchedPlayers: evidenceByPlayerId.size,
       },
       model: {
-        version: "2.0 evidence model",
+        version: "2.1 evidence model",
         weights: [
           { label: "Market and rank anchor", value: 50 },
           { label: "Category production", value: 30 },

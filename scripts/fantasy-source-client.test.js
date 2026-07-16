@@ -140,7 +140,7 @@ assert.equal(
   enriched.league.insightsUpdatedAt,
   "2026-07-06T18:55:00.000Z"
 );
-assert.equal(enriched.model.version, "2.0 evidence model");
+assert.equal(enriched.model.version, "2.1 evidence model");
 assert.ok(willSmith.modelScores.homeRuns > willSmith.scores.homeRuns);
 assert.equal(willSmith.modelScores.unknownCategory, undefined);
 assert.ok(willSmith.signals.projection > league.players[0].signals.projection);

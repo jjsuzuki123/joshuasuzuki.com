@@ -537,6 +537,8 @@
   function renderChrome() {
     const team = currentTeam();
     const isDemo = state.data.mode === "demo";
+    const isHeadToHeadCategories =
+      state.data.league.scoringType === "H2H_CATEGORY";
     const unmodeledCategories = Array.isArray(state.data.unmodeledCategories)
       ? state.data.unmodeledCategories
       : [];
@@ -553,7 +555,9 @@
       )
       .join("");
     elements.dataNotice.hidden =
-      !isDemo && unmodeledCategories.length === 0;
+      !isDemo &&
+      unmodeledCategories.length === 0 &&
+      !isHeadToHeadCategories;
     if (isDemo) {
       elements.dataNoticeMessage.textContent =
         "You are viewing an illustrative league. Values and news are demo fixtures, not live fantasy advice.";
@@ -564,7 +568,15 @@
         .join(", ");
       elements.dataNoticeMessage.textContent = `${labels} ${
         unmodeledCategories.length === 1 ? "is" : "are"
-      } active in this league but excluded from analysis because ESPN did not provide usable data or the stat ID is unknown.`;
+      } active in this league but excluded from analysis because ESPN did not provide usable data or the stat ID is unknown.${
+        isHeadToHeadCategories
+          ? " H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation."
+          : ""
+      }`;
+      elements.dataNoticeAction.hidden = true;
+    } else if (isHeadToHeadCategories) {
+      elements.dataNoticeMessage.textContent =
+        "H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation.";
       elements.dataNoticeAction.hidden = true;
     }
     elements.dataStateDot.className = `status-dot ${
