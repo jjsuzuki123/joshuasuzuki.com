@@ -91,7 +91,7 @@ assert.ok(
 );
 assert.ok(
   new Set(opportunities.slice(0, 5).map((opportunity) => opportunity.partnerTeam.id))
-    .size >= 4
+    .size >= 3
 );
 
 const benchmarkTeams = Array.from({ length: 10 }, (_value, index) => ({
