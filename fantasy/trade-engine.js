@@ -12,6 +12,7 @@
   const MAX_TRADE_PLAYERS_PER_SIDE = 8;
   const REPLACEMENT_PERCENTILE = 0.2;
   const PACKAGE_VALUE_BLEND = 0.55;
+  const MAX_PROPOSALS_PER_PARTNER = 36;
   const DAY_IN_MILLISECONDS = 86_400_000;
   const INACTIVE_COVERAGE_KINDS = new Set([
     "injured-list",
@@ -2215,6 +2216,100 @@
     ];
   }
 
+  function shortlistTradeProposals({
+    outgoingBundles,
+    incomingBundles,
+    globalValue,
+    position,
+    maximum = MAX_PROPOSALS_PER_PARTNER,
+  }) {
+    const outgoing = outgoingBundles.map((players) => ({
+      players,
+      value: bundleValue(players, globalValue),
+    }));
+    const incoming = incomingBundles.map((players) => ({
+      players,
+      value: bundleValue(players, globalValue),
+    }));
+    const proposals = [];
+    outgoing.forEach((sending) => {
+      incoming.forEach((receiving) => {
+        if (sending.players.length > 1 && receiving.players.length > 1) return;
+        if (
+          position !== "ALL" &&
+          !receiving.players.some((player) =>
+            (player.positions || []).includes(position)
+          )
+        ) {
+          return;
+        }
+        const gapRatio =
+          Math.abs(receiving.value - sending.value) /
+          Math.max((receiving.value + sending.value) / 2, 1);
+        const maximumPackageSize = Math.max(
+          sending.players.length,
+          receiving.players.length
+        );
+        const allowedGap =
+          sending.players.length === receiving.players.length
+            ? 0.32
+            : maximumPackageSize >= 3
+              ? 0.38
+              : 0.3;
+        if (gapRatio > allowedGap) return;
+        proposals.push({
+          id: `${sending.players
+            .map((player) => player.id)
+            .sort()
+            .join("+")}>${receiving.players
+            .map((player) => player.id)
+            .sort()
+            .join("+")}`,
+          shape: `${sending.players.length}:${receiving.players.length}`,
+          sending: sending.players,
+          receiving: receiving.players,
+          gapRatio,
+          averageValue: (sending.value + receiving.value) / 2,
+        });
+      });
+    });
+    const compare = (left, right) =>
+      left.gapRatio - right.gapRatio ||
+      right.averageValue - left.averageValue ||
+      left.id.localeCompare(right.id);
+    const sorted = [...proposals].sort(compare);
+    const groups = new Map();
+    sorted.forEach((proposal) => {
+      const group = groups.get(proposal.shape) || [];
+      group.push(proposal);
+      groups.set(proposal.shape, group);
+    });
+    const shapeWeights = new Map([
+      ["1:1", 0.45],
+      ["1:2", 0.17],
+      ["2:1", 0.17],
+      ["1:3", 0.11],
+      ["3:1", 0.1],
+    ]);
+    const selected = [];
+    const selectedIds = new Set();
+    shapeWeights.forEach((weight, shape) => {
+      const quota = Math.max(1, Math.floor(maximum * weight));
+      (groups.get(shape) || []).slice(0, quota).forEach((proposal) => {
+        selected.push(proposal);
+        selectedIds.add(proposal.id);
+      });
+    });
+    if (selected.length < maximum) {
+      sorted.forEach((proposal) => {
+        if (selected.length >= maximum || selectedIds.has(proposal.id)) return;
+        selected.push(proposal);
+        selectedIds.add(proposal.id);
+      });
+    }
+    return selected.slice(0, maximum);
+  }
+
   function findTradeOpportunities({
     teamId,
     players,
@@ -2228,17 +2323,25 @@
     realisticOnly = true,
     includePackages = true,
     limit = 24,
+    context: suppliedContext = null,
   }) {
-    const context = computeLeagueContext({
-      players,
-      teams,
-      categories,
-      teamStrategies,
-      rosterSettings,
-    });
+    const context =
+      suppliedContext ||
+      computeLeagueContext({
+        players,
+        teams,
+        categories,
+        teamStrategies,
+        rosterSettings,
+      });
     const teamProfile = context.profiles.get(String(teamId));
     if (!teamProfile) return [];
     const ownPlayers = playersForTeam(players, teamId);
+    const outgoingBundles = candidateBundles(
+      ownPlayers,
+      context,
+      includePackages
+    );
     const candidates = [];
     const globalValue = (player) =>
       context.playerRatings.get(String(player.id))?.value || player.marketValue;
@@ -2248,106 +2351,83 @@
       .forEach((partnerTeam) => {
         const partnerPlayers = playersForTeam(players, partnerTeam.id);
         const partnerProfile = context.profiles.get(String(partnerTeam.id));
-        const outgoingBundles = candidateBundles(
-          ownPlayers,
-          context,
-          includePackages
-        );
         const incomingBundles = candidateBundles(
           partnerPlayers,
           context,
           includePackages
         );
-        outgoingBundles.forEach((sending) => {
-          incomingBundles.forEach((receiving) => {
-            if (sending.length > 1 && receiving.length > 1) return;
-            if (
-              position !== "ALL" &&
-              !receiving.some((player) =>
-                (player.positions || []).includes(position)
-              )
-            ) {
-              return;
-            }
-            const valueOut = bundleValue(sending, globalValue);
-            const valueIn = bundleValue(receiving, globalValue);
-            const gapRatio =
-              Math.abs(valueIn - valueOut) / Math.max((valueIn + valueOut) / 2, 1);
-            const maximumPackageSize = Math.max(
-              sending.length,
-              receiving.length
-            );
-            const allowedGap =
-              sending.length === receiving.length
-                ? 0.32
-                : maximumPackageSize >= 3
-                  ? 0.38
-                  : 0.3;
-            if (gapRatio > allowedGap) {
-              return;
-            }
-            const result = evaluateTrade({
-              teamId,
-              partnerTeamId: partnerTeam.id,
-              sendingIds: sending.map((player) => player.id),
-              receivingIds: receiving.map((player) => player.id),
-              players,
-              teams,
-              categories,
-              teamStrategies,
-              context,
-            });
-            if (!result.valid) return;
-            if (
-              category !== "ALL" &&
-              !result.deltas.some(
-                (delta) =>
-                  delta.id === category &&
-                  delta.raw > 0 &&
-                  delta.teamPriority > 0
-              )
-            ) {
-              return;
-            }
+        const proposals = shortlistTradeProposals({
+          outgoingBundles,
+          incomingBundles,
+          globalValue,
+          position,
+        });
+        proposals.forEach(({ sending, receiving }) => {
+          const maximumPackageSize = Math.max(
+            sending.length,
+            receiving.length
+          );
+          const result = evaluateTrade({
+            teamId,
+            partnerTeamId: partnerTeam.id,
+            sendingIds: sending.map((player) => player.id),
+            receivingIds: receiving.map((player) => player.id),
+            players,
+            teams,
+            categories,
+            teamStrategies,
+            context,
+          });
+          if (!result.valid) return;
+          if (
+            category !== "ALL" &&
+            !result.deltas.some(
+              (delta) =>
+                delta.id === category &&
+                delta.raw > 0 &&
+                delta.teamPriority > 0
+            )
+          ) {
+            return;
+          }
 
-            let strategyAdjustment = 0;
-            if (strategy === "upside") {
-              strategyAdjustment = clamp(result.trendDelta * 1.25, -8, 8);
-            } else if (strategy === "win-now") {
-              strategyAdjustment = receiving.some(
-                (player) => availabilityProfile(player).factor < 0.9
-              )
-                ? -8
-                : 3;
-            } else if (strategy === "category") {
-              strategyAdjustment = clamp(result.teamNeedGain * 1.2, -8, 10);
-            }
-            const adjustedScore = clamp(
-              Math.round(result.score + strategyAdjustment),
-              0,
-              99
-            );
-            const adjustedResult = {
-              ...result,
-              score: adjustedScore,
-              grade: getGrade(adjustedScore),
-            };
-            if (realisticOnly && !adjustedResult.realistic) return;
-            const minimumScore =
-              realisticOnly
-                ? 49
-                : maximumPackageSize >= 3
-                  ? 30
-                  : 44;
-            if (adjustedResult.score < minimumScore) return;
-            candidates.push({
-              id: opportunityKey(partnerTeam.id, sending, receiving),
-              partnerTeam,
-              sending,
-              receiving,
-              result: adjustedResult,
-              ...explainTrade(adjustedResult, teamProfile, partnerProfile),
-            });
+          let strategyAdjustment = 0;
+          if (strategy === "upside") {
+            strategyAdjustment = clamp(result.trendDelta * 1.25, -8, 8);
+          } else if (strategy === "win-now") {
+            strategyAdjustment = receiving.some(
+              (player) => availabilityProfile(player).factor < 0.9
+            )
+              ? -8
+              : 3;
+          } else if (strategy === "category") {
+            strategyAdjustment = clamp(result.teamNeedGain * 1.2, -8, 10);
+          }
+          const adjustedScore = clamp(
+            Math.round(result.score + strategyAdjustment),
+            0,
+            99
+          );
+          const adjustedResult = {
+            ...result,
+            score: adjustedScore,
+            grade: getGrade(adjustedScore),
+          };
+          if (realisticOnly && !adjustedResult.realistic) return;
+          const minimumScore =
+            realisticOnly
+              ? 49
+              : maximumPackageSize >= 3
+                ? 30
+                : 44;
+          if (adjustedResult.score < minimumScore) return;
+          candidates.push({
+            id: opportunityKey(partnerTeam.id, sending, receiving),
+            partnerTeam,
+            sending,
+            receiving,
+            result: adjustedResult,
+            ...explainTrade(adjustedResult, teamProfile, partnerProfile),
           });
         });
       });

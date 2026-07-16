@@ -532,6 +532,7 @@
       categories: state.data.categories,
       teamStrategies: state.teamStrategies,
       rosterSettings: leagueRosterSettings(),
+      context: state.context,
       strategy: filters.strategy,
       position: filters.position,
       category: filters.category,
