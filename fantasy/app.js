@@ -347,6 +347,10 @@
     return playerRating(player).value;
   }
 
+  function leagueRosterSettings() {
+    return state.data.league?.rosterSettings || null;
+  }
+
   function playerFitValue(player, teamId = state.teamId) {
     return engine.ratePlayerForTeam({
       player,
@@ -355,6 +359,7 @@
       teams: state.data.teams,
       categories: state.data.categories,
       teamStrategies: state.teamStrategies,
+      rosterSettings: leagueRosterSettings(),
       context: state.context,
     }).contextualValue;
   }
@@ -475,6 +480,7 @@
       teams: state.data.teams,
       categories: state.data.categories,
       teamStrategies: state.teamStrategies,
+      rosterSettings: leagueRosterSettings(),
       strategy: filters.strategy,
       position: filters.position,
       category: filters.category,
@@ -1037,6 +1043,7 @@
       teams: state.data.teams,
       categories: state.data.categories,
       teamStrategies: state.teamStrategies,
+      rosterSettings: leagueRosterSettings(),
       context: state.context,
     });
 
@@ -1067,10 +1074,13 @@
             evaluation.partnerMissingPositions[0]?.position || "lineup"
           } slot uncovered, so the interest score is capped.`
         : `Their roster changes by ${
-            evaluation.partnerValueDelta >= 0 ? "+" : ""
-          }${evaluation.partnerValueDelta} fit value and ${
+            evaluation.partnerDecisionValueDelta >= 0 ? "+" : ""
+          }${evaluation.partnerDecisionValueDelta} package-adjusted fit value and ${
             evaluation.partnerRotoPointGain >= 0 ? "+" : ""
           }${evaluation.partnerRotoPointGain} projected standings points.`;
+    const availableReplacementNames = evaluation.replacementPlayers
+      .filter((player) => player.replacementSource === "available-player")
+      .map((player) => player.name);
     const rosterEffects = [
       evaluation.droppedPlayers.length > 0
         ? `${evaluation.droppedPlayers.length} roster cut${
@@ -1083,9 +1093,11 @@
           } below your roster cutoff`
         : null,
       evaluation.replacementPlayers.length > 0
-        ? `${evaluation.replacementPlayers.length} waiver replacement${
-            evaluation.replacementPlayers.length === 1 ? "" : "s"
-          } assumed`
+        ? availableReplacementNames.length > 0
+          ? `Waiver replacement: ${availableReplacementNames.join(", ")}`
+          : `${evaluation.replacementPlayers.length} estimated waiver replacement${
+              evaluation.replacementPlayers.length === 1 ? "" : "s"
+            }`
         : null,
     ].filter(Boolean);
     elements.labResult.innerHTML = `
@@ -1237,6 +1249,7 @@
           teams: state.data.teams,
           categories: state.data.categories,
           teamStrategies: state.teamStrategies,
+          rosterSettings: leagueRosterSettings(),
           context: state.context,
         });
         return `
@@ -1547,6 +1560,7 @@
       teams: state.data.teams,
       categories: state.data.categories,
       teamStrategies: state.teamStrategies,
+      rosterSettings: leagueRosterSettings(),
     });
     const analysis = engine.getTeamAnalysis({
       teamId: state.teamId,
@@ -1554,6 +1568,7 @@
       teams: state.data.teams,
       categories: state.data.categories,
       teamStrategies: state.teamStrategies,
+      rosterSettings: leagueRosterSettings(),
       context: state.context,
     });
     if (!analysis) throw new Error("The active team could not be analyzed.");
@@ -1598,9 +1613,19 @@
           } below cutoff`
         : null,
       opportunity.result.replacementPlayers.length > 0
-        ? `${opportunity.result.replacementPlayers.length} waiver replacement${
-            opportunity.result.replacementPlayers.length === 1 ? "" : "s"
-          } assumed`
+        ? opportunity.result.replacementPlayers.some(
+            (player) => player.replacementSource === "available-player"
+          )
+          ? `Waiver replacement: ${opportunity.result.replacementPlayers
+              .filter(
+                (player) =>
+                  player.replacementSource === "available-player"
+              )
+              .map((player) => player.name)
+              .join(", ")}`
+          : `${opportunity.result.replacementPlayers.length} estimated waiver replacement${
+              opportunity.result.replacementPlayers.length === 1 ? "" : "s"
+            }`
         : null,
     ].filter(Boolean);
     elements.tradeDialogContent.innerHTML = `
@@ -1755,6 +1780,7 @@
       teams: state.data.teams,
       categories: state.data.categories,
       teamStrategies: state.teamStrategies,
+      rosterSettings: leagueRosterSettings(),
       context: state.context,
     });
     if (!evaluation.valid) return;

@@ -11,7 +11,7 @@
 
   const MAX_TRADE_PLAYERS_PER_SIDE = 8;
   const REPLACEMENT_PERCENTILE = 0.2;
-  const REPLACEMENT_CATEGORY_PERCENTILE = 0.1;
+  const PACKAGE_VALUE_BLEND = 0.55;
   const POSITION_REQUIREMENTS = {
     C: { minimum: 1, cost: 10 },
     "1B": { minimum: 1, cost: 4 },
@@ -191,6 +191,16 @@
   function playersForTeam(players, teamId) {
     return players.filter(
       (player) => String(player.ownerTeamId) === String(teamId)
+    );
+  }
+
+  function isAvailablePlayer(player) {
+    if (!player) return false;
+    if (player.ownerTeamId === null || player.ownerTeamId === undefined) {
+      return true;
+    }
+    return ["", "0", "FA", "FREE_AGENT", "WAIVERS"].includes(
+      String(player.ownerTeamId).toUpperCase()
     );
   }
 
@@ -431,10 +441,33 @@
     ).length;
   }
 
-  function rosterCoverage(beforeRoster, afterRoster) {
+  function positionRequirementsFor(rosterSettings) {
+    const configured = rosterSettings?.positionRequirements;
+    if (!configured || typeof configured !== "object") {
+      return POSITION_REQUIREMENTS;
+    }
+    const requirements = {};
+    Object.entries(configured).forEach(([position, rawMinimum]) => {
+      const minimum = Number(rawMinimum);
+      if (!Number.isFinite(minimum) || minimum <= 0) return;
+      requirements[position] = {
+        minimum: Math.round(minimum),
+        cost: POSITION_REQUIREMENTS[position]?.cost || 3,
+      };
+    });
+    return Object.keys(requirements).length > 0
+      ? requirements
+      : POSITION_REQUIREMENTS;
+  }
+
+  function rosterCoverage(
+    beforeRoster,
+    afterRoster,
+    requirements = POSITION_REQUIREMENTS
+  ) {
     const missing = [];
     let penalty = 0;
-    Object.entries(POSITION_REQUIREMENTS).forEach(
+    Object.entries(requirements).forEach(
       ([position, requirement]) => {
         const before = positionCount(beforeRoster, position);
         const after = positionCount(afterRoster, position);
@@ -449,11 +482,15 @@
     return { penalty, missing };
   }
 
-  function positionalScarcityBonus(player, profile) {
+  function positionalScarcityBonus(
+    player,
+    profile,
+    requirements = POSITION_REQUIREMENTS
+  ) {
     if (!profile || !Array.isArray(player?.positions)) return 0;
     const bonuses = player.positions
       .map((position) => {
-        const requirement = POSITION_REQUIREMENTS[position];
+        const requirement = requirements[position];
         if (!requirement) return 0;
         const count = positionCount(profile.roster, position);
         if (count > requirement.minimum) return 0;
@@ -559,9 +596,9 @@
 
   function baseBundleWeight(index) {
     if (index === 0) return 1;
-    if (index === 1) return 0.62;
-    if (index === 2) return 0.38;
-    return 0.24 * 0.65 ** (index - 3);
+    if (index === 1) return 0.3;
+    if (index === 2) return 0.15;
+    return 0.08 * 0.6 ** (index - 3);
   }
 
   function packageWeight(index, value, topValue) {
@@ -603,6 +640,7 @@
     teams,
     categories,
     teamStrategies = {},
+    rosterSettings = null,
   }) {
     const rawProfiles = new Map();
     const rawCategoryModes = {};
@@ -771,6 +809,8 @@
       teams,
       categories,
       players,
+      rosterSettings,
+      positionRequirements: positionRequirementsFor(rosterSettings),
       rawProfiles,
       rawCategoryModes,
       categoryEntries,
@@ -785,11 +825,18 @@
     teams,
     categories,
     teamStrategies,
+    rosterSettings,
     context,
   }) {
     return (
       context ||
-      computeLeagueContext({ players, teams, categories, teamStrategies })
+      computeLeagueContext({
+        players,
+        teams,
+        categories,
+        teamStrategies,
+        rosterSettings,
+      })
     );
   }
 
@@ -809,7 +856,11 @@
       })
       .filter(Boolean);
     const fit = weightedMean(fitEntries) ?? 0;
-    const scarcity = positionalScarcityBonus(player, profile);
+    const scarcity = positionalScarcityBonus(
+      player,
+      profile,
+      context.positionRequirements
+    );
     return round(clamp(base + fit * 8 + scarcity, 1, 110), 1);
   }
 
@@ -820,6 +871,7 @@
     teams,
     categories,
     teamStrategies = {},
+    rosterSettings = null,
     context,
   }) {
     const leagueContext = ensureContext({
@@ -827,6 +879,7 @@
       teams,
       categories,
       teamStrategies,
+      rosterSettings,
       context,
     });
     const base = leagueContext.playerRatings.get(String(player.id)) ||
@@ -842,19 +895,75 @@
     slotPlayer,
     teamId,
     index,
+    profile,
     context,
+    usedAvailableIds,
   }) {
     const type = slotPlayer?.type || "hitter";
+    const desiredPositions = new Set(
+      Array.isArray(slotPlayer?.positions) ? slotPlayer.positions : []
+    );
+    const availableCandidates = context.players
+      .filter(
+        (player) =>
+          isAvailablePlayer(player) &&
+          player.type === type &&
+          !usedAvailableIds.has(String(player.id))
+      )
+      .map((player) => ({
+        player,
+        positionMatch:
+          desiredPositions.size === 0 ||
+          (player.positions || []).some((position) =>
+            desiredPositions.has(position)
+          ),
+        value: contextualPlayerValue(player, profile, context),
+      }))
+      .sort(
+        (left, right) =>
+          Number(right.positionMatch) - Number(left.positionMatch) ||
+          right.value - left.value ||
+          String(left.player.id).localeCompare(String(right.player.id))
+      );
+    if (availableCandidates.length > 0) {
+      const selected = availableCandidates[0].player;
+      usedAvailableIds.add(String(selected.id));
+      return {
+        ...selected,
+        id: `replacement:${teamId}:${index}:${selected.id}`,
+        ownerTeamId: String(teamId),
+        sourcePlayerId: String(selected.id),
+        isReplacement: true,
+        replacementSource: "available-player",
+      };
+    }
+
     const relevantPlayers = context.players.filter(
-      (player) => player.type === type && !player.isReplacement
+      (player) =>
+        player.type === type &&
+        !player.isReplacement &&
+        !isAvailablePlayer(player)
     );
     const ratingValues = relevantPlayers.map(
       (player) => context.playerRatings.get(String(player.id))?.value
     );
     const rosteredFloor =
       percentile(ratingValues, REPLACEMENT_PERCENTILE) || 35;
+    const rosteredPlayerCount = context.players.filter(
+      (player) => !isAvailablePlayer(player)
+    ).length;
+    const depthFactor = clamp(
+      0.72 - Math.max(0, rosteredPlayerCount - 100) / 900,
+      0.46,
+      0.72
+    );
+    const categoryPercentile = clamp(
+      0.22 - Math.max(0, rosteredPlayerCount - 100) / 1200,
+      0.05,
+      0.22
+    );
     const replacementValue = round(
-      clamp(rosteredFloor * 0.55, 12, 40),
+      clamp(rosteredFloor * depthFactor, 12, 40),
       1
     );
     const scores = {};
@@ -871,7 +980,7 @@
           .filter(Number.isFinite);
         const score = percentile(
           categoryScores,
-          REPLACEMENT_CATEGORY_PERCENTILE
+          categoryPercentile
         );
         if (Number.isFinite(score)) scores[category.id] = round(score, 1);
 
@@ -881,8 +990,8 @@
         if (rawValues.length > 0) {
           const rawPercentile =
             category.direction === "lower"
-              ? 1 - REPLACEMENT_CATEGORY_PERCENTILE
-              : REPLACEMENT_CATEGORY_PERCENTILE;
+              ? 1 - categoryPercentile
+              : categoryPercentile;
           categoryValues[category.id] = round(
             percentile(rawValues, rawPercentile),
             category.aggregation === "rate" ? 4 : 1
@@ -927,6 +1036,7 @@
         consensus: replacementValue,
       },
       isReplacement: true,
+      replacementSource: "depth-estimate",
     };
   }
 
@@ -976,7 +1086,11 @@
           (_candidate, candidateIndex) => candidateIndex !== index
         );
         const coverageCost =
-          rosterCoverage(beforeRoster, afterDrop).penalty * 3;
+          rosterCoverage(
+            beforeRoster,
+            afterDrop,
+            context.positionRequirements
+          ).penalty * 3;
         return {
           index,
           player,
@@ -998,6 +1112,7 @@
     const replacementPlayers = [];
     if (roster.length < targetSize) {
       const openSlots = targetSize - roster.length;
+      const usedAvailableIds = new Set();
       const slotPlayers = [...outgoing]
         .sort(
           (left, right) =>
@@ -1013,7 +1128,9 @@
             beforeRoster[beforeRoster.length - 1],
           teamId,
           index,
+          profile,
           context,
+          usedAvailableIds,
         });
         replacementPlayers.push(replacement);
         roster.push(replacement);
@@ -1046,6 +1163,7 @@
     teams,
     categories,
     teamStrategies = {},
+    rosterSettings = null,
     context,
   }) {
     const leagueContext = ensureContext({
@@ -1053,6 +1171,7 @@
       teams,
       categories,
       teamStrategies,
+      rosterSettings,
       context,
     });
     const profile = leagueContext.profiles.get(String(teamId));
@@ -1267,6 +1386,7 @@
     teams,
     categories,
     teamStrategies = {},
+    rosterSettings = null,
     context,
   }) {
     const leagueContext = ensureContext({
@@ -1274,6 +1394,7 @@
       teams,
       categories,
       teamStrategies,
+      rosterSettings,
       context,
     });
     const teamKey = String(teamId);
@@ -1376,6 +1497,16 @@
         ),
       1
     );
+    const teamDecisionValueDelta = round(
+      teamValueDelta * (1 - PACKAGE_VALUE_BLEND) +
+        valueDelta * PACKAGE_VALUE_BLEND,
+      1
+    );
+    const partnerDecisionValueDelta = round(
+      partnerValueDelta * (1 - PACKAGE_VALUE_BLEND) -
+        valueDelta * PACKAGE_VALUE_BLEND,
+      1
+    );
 
     const deltas = categories.map((category) =>
       categoryDelta({
@@ -1401,10 +1532,15 @@
     const packageImbalance = Math.abs(sending.length - receiving.length);
     const teamDepthPenalty = teamAdjustment.depthPenalty;
     const partnerDepthPenalty = partnerAdjustment.depthPenalty;
-    const teamCoverage = rosterCoverage(teamProfile.roster, teamAfter);
+    const teamCoverage = rosterCoverage(
+      teamProfile.roster,
+      teamAfter,
+      leagueContext.positionRequirements
+    );
     const partnerCoverage = rosterCoverage(
       partnerProfile.roster,
-      partnerAfter
+      partnerAfter,
+      leagueContext.positionRequirements
     );
     const incomingTrend = mean(receiving.map((player) => player.trend || 0));
     const outgoingTrend = mean(sending.map((player) => player.trend || 0));
@@ -1417,7 +1553,7 @@
       ? clamp(
           (sending.length - receiving.length) * 4 +
             (incomingStarValue - 88) * 0.35 -
-            Math.max(0, partnerValueDelta) * 0.2,
+            Math.max(0, partnerDecisionValueDelta) * 0.2,
           0,
           15
         )
@@ -1433,7 +1569,7 @@
       Math.round(
         55 +
           teamNeedGain * 3.3 +
-          teamValueDelta * 0.7 +
+          teamDecisionValueDelta * 0.7 +
           rotoPointGain * 2 -
           teamDepthPenalty +
           trendDelta * 0.2 -
@@ -1446,7 +1582,7 @@
       Math.round(
         55 +
           partnerNeedGain * 3.3 +
-          partnerValueDelta * 0.72 +
+          partnerDecisionValueDelta * 0.72 +
           partnerRotoPointGain * 2 -
           partnerDepthPenalty -
           starPremiumPenalty -
@@ -1458,7 +1594,7 @@
     const partnerDecision =
       -0.2 +
       partnerNeedGain * 0.28 +
-      partnerValueDelta * 0.075 +
+      partnerDecisionValueDelta * 0.075 +
       (fairness - 70) * 0.018 +
       partnerRotoPointGain * 0.22 -
       partnerDepthPenalty * 0.1 -
@@ -1498,7 +1634,7 @@
     const realistic =
       fairness >= 55 &&
       acceptance >= 57 &&
-      partnerValueDelta >= -8 &&
+      partnerDecisionValueDelta >= -8 &&
       partnerNeedGain >= -2.25 &&
       partnerCoverage.penalty < 10 &&
       teamScore >= 48;
@@ -1514,6 +1650,8 @@
       listedValueIn: sum(receiving.map((player) => player.marketValue)),
       teamValueDelta,
       partnerValueDelta,
+      teamDecisionValueDelta,
+      partnerDecisionValueDelta,
       fairness,
       teamScore,
       partnerFitScore,
@@ -1547,8 +1685,8 @@
       partnerMissingPositions: partnerCoverage.missing,
       realistic,
       mutualBenefit:
-        teamNeedGain + teamValueDelta * 0.1 > -1 &&
-        partnerNeedGain + partnerValueDelta * 0.1 > -1,
+        teamNeedGain + teamDecisionValueDelta * 0.1 > -1 &&
+        partnerNeedGain + partnerDecisionValueDelta * 0.1 > -1,
     };
   }
 
@@ -1620,11 +1758,11 @@
       partnerReason = `${partnerProfile.team.name} adds ${categoryNames(
         partnerGains
       )}${partnerPointText}.`;
-    } else if (result.partnerValueDelta > 3) {
+    } else if (result.partnerDecisionValueDelta > 3) {
       partnerReason = `${partnerProfile.team.name} gains ${round(
-        result.partnerValueDelta,
+        result.partnerDecisionValueDelta,
         1
-      )} points of roster-specific value.`;
+      )} points of package-adjusted roster value.`;
     }
     let risk = "No major loss in a category you are competing in.";
     if (result.discardedIncoming.length > 0) {
@@ -1771,6 +1909,7 @@
     teams,
     categories,
     teamStrategies = {},
+    rosterSettings = null,
     strategy = "balanced",
     position = "ALL",
     category = "ALL",
@@ -1783,6 +1922,7 @@
       teams,
       categories,
       teamStrategies,
+      rosterSettings,
     });
     const teamProfile = context.profiles.get(String(teamId));
     if (!teamProfile) return [];
