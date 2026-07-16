@@ -10,6 +10,19 @@ const MAX_BODY_BYTES = 12 * 1024;
 const MAX_ESPN_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_LAMBDA_PAYLOAD_BYTES = 6 * 1024 * 1024 - 64 * 1024;
 const FETCH_TIMEOUT_MS = 8_000;
+const ESPN_PLAYER_FILTER = JSON.stringify({
+  players: {
+    filterStatus: { value: ["FREEAGENT", "WAIVERS"] },
+    filterStatsForSplitTypeIds: { value: [0, 1] },
+    limit: 100,
+    sortPercOwned: { sortPriority: 1, sortAsc: false },
+    sortDraftRanks: {
+      sortPriority: 100,
+      sortAsc: true,
+      value: "STANDARD",
+    },
+  },
+});
 
 exports.handler = async function handler(event) {
   const origin = requestOrigin(event);
@@ -118,6 +131,7 @@ exports.handler = async function handler(event) {
     const headers = {
       Accept: "application/json",
       "User-Agent": "RosterLab/1.0",
+      "X-Fantasy-Filter": ESPN_PLAYER_FILTER,
     };
     if (hasPrivateCredentials) {
       headers.Cookie = `espn_s2=${espnS2}; SWID=${swid}`;
@@ -277,7 +291,13 @@ function leagueUrl({ leagueId, season }) {
   const url = new URL(
     `${ESPN_BASE}/seasons/${season}/segments/0/leagues/${leagueId}`
   );
-  ["mTeam", "mRoster", "mSettings", "mStandings"].forEach((view) => {
+  [
+    "mTeam",
+    "mRoster",
+    "mSettings",
+    "mStandings",
+    "kona_player_info",
+  ].forEach((view) => {
     url.searchParams.append("view", view);
   });
   return url;

@@ -72,7 +72,20 @@ async function run() {
   assert.equal(publicResult.headers["Cache-Control"], "no-store, max-age=0");
   assert.equal(publicRequest.options.headers.Cookie, undefined);
   assert.match(publicRequest.url, /leagues\/123456/);
-  assert.equal(new URL(publicRequest.url).searchParams.getAll("view").length, 4);
+  assert.equal(new URL(publicRequest.url).searchParams.getAll("view").length, 5);
+  assert.ok(
+    new URL(publicRequest.url)
+      .searchParams.getAll("view")
+      .includes("kona_player_info")
+  );
+  const playerFilter = JSON.parse(
+    publicRequest.options.headers["X-Fantasy-Filter"]
+  );
+  assert.deepEqual(playerFilter.players.filterStatus.value, [
+    "FREEAGENT",
+    "WAIVERS",
+  ]);
+  assert.equal(playerFilter.players.limit, 100);
   assert.deepEqual(JSON.parse(publicResult.body), { payload, teamId: "1" });
 
   global.fetch = async () =>

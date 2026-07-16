@@ -967,4 +967,239 @@ assert.equal(
   twoEliteForOhtani.score
 );
 
+function calibrationPlayer({
+  id,
+  ownerTeamId,
+  value,
+  type = "hitter",
+  positions = ["UTIL"],
+}) {
+  return {
+    id,
+    name: id,
+    ownerTeamId,
+    type,
+    positions,
+    marketValue: value,
+    status: "Healthy",
+    trend: 0,
+    scores: { runs: value },
+    signals: {
+      projection: value,
+      underlying: value,
+      consensus: value,
+    },
+  };
+}
+
+const redditCalibrationTeams = [
+  { id: "package-side", name: "Package side" },
+  { id: "star-side", name: "Star side" },
+];
+const redditCalibrationPlayers = [
+  calibrationPlayer({
+    id: "ozzie-albies",
+    ownerTeamId: "package-side",
+    value: 40,
+    positions: ["2B"],
+  }),
+  calibrationPlayer({
+    id: "jackson-chourio",
+    ownerTeamId: "package-side",
+    value: 67,
+    positions: ["OF"],
+  }),
+  calibrationPlayer({
+    id: "oneil-cruz",
+    ownerTeamId: "package-side",
+    value: 57,
+    positions: ["SS"],
+  }),
+  calibrationPlayer({
+    id: "max-fried",
+    ownerTeamId: "package-side",
+    value: 52,
+    type: "pitcher",
+    positions: ["SP"],
+  }),
+  calibrationPlayer({
+    id: "rafael-devers",
+    ownerTeamId: "package-side",
+    value: 44,
+    positions: ["1B"],
+  }),
+  calibrationPlayer({
+    id: "dylan-cease",
+    ownerTeamId: "package-side",
+    value: 50,
+    type: "pitcher",
+    positions: ["SP"],
+  }),
+  calibrationPlayer({
+    id: "ronald-acuna",
+    ownerTeamId: "star-side",
+    value: 80,
+    positions: ["OF"],
+  }),
+  calibrationPlayer({
+    id: "corbin-carroll",
+    ownerTeamId: "star-side",
+    value: 73,
+    positions: ["OF"],
+  }),
+  calibrationPlayer({
+    id: "nick-kurtz",
+    ownerTeamId: "star-side",
+    value: 65,
+    positions: ["1B"],
+  }),
+  ...Array.from({ length: 6 }, (_value, index) =>
+    calibrationPlayer({
+      id: `package-calibration-filler-${index}`,
+      ownerTeamId: "package-side",
+      value: 28,
+      type: index % 2 === 0 ? "hitter" : "pitcher",
+      positions: [index % 2 === 0 ? "UTIL" : "P"],
+    })
+  ),
+  ...Array.from({ length: 9 }, (_value, index) =>
+    calibrationPlayer({
+      id: `star-calibration-filler-${index}`,
+      ownerTeamId: "star-side",
+      value: 28,
+      type: index % 2 === 0 ? "hitter" : "pitcher",
+      positions: [index % 2 === 0 ? "UTIL" : "P"],
+    })
+  ),
+  calibrationPlayer({
+    id: "jordan-westburg-waiver",
+    ownerTeamId: null,
+    value: 39,
+    positions: ["2B", "3B"],
+  }),
+];
+
+// These package shapes were the persistent misses in the July 2026 Reddit
+// pressure test. Category scores are held neutral to isolate consolidation.
+const acunaConsolidation = evaluateTrade({
+  teamId: "package-side",
+  partnerTeamId: "star-side",
+  sendingIds: ["ozzie-albies", "jackson-chourio"],
+  receivingIds: ["ronald-acuna"],
+  players: redditCalibrationPlayers,
+  teams: redditCalibrationTeams,
+  categories: packageCategories,
+});
+const carrollConsolidation = evaluateTrade({
+  teamId: "package-side",
+  partnerTeamId: "star-side",
+  sendingIds: ["oneil-cruz", "max-fried"],
+  receivingIds: ["corbin-carroll"],
+  players: redditCalibrationPlayers,
+  teams: redditCalibrationTeams,
+  categories: packageCategories,
+});
+const kurtzConsolidation = evaluateTrade({
+  teamId: "package-side",
+  partnerTeamId: "star-side",
+  sendingIds: ["rafael-devers", "dylan-cease"],
+  receivingIds: ["nick-kurtz"],
+  players: redditCalibrationPlayers,
+  teams: redditCalibrationTeams,
+  categories: packageCategories,
+});
+assert.ok(acunaConsolidation.valueIn > acunaConsolidation.valueOut);
+assert.ok(carrollConsolidation.valueIn >= carrollConsolidation.valueOut);
+assert.ok(kurtzConsolidation.valueIn > kurtzConsolidation.valueOut);
+assert.equal(
+  acunaConsolidation.replacementPlayers[0].sourcePlayerId,
+  "jordan-westburg-waiver"
+);
+assert.equal(
+  acunaConsolidation.replacementPlayers[0].replacementSource,
+  "available-player"
+);
+
+const estimatedReplacementTrade = evaluateTrade({
+  teamId: "package-side",
+  partnerTeamId: "star-side",
+  sendingIds: ["ozzie-albies", "jackson-chourio"],
+  receivingIds: ["ronald-acuna"],
+  players: redditCalibrationPlayers.filter(
+    (player) => player.id !== "jordan-westburg-waiver"
+  ),
+  teams: redditCalibrationTeams,
+  categories: packageCategories,
+});
+assert.equal(
+  estimatedReplacementTrade.replacementPlayers[0].replacementSource,
+  "depth-estimate"
+);
+assert.ok(
+  acunaConsolidation.teamDecisionValueDelta >
+    estimatedReplacementTrade.teamDecisionValueDelta
+);
+
+const twoCatcherTeams = [
+  { id: "two-catcher", name: "Two-catcher team" },
+  { id: "other-team", name: "Other team" },
+];
+const twoCatcherPlayers = [
+  calibrationPlayer({
+    id: "catcher-one",
+    ownerTeamId: "two-catcher",
+    value: 60,
+    positions: ["C"],
+  }),
+  calibrationPlayer({
+    id: "catcher-two",
+    ownerTeamId: "two-catcher",
+    value: 55,
+    positions: ["C"],
+  }),
+  calibrationPlayer({
+    id: "two-catcher-filler",
+    ownerTeamId: "two-catcher",
+    value: 30,
+  }),
+  calibrationPlayer({
+    id: "incoming-outfielder",
+    ownerTeamId: "other-team",
+    value: 60,
+    positions: ["OF"],
+  }),
+  calibrationPlayer({
+    id: "other-filler",
+    ownerTeamId: "other-team",
+    value: 30,
+  }),
+  calibrationPlayer({
+    id: "other-catcher",
+    ownerTeamId: "other-team",
+    value: 30,
+    positions: ["C"],
+  }),
+];
+const defaultCatcherRequirement = evaluateTrade({
+  teamId: "two-catcher",
+  partnerTeamId: "other-team",
+  sendingIds: ["catcher-one"],
+  receivingIds: ["incoming-outfielder"],
+  players: twoCatcherPlayers,
+  teams: twoCatcherTeams,
+  categories: packageCategories,
+});
+const configuredCatcherRequirement = evaluateTrade({
+  teamId: "two-catcher",
+  partnerTeamId: "other-team",
+  sendingIds: ["catcher-one"],
+  receivingIds: ["incoming-outfielder"],
+  players: twoCatcherPlayers,
+  teams: twoCatcherTeams,
+  categories: packageCategories,
+  rosterSettings: { positionRequirements: { C: 2 } },
+});
+assert.equal(defaultCatcherRequirement.rosterFitPenalty, 0);
+assert.equal(configuredCatcherRequirement.rosterFitPenalty, 10);
+
 console.log("Fantasy trade engine tests passed.");

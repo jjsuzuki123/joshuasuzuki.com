@@ -60,6 +60,9 @@ projected stat lines before building team needs and trade scores. Points leagues
 remain unsupported because they require a separate points-based valuation
 model. Categories with unknown ESPN stat IDs or no available season data are
 listed in the app and excluded from recommendations rather than estimated.
+Head-to-head category leagues use category-strength and standings leverage as
+an approximation; the model does not claim to simulate a particular future
+weekly matchup.
 
 To connect a private league with the connector, install the extension, select
 **Sync ESPN** in RosterLab, and choose **Connect with ESPN**. On the first
@@ -100,14 +103,20 @@ redistributes that weight across the remaining categories.
 Every trade recomputes both teams' category totals and approximate rotisserie
 points. Partner interest uses the other manager's category priorities,
 roster-specific player value, package shape, star premium, and projected
-standings movement. Multi-player packages use diminishing asset weights. The
-engine trims overfull post-trade rosters, removes players below the roster
-cutoff, and models replacement-level waiver additions for newly opened spots.
-Package weights decay geometrically after the third asset, so even an 8-for-1
-offer cannot manufacture value by stacking marginal players indefinitely. The
-second and third assets retain more weight when they are independently elite
+standings movement. An ordinary second asset contributes 30% to package value,
+an ordinary third contributes 15%, and later assets decay geometrically, so an
+8-for-1 offer cannot manufacture value by stacking marginal players. The second
+and third assets retain substantially more when they are independently elite
 and close in quality to the package headliner, so two 90-level players are not
 treated like one star plus ordinary depth.
+
+The package-adjusted result is blended into both teams' roster-value decisions
+instead of being used only for the fairness meter. The engine also trims
+overfull post-trade rosters and removes players below the roster cutoff. For an
+open spot it now uses the best position-compatible ESPN free agent when that
+pool is available; otherwise it falls back to an estimate that becomes more
+conservative as the league's rostered-player pool gets deeper. Imported lineup
+slot counts set coverage requirements such as two-catcher formats.
 Recommendations must clear minimum fairness and partner-interest thresholds.
 The score is an explainable decision aid, not a claimed probability that
 another manager will accept.
