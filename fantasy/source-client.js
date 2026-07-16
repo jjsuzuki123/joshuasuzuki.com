@@ -706,10 +706,59 @@
     };
   }
 
-  function requestBody(league) {
+  function authorizedResearchPlayers(league) {
+    const token = String(league.researchToken || "");
+    let authorized = null;
+    try {
+      const encodedPayload = token.split(".")[0];
+      const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+      const decoded = JSON.parse(
+        new TextDecoder().decode(
+          Uint8Array.from(
+            atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")),
+            (character) => character.charCodeAt(0)
+          )
+        )
+      );
+      authorized = new Set(
+        (Array.isArray(decoded.players) ? decoded.players : []).map((key) => {
+          const parts = String(key).split(":");
+          return `${parts[0]}:${parts.at(-1)}`;
+        })
+      );
+    } catch (_error) {
+      authorized = null;
+    }
+    return [...league.players]
+      .filter((player) => {
+        if (!authorized) return true;
+        const espnId = String(player.externalIds?.espn || player.id);
+        const team = cleanText(player.mlbTeam).toUpperCase();
+        return authorized.has(`${espnId}:${team}`);
+      })
+      .sort(
+        (left, right) =>
+          Number(String(right.ownerTeamId) === String(league.activeTeamId)) -
+            Number(String(left.ownerTeamId) === String(league.activeTeamId)) ||
+          Number(right.ownerTeamId !== null && right.ownerTeamId !== undefined) -
+            Number(left.ownerTeamId !== null && left.ownerTeamId !== undefined) ||
+          (Number(right.marketValue) || 0) - (Number(left.marketValue) || 0)
+      )
+      .slice(0, 500);
+  }
+
+  function requestBody(league, options = {}) {
+    const research =
+      options.research === undefined
+        ? Boolean(RESEARCH_ENDPOINT)
+        : options.research === true;
+    const requestPlayers = research
+      ? authorizedResearchPlayers(league)
+      : league.players;
     return {
       schemaVersion: 1,
       researchToken:
+        research &&
         typeof league.researchToken === "string" &&
         /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(league.researchToken)
           ? league.researchToken.slice(0, 40_000)
@@ -725,7 +774,7 @@
         aggregation: category.aggregation,
         direction: category.direction || "higher",
       })),
-      players: league.players.map((player) => ({
+      players: requestPlayers.map((player) => ({
         id: String(player.id),
         externalIds: player.externalIds || {
           espn: league.mode === "espn" ? String(player.id) : null,
@@ -774,10 +823,10 @@
       else signal.addEventListener("abort", abortFromParent, { once: true });
     }
     try {
-      const payload = requestBody(league);
-      if (!RESEARCH_ENDPOINT || endpoint !== RESEARCH_ENDPOINT) {
-        delete payload.researchToken;
-      }
+      const isResearchEndpoint =
+        Boolean(RESEARCH_ENDPOINT) && endpoint === RESEARCH_ENDPOINT;
+      const payload = requestBody(league, { research: isResearchEndpoint });
+      if (!isResearchEndpoint) delete payload.researchToken;
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {

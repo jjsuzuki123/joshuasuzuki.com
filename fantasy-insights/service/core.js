@@ -204,6 +204,7 @@ function researchTokenClaims(token, request, secret, now = new Date()) {
   }
   if (
     supplied.length !== expected.length ||
+    supplied.toString("base64url") !== encodedSignature ||
     !crypto.timingSafeEqual(supplied, expected)
   ) {
     return null;

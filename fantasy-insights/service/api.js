@@ -77,7 +77,7 @@ async function createDefaultDependencies() {
   const {
     BatchGetItemCommand,
     DynamoDBClient,
-    UpdateItemCommand,
+    TransactWriteItemsCommand,
   } = require("@aws-sdk/client-dynamodb");
   const {
     GetSecretValueCommand,
@@ -118,69 +118,72 @@ async function createDefaultDependencies() {
       }
       return items;
     },
-    async claimResearch({
+    async commitClaims({
       tableName,
-      cacheKey,
+      claims,
+      jti,
+      maximum,
+      tokenExpiresAt,
       nowEpoch,
       claimUntil,
       ttl,
     }) {
-      const queueToken = crypto.randomUUID();
+      if (claims.length === 0 || claims.length > maximum) return false;
       try {
         await dynamo.send(
-          new UpdateItemCommand({
-            TableName: tableName,
-            Key: { pk: { S: cacheKey } },
-            UpdateExpression:
-              "SET researchAfter = :claim, expiresAt = :ttl, queueToken = :token, #state = :queued REMOVE leaseToken, leaseUntil",
-            ConditionExpression:
-              "(attribute_not_exists(researchAfter) OR researchAfter <= :now) AND (attribute_not_exists(#state) OR #state <> :researching OR leaseUntil <= :now)",
-            ExpressionAttributeNames: { "#state": "state" },
-            ExpressionAttributeValues: {
-              ":claim": { N: String(claimUntil) },
-              ":ttl": { N: String(ttl) },
-              ":now": { N: String(nowEpoch) },
-              ":queued": { S: "queued" },
-              ":researching": { S: "researching" },
-              ":token": { S: queueToken },
-            },
-          })
-        );
-        return queueToken;
-      } catch (error) {
-        if (error?.name === "ConditionalCheckFailedException") return false;
-        throw error;
-      }
-    },
-    async reserveTokenQuota({
-      tableName,
-      jti,
-      count,
-      maximum,
-      expiresAt,
-    }) {
-      if (count <= 0 || count > maximum) return false;
-      try {
-        await dynamo.send(
-          new UpdateItemCommand({
-            TableName: tableName,
-            Key: { pk: { S: `token:${jti}` } },
-            UpdateExpression:
-              "SET expiresAt = :ttl, #state = :state ADD queuedPlayers :count",
-            ConditionExpression:
-              "attribute_not_exists(queuedPlayers) OR queuedPlayers <= :remaining",
-            ExpressionAttributeNames: { "#state": "state" },
-            ExpressionAttributeValues: {
-              ":ttl": { N: String(expiresAt) },
-              ":state": { S: "token-quota" },
-              ":count": { N: String(count) },
-              ":remaining": { N: String(maximum - count) },
-            },
+          new TransactWriteItemsCommand({
+            ClientRequestToken: crypto.randomUUID(),
+            TransactItems: [
+              {
+                Update: {
+                  TableName: tableName,
+                  Key: { pk: { S: `token:${jti}` } },
+                  UpdateExpression:
+                    "SET expiresAt = :ttl, #state = :state ADD queuedPlayers :count",
+                  ConditionExpression:
+                    "attribute_not_exists(queuedPlayers) OR queuedPlayers <= :remaining",
+                  ExpressionAttributeNames: { "#state": "state" },
+                  ExpressionAttributeValues: {
+                    ":ttl": { N: String(tokenExpiresAt) },
+                    ":state": { S: "token-quota" },
+                    ":count": { N: String(claims.length) },
+                    ":remaining": {
+                      N: String(maximum - claims.length),
+                    },
+                  },
+                },
+              },
+              ...claims.map(({ player, queueToken }) => ({
+                Update: {
+                  TableName: tableName,
+                  Key: { pk: { S: player.cacheKey } },
+                  UpdateExpression:
+                    "SET researchAfter = :claim, expiresAt = :ttl, queueToken = :token, #state = :queued REMOVE leaseToken, leaseUntil",
+                  ConditionExpression:
+                    "(#state = :researching AND leaseUntil <= :now) OR ((attribute_not_exists(researchAfter) OR researchAfter <= :now) AND (attribute_not_exists(#state) OR #state <> :researching))",
+                  ExpressionAttributeNames: { "#state": "state" },
+                  ExpressionAttributeValues: {
+                    ":claim": { N: String(claimUntil) },
+                    ":ttl": { N: String(ttl) },
+                    ":now": { N: String(nowEpoch) },
+                    ":queued": { S: "queued" },
+                    ":researching": { S: "researching" },
+                    ":token": { S: queueToken },
+                  },
+                },
+              })),
+            ],
           })
         );
         return true;
       } catch (error) {
-        if (error?.name === "ConditionalCheckFailedException") return false;
+        if (
+          ["TransactionCanceledException", "ConditionalCheckFailedException"].includes(
+            error?.name
+          )
+        ) {
+          return false;
+        }
         throw error;
       }
     },
@@ -216,6 +219,7 @@ async function createDefaultDependencies() {
                 Entries: pending.map(({ id, message }) => ({
                   Id: id,
                   MessageBody: JSON.stringify(message),
+                  DelaySeconds: 5,
                 })),
               })
             );
@@ -236,27 +240,54 @@ async function createDefaultDependencies() {
       }
       return failed;
     },
-    async releaseClaims({ tableName, claims, nowEpoch }) {
+    async releaseClaims({ tableName, claims, jti, nowEpoch }) {
       await Promise.all(
         claims.map(async ({ player, queueToken }) => {
           try {
             await dynamo.send(
-              new UpdateItemCommand({
-                TableName: tableName,
-                Key: { pk: { S: player.cacheKey } },
-                UpdateExpression:
-                  "SET researchAfter = :now, #state = :state REMOVE queueToken",
-                ConditionExpression: "queueToken = :token",
-                ExpressionAttributeNames: { "#state": "state" },
-                ExpressionAttributeValues: {
-                  ":now": { N: String(nowEpoch) },
-                  ":state": { S: "enqueue-failed" },
-                  ":token": { S: queueToken },
-                },
+              new TransactWriteItemsCommand({
+                TransactItems: [
+                  {
+                    Update: {
+                      TableName: tableName,
+                      Key: { pk: { S: `token:${jti}` } },
+                      UpdateExpression: "ADD queuedPlayers :decrement",
+                      ConditionExpression: "queuedPlayers >= :one",
+                      ExpressionAttributeValues: {
+                        ":decrement": { N: "-1" },
+                        ":one": { N: "1" },
+                      },
+                    },
+                  },
+                  {
+                    Update: {
+                      TableName: tableName,
+                      Key: { pk: { S: player.cacheKey } },
+                      UpdateExpression:
+                        "SET researchAfter = :now, #state = :state REMOVE queueToken",
+                      ConditionExpression:
+                        "queueToken = :token AND #state = :queued",
+                      ExpressionAttributeNames: { "#state": "state" },
+                      ExpressionAttributeValues: {
+                        ":now": { N: String(nowEpoch) },
+                        ":state": { S: "enqueue-failed" },
+                        ":queued": { S: "queued" },
+                        ":token": { S: queueToken },
+                      },
+                    },
+                  },
+                ],
               })
             );
           } catch (error) {
-            if (error?.name !== "ConditionalCheckFailedException") throw error;
+            if (
+              ![
+                "TransactionCanceledException",
+                "ConditionalCheckFailedException",
+              ].includes(error?.name)
+            ) {
+              throw error;
+            }
           }
         })
       );
@@ -426,27 +457,23 @@ async function handler(event) {
         if (record && record.researchAfter > nowEpoch) continue;
         candidates.push(player);
       }
-      const quotaReserved =
-        candidates.length > 0 &&
-        (await dependencies.reserveTokenQuota({
+      const proposedClaims = candidates.map((player) => ({
+        player,
+        queueToken: crypto.randomUUID(),
+      }));
+      const committed =
+        proposedClaims.length > 0 &&
+        (await dependencies.commitClaims({
           tableName,
+          claims: proposedClaims,
           jti: claims.jti,
-          count: candidates.length,
           maximum: claims.maxPlayers,
-          expiresAt: claims.expiresAt,
+          tokenExpiresAt: claims.expiresAt,
+          nowEpoch,
+          claimUntil: nowEpoch + 60 * 60,
+          ttl: nowEpoch + 7 * 24 * 60 * 60,
         }));
-      if (quotaReserved) {
-        for (const player of candidates) {
-          const queueToken = await dependencies.claimResearch({
-            tableName,
-            cacheKey: player.cacheKey,
-            nowEpoch,
-            claimUntil: nowEpoch + 60 * 60,
-            ttl: nowEpoch + 7 * 24 * 60 * 60,
-          });
-          if (queueToken) queuedClaims.push({ player, queueToken });
-        }
-      }
+      if (committed) queuedClaims = proposedClaims;
     }
     if (queuedClaims.length > 0) {
       const failed =
@@ -466,6 +493,7 @@ async function handler(event) {
             player: message.player,
             queueToken: message.queueToken,
           })),
+          jti: claims.jti,
           nowEpoch,
         });
         const failedTokens = new Set(

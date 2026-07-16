@@ -23,6 +23,20 @@ const league = {
   sources: data.sources.map((source) => ({ ...source })),
 };
 const now = new Date("2026-07-06T19:00:00.000Z");
+const cappedResearchBody = client.requestBody({
+  ...league,
+  researchToken: "",
+  players: Array.from({ length: 501 }, (_value, index) => ({
+    ...league.players[0],
+    id: String(index + 1),
+    externalIds: { espn: String(index + 1) },
+    name: `Player ${index + 1}`,
+    mlbTeam: "FA",
+    ownerTeamId: index < 25 ? league.activeTeamId : null,
+    marketValue: 50,
+  })),
+});
+assert.equal(cappedResearchBody.players.length, 500);
 const snapshot = {
   schemaVersion: 1,
   generatedAt: "2026-07-06T18:55:00.000Z",

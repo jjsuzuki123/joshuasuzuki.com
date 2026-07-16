@@ -430,7 +430,9 @@ assert.equal(
 );
 assert.equal(
   verifyResearchToken(
-    `${researchToken.slice(0, -1)}x`,
+    `${researchToken.split(".")[0]}.${
+      researchToken.split(".")[1][0] === "A" ? "B" : "A"
+    }${researchToken.split(".")[1].slice(1)}`,
     parseResearchRequest(authorizedRequestBody),
     signingSecret,
     now
@@ -451,11 +453,8 @@ async function run() {
     async batchGet() {
       return [];
     },
-    async reserveTokenQuota() {
+    async commitClaims() {
       return true;
-    },
-    async claimResearch() {
-      return "11111111-1111-4111-8111-111111111111";
     },
     async getSigningSecret() {
       return signingSecret;
@@ -517,13 +516,9 @@ async function run() {
     async getSigningSecret() {
       return signingSecret;
     },
-    async reserveTokenQuota() {
+    async commitClaims({ claims }) {
+      claimedKeys.push(...claims.map(({ player }) => player.cacheKey));
       return true;
-    },
-    async claimResearch({ cacheKey }) {
-      if (cacheKey === clay.cacheKey) return false;
-      claimedKeys.push(cacheKey);
-      return "22222222-2222-4222-8222-222222222222";
     },
     async enqueue() {},
   });
@@ -552,12 +547,9 @@ async function run() {
     async getSigningSecret() {
       return signingSecret;
     },
-    async reserveTokenQuota() {
-      return true;
-    },
-    async claimResearch() {
+    async commitClaims() {
       expiredClaimed = true;
-      return "44444444-4444-4444-8444-444444444444";
+      return true;
     },
     async enqueue({ messages }) {
       return messages;
@@ -599,7 +591,7 @@ async function run() {
     async getSigningSecret() {
       return signingSecret;
     },
-    async claimResearch() {
+    async commitClaims() {
       throw new Error("Current cached evidence must not be requeued.");
     },
     async enqueue() {},
@@ -634,7 +626,7 @@ async function run() {
     async getSigningSecret() {
       return signingSecret;
     },
-    async claimResearch() {
+    async commitClaims() {
       throw new Error("A current negative-cache record must not be requeued.");
     },
     async enqueue() {

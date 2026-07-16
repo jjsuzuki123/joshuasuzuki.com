@@ -444,7 +444,7 @@ function authorizedPlayersForPayload(payload) {
     const mlbTeam = PRO_TEAM_BY_ID[Number(player?.proTeamId)] || "FA";
     authorized.add(`${espnId}:${nameHash}:${mlbTeam}`);
   });
-  return [...authorized].sort().slice(0, 1000);
+  return [...authorized].slice(0, 500);
 }
 
 function createResearchToken({

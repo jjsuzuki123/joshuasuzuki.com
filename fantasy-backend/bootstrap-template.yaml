@@ -164,6 +164,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - dynamodb:BatchGetItem
+                  - dynamodb:TransactWriteItems
                   - dynamodb:UpdateItem
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${InsightsTableName}
