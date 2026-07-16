@@ -820,6 +820,24 @@ const eightForOne = evaluateTrade({
   teams: largePackageTeams,
   categories: packageCategories,
 });
+const reorderedEightForOne = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: [
+    "marginal-0",
+    "marginal-1",
+    "useful-depth",
+    "marginal-2",
+    "marginal-3",
+    "marginal-4",
+    "marginal-5",
+    "marginal-6",
+  ],
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
 const oneForOneDepth = evaluateTrade({
   teamId: "star-team",
   partnerTeamId: "depth-team",
@@ -838,6 +856,15 @@ assert.ok(
     0.1
 );
 assert.ok(eightForOne.teamScore < oneForOneDepth.teamScore);
+assert.equal(reorderedEightForOne.valueIn, eightForOne.valueIn);
+assert.equal(reorderedEightForOne.fairness, eightForOne.fairness);
+assert.equal(reorderedEightForOne.score, eightForOne.score);
+assert.deepEqual(
+  reorderedEightForOne.discardedIncoming
+    .map((player) => player.id)
+    .sort(),
+  eightForOne.discardedIncoming.map((player) => player.id).sort()
+);
 
 const nineForOne = evaluateTrade({
   teamId: "star-team",
