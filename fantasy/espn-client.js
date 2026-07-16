@@ -310,6 +310,9 @@
   function parseLeagueReference(reference) {
     const input = String(reference || "").trim().replaceAll("&amp;", "&");
     if (/^\d+$/.test(input)) {
+      if (!/^\d{1,20}$/.test(input)) {
+        throw new Error("League ID must contain 1 to 20 digits.");
+      }
       return { leagueId: input, season: null, teamId: null };
     }
 
@@ -322,6 +325,16 @@
     } catch (error) {
       throw new Error("Paste an ESPN league URL or enter its numeric league ID.");
     }
+    const allowedPath =
+      (url.hostname === "www.espn.com" &&
+        /^\/fantasy\/baseball(?:\/|$)/.test(url.pathname)) ||
+      (url.hostname === "fantasy.espn.com" &&
+        /^\/baseball(?:\/|$)/.test(url.pathname)) ||
+      (url.hostname === "lm-api-reads.fantasy.espn.com" &&
+        /^\/apis\/v3\/games\/flb(?:\/|$)/.test(url.pathname));
+    if (url.protocol !== "https:" || !allowedPath) {
+      throw new Error("Use an HTTPS link from ESPN fantasy baseball.");
+    }
 
     const hashParameters = url.hash.includes("?")
       ? new URLSearchParams(url.hash.slice(url.hash.indexOf("?") + 1))
@@ -329,21 +342,21 @@
     const parameter = (name) =>
       url.searchParams.get(name) || hashParameters.get(name);
     const pathLeagueId =
-      url.pathname.match(/\/leagues?\/(\d+)(?:\/|$)/i)?.[1] || null;
+      url.pathname.match(/\/leagues?\/(\d{1,20})(?:\/|$)/i)?.[1] || null;
     const pathSeason =
-      url.pathname.match(/\/seasons\/(\d{4})(?:\/|$)/i)?.[1] || null;
+      url.pathname.match(/\/seasons\/(20\d{2})(?:\/|$)/i)?.[1] || null;
     const leagueId = parameter("leagueId") || pathLeagueId;
     const season = parameter("seasonId") || parameter("season") || pathSeason;
     const teamId = parameter("teamId");
 
-    if (!leagueId || !/^\d+$/.test(leagueId)) {
+    if (!leagueId || !/^\d{1,20}$/.test(leagueId)) {
       throw new Error("This URL does not contain a readable ESPN league ID.");
     }
 
     return {
       leagueId,
-      season: season && /^\d{4}$/.test(season) ? season : null,
-      teamId: teamId && /^\d+$/.test(teamId) ? teamId : null,
+      season: season && /^20\d{2}$/.test(season) ? season : null,
+      teamId: teamId && /^\d{1,20}$/.test(teamId) ? teamId : null,
     };
   }
 
@@ -986,7 +999,7 @@
       });
       if (response.status === 401 || response.status === 403) {
         throw new LeagueImportError(
-          "This league appears to be private. Choose Private league to connect it.",
+          "This league appears to be private. Use Connect with ESPN or Private league credentials to sync it.",
           "PRIVATE_LEAGUE"
         );
       }

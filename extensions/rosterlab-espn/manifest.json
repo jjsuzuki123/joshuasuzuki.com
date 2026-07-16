@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "RosterLab ESPN Connector",
+  "short_name": "RosterLab",
+  "version": "0.1.0",
+  "description": "Connect RosterLab to an ESPN fantasy baseball league without copying session cookies.",
+  "minimum_chrome_version": "102",
+  "homepage_url": "https://www.joshuasuzuki.com/fantasy/",
+  "permissions": [
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://lm-api-reads.fantasy.espn.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open RosterLab",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://joshuasuzuki.com/fantasy",
+        "https://joshuasuzuki.com/fantasy/",
+        "https://joshuasuzuki.com/fantasy/index.html",
+        "https://www.joshuasuzuki.com/fantasy",
+        "https://www.joshuasuzuki.com/fantasy/",
+        "https://www.joshuasuzuki.com/fantasy/index.html"
+      ],
+      "js": [
+        "content/rosterlab-bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.espn.com/fantasy/baseball/*",
+        "https://fantasy.espn.com/baseball/*"
+      ],
+      "js": [
+        "content/espn-location.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

@@ -1138,6 +1138,13 @@ main {
   font-weight: 650;
 }
 
+.formula-note {
+  margin: 1.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
 .method-notes {
   display: grid;
   margin-top: 1rem;
