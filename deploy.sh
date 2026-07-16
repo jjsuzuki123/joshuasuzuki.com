@@ -52,6 +52,7 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude "_deploy/*" \
   --exclude "scripts/*" \
   --exclude "permissions-policy.json" \
+  --exclude "permissions-policy-expanded.json" \
   --exclude "trust-policy.json" \
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"

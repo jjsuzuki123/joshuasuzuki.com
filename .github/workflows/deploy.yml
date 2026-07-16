@@ -132,6 +132,7 @@ jobs:
             --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
+            --exclude "permissions-policy-expanded.json" \
             --exclude "trust-policy.json"
 
       - name: Publish RosterLab route and config
