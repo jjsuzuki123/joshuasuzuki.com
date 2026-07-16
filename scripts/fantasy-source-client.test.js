@@ -536,14 +536,17 @@ async function runFetchTest() {
   assert.equal(body.schemaVersion, 1);
   assert.equal(body.researchToken, "abc.def");
   assert.equal(body.players.length, league.players.length);
-  assert.equal(body.players[0].name, league.players[0].name);
-  assert.equal(body.players[0].ownerTeamId, league.players[0].ownerTeamId);
-  assert.equal(body.players[0].status, league.players[0].status);
+  const firstLeaguePlayer = body.players.find(
+    (player) => player.id === String(league.players[0].id)
+  );
+  assert.equal(firstLeaguePlayer.name, league.players[0].name);
+  assert.equal(firstLeaguePlayer.ownerTeamId, league.players[0].ownerTeamId);
+  assert.equal(firstLeaguePlayer.status, league.players[0].status);
   assert.equal(
-    body.players[0].activeRoster,
+    firstLeaguePlayer.activeRoster,
     String(league.players[0].ownerTeamId) === String(league.activeTeamId)
   );
-  assert.equal(body.players[0].priority, league.players[0].marketValue);
+  assert.equal(firstLeaguePlayer.priority, league.players[0].marketValue);
   assert.equal(fetched.sourceSnapshot.matchedPlayers, 3);
 
   delete require.cache[modulePath];
