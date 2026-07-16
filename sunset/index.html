@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="A location-based sunset quality forecast built from live cloud, visibility, moisture, precipitation, and aerosol data."
+      content="Solar Corridor Radiative Potential — a location-based sunset quality forecast from directional cloud geometry, transmittance, and live Open-Meteo data."
     />
     <meta name="theme-color" content="#130f1f" />
     <title>Afterglow | Sunset quality forecast</title>
@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
     <link rel="preconnect" href="https://air-quality-api.open-meteo.com" crossorigin />
     <link rel="preconnect" href="https://geocoding-api.open-meteo.com" crossorigin />
-    <link rel="stylesheet" href="/sunset/styles.css?v=2" />
+    <link rel="stylesheet" href="/sunset/styles.css?v=3" />
   </head>
 
   <body>
@@ -44,8 +44,9 @@
           <p class="eyebrow"><span aria-hidden="true"></span> Live atmospheric forecast</p>
           <h1 id="hero-title">Know when the sky is <em>worth chasing.</em></h1>
           <p class="hero-intro">
-            Afterglow turns real cloud layers, horizon cover, visibility, moisture,
-            rain, and airborne particles into a sunset quality score for any location.
+            Afterglow models the solar corridor: live cloud layers along the sunset
+            azimuth, atmospheric transmittance, and hard meteorological gates — turned
+            into one inspectable quality index.
           </p>
         </div>
 
@@ -175,9 +176,12 @@
           <div class="conditions-heading">
             <div>
               <p class="section-kicker">What is shaping the score</p>
-              <h3>Atmospheric ingredients</h3>
+              <h3>Radiative ingredients</h3>
             </div>
-            <p>Measured at the forecast sunset time. Bars show each input's favorability.</p>
+            <p>
+              Diagnostic favorability at sunset. The published score is the gated
+              multiplicative index Q = 100 · G<sup>α</sup> · T<sup>β</sup> · D<sup>γ</sup>, not a sum of these bars.
+            </p>
           </div>
 
           <div id="metric-grid" class="metric-grid"></div>
@@ -204,61 +208,70 @@
 
       <section id="method" class="method-section" aria-labelledby="method-title">
         <div class="method-intro">
-          <p class="section-kicker">A forecast you can inspect</p>
+          <p class="section-kicker">Solar Corridor Radiative Potential · v3.1</p>
           <h2 id="method-title">How the score works</h2>
           <p>
-            This is a deterministic weather model, not a claim that beauty can be measured
-            perfectly. It samples the hourly forecast at the exact local sunset, then weighs
-            the atmospheric conditions that tend to produce visible color.
+            Afterglow estimates sunset color potential with a deterministic radiative
+            model. It computes the setting-sun azimuth, samples cloud layers along that
+            solar corridor, and combines illumination, elevated reflectance, and
+            atmospheric transmittance into one gated index.
           </p>
         </div>
 
         <div class="formula-card">
           <div class="formula-top">
-            <span>Afterglow quality index</span>
-            <span>0 to 100</span>
+            <span>Q = 100 · G<sup>α</sup> · T<sup>β</sup> · D<sup>γ</sup></span>
+            <span>SCRP v3.1</span>
           </div>
           <div class="formula-bar" aria-hidden="true">
+            <span style="--width: 30%; --color: #ffb45f"></span>
             <span style="--width: 32%; --color: #ff7b6b"></span>
-            <span style="--width: 28%; --color: #ffb45f"></span>
-            <span style="--width: 14%; --color: #d9b6ff"></span>
-            <span style="--width: 11%; --color: #8fc5ff"></span>
-            <span style="--width: 8%; --color: #79d7cf"></span>
-            <span style="--width: 7%; --color: #ffe7a5"></span>
+            <span style="--width: 22%; --color: #d9b6ff"></span>
+            <span style="--width: 10%; --color: #8fc5ff"></span>
+            <span style="--width: 3%; --color: #79d7cf"></span>
+            <span style="--width: 3%; --color: #ffe7a5"></span>
           </div>
           <ol class="weight-list">
-            <li><span class="weight-dot" style="--dot: #ff7b6b" aria-hidden="true"></span><span>Mid + high cloud canvas</span><b>32%</b></li>
-            <li><span class="weight-dot" style="--dot: #ffb45f" aria-hidden="true"></span><span>Low-cloud horizon opening</span><b>28%</b></li>
-            <li><span class="weight-dot" style="--dot: #d9b6ff" aria-hidden="true"></span><span>Visibility</span><b>14%</b></li>
-            <li><span class="weight-dot" style="--dot: #8fc5ff" aria-hidden="true"></span><span>Dry sunset window</span><b>11%</b></li>
-            <li><span class="weight-dot" style="--dot: #79d7cf" aria-hidden="true"></span><span>Humidity</span><b>8%</b></li>
-            <li><span class="weight-dot" style="--dot: #ffe7a5" aria-hidden="true"></span><span>Aerosol balance</span><b>7%</b></li>
+            <li><span class="weight-dot" style="--dot: #ffb45f" aria-hidden="true"></span><span>Solar corridor illumination (I)</span><b>30%</b></li>
+            <li><span class="weight-dot" style="--dot: #ff7b6b" aria-hidden="true"></span><span>Elevated cloud reflectance (R)</span><b>32%</b></li>
+            <li><span class="weight-dot" style="--dot: #d9b6ff" aria-hidden="true"></span><span>Atmospheric transmittance (T)</span><b>22%</b></li>
+            <li><span class="weight-dot" style="--dot: #8fc5ff" aria-hidden="true"></span><span>Dry sunset window (D)</span><b>10%</b></li>
+            <li><span class="weight-dot" style="--dot: #79d7cf" aria-hidden="true"></span><span>Humidity diagnostic</span><b>3%</b></li>
+            <li><span class="weight-dot" style="--dot: #ffe7a5" aria-hidden="true"></span><span>Aerosol diagnostic</span><b>3%</b></li>
           </ol>
+          <p class="formula-note">
+            G = I · (0.26 + 0.74 · R). Bars are diagnostic importance, not an additive
+            split of Q. The published score is the multiplicative index above, after
+            meteorological gates.
+          </p>
         </div>
 
         <div class="method-notes">
           <article>
             <span>01</span>
-            <h3>Clouds need height</h3>
+            <h3>Geometry first</h3>
             <p>
-              Mid and high clouds can stay sunlit after the ground falls into shadow. The
-              model favors partial coverage and penalizes both empty and fully overcast skies.
+              Color requires an open path for low-angle sunlight and elevated cloud that
+              can reflect it. The model samples low, mid, and high cloud at 12, 35, 75,
+              and 130 km along the sunset azimuth.
             </p>
           </article>
           <article>
             <span>02</span>
-            <h3>The horizon needs a gap</h3>
+            <h3>Extinction second</h3>
             <p>
-              Low cloud and fog can cut off direct light. Their score also uses the hour-before
-              trend, so a clearing horizon gets a small lift and a closing one gets a penalty.
+              Visibility, humidity, and aerosol optical depth form a Beer–Lambert
+              transmittance proxy. Clean tropospheric air preserves saturation; smoke,
+              dust, and haze mute it.
             </p>
           </article>
           <article>
             <span>03</span>
             <h3>Hard blockers still win</h3>
             <p>
-              Thunderstorms, dense fog, very low visibility, or a near-solid low cloud deck cap
-              the final score. Missing aerosol data is removed and the remaining weights rebalance.
+              Thunderstorms, fog, very low visibility, or a sealed low-cloud deck cap
+              the index. Confidence also falls when corridor cloud fields disagree or
+              the forecast is far ahead.
             </p>
           </article>
         </div>
@@ -269,7 +282,9 @@
             <p>
               Weather and air-quality forecasts come from
               <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>,
-              using national weather models and Copernicus atmospheric data.
+              using national weather models and Copernicus atmospheric data. Method roots:
+              Corfidi (NOAA) twilight color physics; ray-corridor geometry used in
+              operational sunset models.
             </p>
           </div>
           <p>Forecasts change. Recheck close to sunset before making a long trip.</p>
@@ -286,7 +301,7 @@
       <div class="noscript-message">Afterglow needs JavaScript to load live weather data.</div>
     </noscript>
 
-    <script src="/sunset/score-engine.js?v=2" defer></script>
-    <script src="/sunset/app.js?v=2" defer></script>
+    <script src="/sunset/score-engine.js?v=3.1" defer></script>
+    <script src="/sunset/app.js?v=3.1" defer></script>
   </body>
 </html>
