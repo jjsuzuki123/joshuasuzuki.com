@@ -2,6 +2,12 @@
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "RosterLabDescribeBootstrap",
+      "Effect": "Allow",
+      "Action": ["cloudformation:DescribeStacks"],
+      "Resource": "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-bootstrap/*"
+    },
+    {
       "Sid": "S3SyncToBucket",
       "Effect": "Allow",
       "Action": ["s3:GetBucketLocation","s3:ListBucket"],
@@ -46,7 +52,10 @@
         "cloudformation:GetTemplateSummary",
         "cloudformation:ListStackResources"
       ],
-      "Resource": "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-*/*"
+      "Resource": [
+        "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-*/*",
+        "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-insights-*/*"
+      ]
     },
     {
       "Sid": "RosterLabSamTransform",
@@ -78,7 +87,42 @@
         "lambda:UpdateFunctionCode",
         "lambda:UpdateFunctionConfiguration"
       ],
-      "Resource": "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-espn-import-*"
+      "Resource": [
+        "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-espn-import-*",
+        "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-fantasy-insights-*"
+      ]
+    },
+    {
+      "Sid": "RosterLabLambdaEventSources",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateEventSourceMapping",
+        "lambda:DeleteEventSourceMapping",
+        "lambda:UpdateEventSourceMapping"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnLike": {
+          "lambda:FunctionArn": "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-fantasy-insights-*"
+        }
+      }
+    },
+    {
+      "Sid": "RosterLabReadAndTagLambdaEventSources",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetEventSourceMapping",
+        "lambda:ListTags",
+        "lambda:TagResource",
+        "lambda:UntagResource"
+      ],
+      "Resource": "arn:aws:lambda:us-east-1:545095759709:event-source-mapping:*"
+    },
+    {
+      "Sid": "RosterLabListLambdaEventSources",
+      "Effect": "Allow",
+      "Action": ["lambda:ListEventSourceMappings"],
+      "Resource": "*"
     },
     {
       "Sid": "RosterLabApiGatewayDeployment",
@@ -94,12 +138,22 @@
       "Sid": "RosterLabExecutionRoleDeployment",
       "Effect": "Allow",
       "Action": ["iam:PassRole"],
-      "Resource": "arn:aws:iam::545095759709:role/rosterlab-espn-import-production",
+      "Resource": [
+        "arn:aws:iam::545095759709:role/rosterlab-espn-import-production",
+        "arn:aws:iam::545095759709:role/rosterlab-fantasy-insights-production-api",
+        "arn:aws:iam::545095759709:role/rosterlab-fantasy-insights-production-worker"
+      ],
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "lambda.amazonaws.com"
         }
       }
+    },
+    {
+      "Sid": "RosterLabDescribeFirecrawlSecret",
+      "Effect": "Allow",
+      "Action": ["secretsmanager:DescribeSecret"],
+      "Resource": "arn:aws:secretsmanager:us-east-1:545095759709:secret:rosterlab/firecrawl/production-*"
     },
     {
       "Sid": "RosterLabLogGroupDeployment",
@@ -115,8 +169,43 @@
       ],
       "Resource": [
         "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/rosterlab-espn-import-*",
-        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/apigateway/rosterlab-espn-import-*"
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/apigateway/rosterlab-espn-import-*",
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/rosterlab-fantasy-insights-*",
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/apigateway/rosterlab-fantasy-insights-*"
       ]
+    },
+    {
+      "Sid": "RosterLabInsightsDynamoDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteTable",
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:DescribeTable",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:ListTagsOfResource",
+        "dynamodb:TagResource",
+        "dynamodb:UntagResource",
+        "dynamodb:UpdateContinuousBackups",
+        "dynamodb:UpdateTable",
+        "dynamodb:UpdateTimeToLive"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:545095759709:table/rosterlab-fantasy-insights-*"
+    },
+    {
+      "Sid": "RosterLabInsightsQueueDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:CreateQueue",
+        "sqs:DeleteQueue",
+        "sqs:GetQueueAttributes",
+        "sqs:GetQueueUrl",
+        "sqs:ListQueueTags",
+        "sqs:SetQueueAttributes",
+        "sqs:TagQueue",
+        "sqs:UntagQueue"
+      ],
+      "Resource": "arn:aws:sqs:us-east-1:545095759709:rosterlab-fantasy-insights-*"
     },
     {
       "Sid": "RosterLabDescribeLogGroups",

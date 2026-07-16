@@ -84,9 +84,16 @@ live claims. Production evidence is accepted only from the configured
 first-party source endpoint. The endpoint must label each feed as licensed,
 official, or user-provided. RotoWire's commercial XML/JSON feeds require a
 syndication agreement; the browser never scrapes RotoWire or stores provider
-credentials. ESPN's undocumented news endpoints and Yahoo pages are not scraped.
-An approved Yahoo OAuth integration or another licensed provider can be
-normalized by the same endpoint.
+credentials.
+
+The optional Firecrawl research service searches a seven-day window across a
+deployment allowlist that can include ESPN, Yahoo Sports, MLB, NBC Sports, CBS
+Sports, and FantasyPros. Firecrawl runs only behind the AWS endpoint; its key is
+stored in Secrets Manager. RosterLab does not call undocumented publisher APIs,
+authenticated pages, or paywalled pages. A single media report is displayed
+with its source link and supporting excerpt. Firecrawl-discovered web text is
+always context-only and cannot alter player value; imported ESPN roster status
+or an explicitly licensed structured feed must supply model-changing state.
 
 ## Model
 
@@ -135,11 +142,17 @@ Recommendations must clear minimum fairness and partner-interest thresholds.
 The score is an explainable decision aid, not a claimed probability that
 another manager will accept.
 
-## Licensed evidence endpoint
+## Evidence endpoint
 
-Set `SOURCE_ENDPOINT` during deployment to write `sourceEndpoint` into
-`config.js`. RosterLab sends league categories and provider IDs to that
-HTTPS endpoint, with no ESPN session values. The response uses schema version
+Set `SOURCE_ENDPOINT` during deployment to write the primary endpoint into
+`config.js`; `SECONDARY_SOURCE_ENDPOINT` preserves a licensed feed alongside
+Firecrawl. RosterLab sends league/category metadata and player IDs, names,
+MLB teams, roster ownership, availability, and value priority to that HTTPS
+endpoint, with no ESPN session values. Relay imports also attach a short-lived
+signed authorization that permits research only for players returned by ESPN,
+but only when the operator supplies the private research access code created by
+the AWS bootstrap stack.
+The response uses schema version
 1:
 
 ```json
@@ -179,6 +192,7 @@ HTTPS endpoint, with no ESPN session values. The response uses schema version
           "expectedReturn": "2026-08-15T00:00:00Z",
           "sourceUrl": "https://provider.example/player/101",
           "confidence": 0.95,
+          "modelEligible": true,
           "asOf": "2026-07-06T18:45:00Z"
         }
       ]
@@ -193,7 +207,17 @@ adjustments. It never matches a player by name alone. Ordinary headlines affect
 the model for three days. Structured injury state can remain usable for up to
 the reported return horizon (capped at 120 days), but only while the provider
 source itself remains current. A non-injury role note cannot silently clear an
-ESPN IL status.
+ESPN IL status. Set `modelEligible: false` for display-only reporting; it remains
+cited in the UI but cannot change status or value. Firecrawl always emits that
+display-only flag, together with `publisher`, `evidenceQuote`, `reportType`,
+`corroborated`, and `publicationVerified`.
+
+The included `fantasy-insights/` service fulfills this contract with a
+cache-first API, DynamoDB, SQS, and up to two Firecrawl workers. The
+signed import request can queue uncached players for at most two workers; the
+browser polls quietly while cited results arrive. See
+`fantasy-insights/README.md` for the source policy, daily
+credit cap, AWS secret setup, and deployment switch.
 
 Run the RosterLab tests from the repository root:
 
@@ -202,6 +226,7 @@ node scripts/fantasy-trade-engine.test.js
 node scripts/fantasy-espn-client.test.js
 node scripts/fantasy-espn-connector.test.js
 node scripts/fantasy-source-client.test.js
+node scripts/fantasy-insights.test.js
 node scripts/fantasy-private-import.test.js
 node scripts/fantasy-relay-client.test.js
 node --test scripts/fantasy-football-trade.test.js

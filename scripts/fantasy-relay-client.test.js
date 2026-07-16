@@ -73,10 +73,17 @@ async function run() {
   let relayRequest;
   global.fetch = async (url, options) => {
     relayRequest = { url, options };
-    return new Response(JSON.stringify({ payload: espnPayload, teamId: "1" }), {
+    return new Response(
+      JSON.stringify({
+        payload: espnPayload,
+        teamId: "1",
+        researchToken: "signed.payload",
+      }),
+      {
       status: 200,
       headers: { "content-type": "application/json" },
-    });
+      }
+    );
   };
 
   const league = await client.fetchLeague({
@@ -85,6 +92,7 @@ async function run() {
     teamId: "1",
     espnS2: "one-time-session",
     swid: "{11111111-2222-3333-4444-555555555555}",
+    researchAccessCode: "private-research-code",
   });
   assert.equal(
     relayRequest.url,
@@ -93,6 +101,8 @@ async function run() {
   assert.equal(relayRequest.options.method, "POST");
   const requestBody = JSON.parse(relayRequest.options.body);
   assert.equal(requestBody.espnS2, "one-time-session");
+  assert.equal(requestBody.researchAccessCode, "private-research-code");
+  assert.equal(league.researchToken, "signed.payload");
   assert.equal(
     requestBody.swid,
     "{11111111-2222-3333-4444-555555555555}"
@@ -102,7 +112,7 @@ async function run() {
   assert.equal(league.activeTeamId, "1");
   assert.doesNotMatch(
     JSON.stringify(league),
-    /one-time-session|11111111-2222/
+    /one-time-session|11111111-2222|private-research-code/
   );
 
   global.fetch = async () =>

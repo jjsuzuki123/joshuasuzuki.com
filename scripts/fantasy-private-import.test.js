@@ -5,7 +5,15 @@ const assert = require("node:assert/strict");
 process.env.ALLOWED_ORIGINS =
   "https://www.joshuasuzuki.com,http://localhost:4173";
 
-const { handler } = require("../fantasy-backend/import-league/index.js");
+const {
+  authorizedPlayersForPayload,
+  createResearchToken,
+  handler,
+} = require("../fantasy-backend/import-league/index.js");
+const {
+  normalizePlayer,
+  verifyResearchToken,
+} = require("../fantasy-insights/service/core.js");
 
 const allowedOrigin = "https://www.joshuasuzuki.com";
 const payload = {
@@ -15,6 +23,54 @@ const payload = {
   },
   teams: [{ id: 1 }, { id: 2 }],
 };
+
+const tokenPlayer = normalizePlayer({
+  id: "605280",
+  externalIds: { espn: "605280" },
+  name: "Clay Holmes",
+  mlbTeam: "NYM",
+});
+const authorizedPlayers = authorizedPlayersForPayload({
+  teams: [
+    {
+      roster: {
+        entries: [
+          {
+            playerPoolEntry: {
+              player: {
+                id: 605280,
+                fullName: "Clay Holmes",
+                proTeamId: 21,
+              },
+            },
+          },
+        ],
+      },
+    },
+  ],
+  players: [],
+});
+assert.deepEqual(authorizedPlayers, [tokenPlayer.authKey]);
+const researchNow = new Date("2026-07-16T02:00:00.000Z");
+const researchToken = createResearchToken({
+  secret: "private-import-signing-secret",
+  leagueId: "123456",
+  season: "2026",
+  players: authorizedPlayers,
+  now: researchNow,
+});
+assert.equal(
+  verifyResearchToken(
+    researchToken,
+    {
+      league: { id: "123456", season: 2026 },
+      players: [tokenPlayer],
+    },
+    "private-import-signing-secret",
+    researchNow
+  ),
+  true
+);
 
 function event(body, overrides = {}) {
   return {
@@ -86,7 +142,11 @@ async function run() {
     "WAIVERS",
   ]);
   assert.equal(playerFilter.players.limit, 100);
-  assert.deepEqual(JSON.parse(publicResult.body), { payload, teamId: "1" });
+  assert.deepEqual(JSON.parse(publicResult.body), {
+    payload,
+    teamId: "1",
+    researchToken: "",
+  });
 
   global.fetch = async () =>
     new Response("Private", {

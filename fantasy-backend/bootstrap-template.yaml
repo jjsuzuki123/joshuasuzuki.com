@@ -8,6 +8,27 @@ Parameters:
   RuntimeRoleName:
     Type: String
     Default: rosterlab-espn-import-production
+  InsightsApiRoleName:
+    Type: String
+    Default: rosterlab-fantasy-insights-production-api
+  InsightsWorkerRoleName:
+    Type: String
+    Default: rosterlab-fantasy-insights-production-worker
+  InsightsTableName:
+    Type: String
+    Default: rosterlab-fantasy-insights-production
+  InsightsQueueName:
+    Type: String
+    Default: rosterlab-fantasy-insights-production
+  FirecrawlSecretName:
+    Type: String
+    Default: rosterlab/firecrawl/production
+  ResearchSigningSecretName:
+    Type: String
+    Default: rosterlab/research-signing/production
+  ResearchAccessSecretName:
+    Type: String
+    Default: rosterlab/research-access/production
 
 Resources:
   DeploymentArtifactBucket:
@@ -73,9 +94,155 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${RuntimeRoleName}:*
+        - PolicyName: SignRosterLabResearchRequests
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref ResearchSigningSecret
+                  - !Ref ResearchAccessSecret
+
+  FirecrawlApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Ref FirecrawlSecretName
+      Description: Firecrawl API key for RosterLab player research
+
+  ResearchSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Ref ResearchSigningSecretName
+      Description: HMAC key for short-lived RosterLab research authorization
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+  ResearchAccessSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Ref ResearchAccessSecretName
+      Description: Private access code for authorizing paid RosterLab research
+      GenerateSecretString:
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  InsightsApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref InsightsApiRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ServeRosterLabInsights
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${InsightsTableName}-api:*
+              - Sid: UseInsightsTable
+                Effect: Allow
+                Action:
+                  - dynamodb:BatchGetItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${InsightsTableName}
+              - Sid: QueueResearch
+                Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !Sub arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${InsightsQueueName}
+              - Sid: VerifyResearchAuthorization
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref ResearchSigningSecret
+
+  InsightsWorkerFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref InsightsWorkerRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ResearchRosterLabInsights
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${InsightsTableName}-worker:*
+              - Sid: UpdateInsightsTable
+                Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${InsightsTableName}
+              - Sid: ConsumeResearchQueue
+                Effect: Allow
+                Action:
+                  - sqs:ChangeMessageVisibility
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ReceiveMessage
+                Resource:
+                  - !Sub arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${InsightsQueueName}
+              - Sid: ReadFirecrawlKey
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref FirecrawlApiKeySecret
 
 Outputs:
   ArtifactBucketName:
     Value: !Ref DeploymentArtifactBucket
   RuntimeRoleArn:
     Value: !GetAtt ImportFunctionRole.Arn
+  InsightsApiRuntimeRoleArn:
+    Value: !GetAtt InsightsApiFunctionRole.Arn
+  InsightsWorkerRuntimeRoleArn:
+    Value: !GetAtt InsightsWorkerFunctionRole.Arn
+  FirecrawlSecretName:
+    Value: !Ref FirecrawlSecretName
+  FirecrawlSecretArn:
+    Value: !Ref FirecrawlApiKeySecret
+  ResearchSigningSecretName:
+    Value: !Ref ResearchSigningSecretName
+  ResearchSigningSecretArn:
+    Value: !Ref ResearchSigningSecret
+  ResearchAccessSecretName:
+    Value: !Ref ResearchAccessSecretName

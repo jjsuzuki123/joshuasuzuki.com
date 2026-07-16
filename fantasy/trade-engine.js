@@ -92,7 +92,40 @@
 
   function scoresFor(player) {
     if (!player) return {};
-    return player.modelScores || player.scores || {};
+    const base = Object.prototype.hasOwnProperty.call(
+      player,
+      "baseModelScores"
+    )
+      ? player.baseModelScores || player.scores || {}
+      : player.modelScores || player.scores || {};
+    const evidence = quantitativeEvidence(player);
+    if (evidence.length === 0) return base;
+    const categoryIds = new Set(Object.keys(base));
+    evidence.forEach((item) => {
+      Object.keys(item.categoryScores || {}).forEach((id) => categoryIds.add(id));
+    });
+    return Object.fromEntries(
+      [...categoryIds].map((categoryId) => {
+        const entries = [];
+        if (Number.isFinite(base[categoryId])) {
+          entries.push({ value: base[categoryId], weight: 0.55 });
+        }
+        evidence.forEach((item) => {
+          const value = Number(item.categoryScores?.[categoryId]);
+          if (!Number.isFinite(value)) return;
+          entries.push({
+            value,
+            weight:
+              clamp(
+                Number.isFinite(item.confidence) ? item.confidence : 0.65,
+                0,
+                1
+              ) * item.freshness,
+          });
+        });
+        return [categoryId, weightedMean(entries)];
+      })
+    );
   }
 
   function scoreFor(player, categoryId) {
@@ -119,7 +152,14 @@
     if (relevantPlayers.length === 0) return false;
     if (
       relevantPlayers.some((player) =>
-        Number.isFinite(player?.modelScores?.[category.id])
+        Number.isFinite(
+          Object.prototype.hasOwnProperty.call(player, "baseModelScores")
+            ? player.baseModelScores?.[category.id]
+            : player?.modelScores?.[category.id]
+        ) ||
+        quantitativeEvidence(player).some((item) =>
+          Number.isFinite(item.categoryScores?.[category.id])
+        )
       )
     ) {
       return false;
@@ -465,8 +505,13 @@
 
   function normalizedAvailabilityStatus(player, now) {
     const activeInjury = activeInjuryFor(player, now);
+    const newsExpiresAt = new Date(player?.news?.expiresAt);
+    const newsExpired =
+      player?.news?.expiresAt &&
+      !Number.isNaN(newsExpiresAt.getTime()) &&
+      newsExpiresAt.getTime() <= now.getTime();
     const fallbackStatus =
-      player?.injury && !activeInjury && player?.baseStatus
+      ((player?.injury && !activeInjury) || newsExpired) && player?.baseStatus
         ? player.baseStatus
         : player?.status;
     return String(
@@ -711,6 +756,7 @@
       return clamp(
         sum(
           evidence.map((item) => {
+            if (item.modelEligible === false) return 0;
             const expiresAt = new Date(item.expiresAt);
             if (
               item.expiresAt &&
@@ -722,9 +768,7 @@
             const confidence = Number.isFinite(item.confidence)
               ? clamp(item.confidence, 0, 1)
               : 0.7;
-            const freshness = Number.isFinite(item.freshness)
-              ? clamp(item.freshness, 0, 1)
-              : 1;
+            const freshness = evidenceFreshness(item, 3, now);
             const availabilityWeight = item.isInjury ? 0.25 : 1;
             return (
               impactValue(item.impact) *
@@ -738,6 +782,7 @@
         1
       );
     }
+    if (player?.news?.modelEligible === false) return 0;
     const newsExpiresAt = new Date(player?.news?.expiresAt);
     if (
       player?.news?.expiresAt &&
@@ -750,9 +795,30 @@
   }
 
   function quantitativeEvidence(player) {
-    return Array.isArray(player?.insights?.quantitative)
+    return (Array.isArray(player?.insights?.quantitative)
       ? player.insights.quantitative
-      : [];
+      : []
+    )
+      .map((item) => ({
+        ...item,
+        freshness: evidenceFreshness(item, 14),
+      }))
+      .filter((item) => item.freshness > 0);
+  }
+
+  function evidenceFreshness(item, maxAgeDays, now = new Date()) {
+    const asOf = new Date(item?.asOf);
+    const storedFreshness = Number.isFinite(item?.freshness)
+      ? clamp(item.freshness, 0, 1)
+      : 1;
+    if (Number.isNaN(asOf.getTime())) return storedFreshness;
+    const age = Math.max(0, now.getTime() - asOf.getTime());
+    const timeFreshness = clamp(
+      1 - age / (maxAgeDays * DAY_IN_MILLISECONDS),
+      0,
+      1
+    );
+    return Math.min(timeFreshness, storedFreshness);
   }
 
   function ratePlayer(player, categories = []) {
@@ -776,10 +842,11 @@
           clamp(Number.isFinite(item.freshness) ? item.freshness : 1, 0, 1),
       }))
       .filter((entry) => Number.isFinite(entry.value));
+    const baseSignals = player?.baseSignals || player?.signals || {};
     const signalEntries = [
-      { value: Number(player?.signals?.projection), weight: 0.9 },
-      { value: Number(player?.signals?.underlying), weight: 0.65 },
-      { value: Number(player?.signals?.consensus), weight: 0.8 },
+      { value: Number(baseSignals.projection), weight: 0.9 },
+      { value: Number(baseSignals.underlying), weight: 0.65 },
+      { value: Number(baseSignals.consensus), weight: 0.8 },
       ...evidenceEntries,
     ].filter((entry) => Number.isFinite(entry.value));
     const signalComposite = weightedMean(signalEntries);

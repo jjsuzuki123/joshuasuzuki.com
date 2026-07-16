@@ -9,10 +9,20 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createSourceClient(config) {
   "use strict";
 
-  const SOURCE_ENDPOINT =
+  const PRIMARY_SOURCE_ENDPOINT =
     typeof config.sourceEndpoint === "string"
       ? config.sourceEndpoint.trim()
       : "";
+  const RESEARCH_ENDPOINT =
+    typeof config.researchEndpoint === "string"
+      ? config.researchEndpoint.trim()
+      : "";
+  const SOURCE_ENDPOINTS = [
+    ...(Array.isArray(config.sourceEndpoints) ? config.sourceEndpoints : []),
+    PRIMARY_SOURCE_ENDPOINT,
+  ]
+    .map((endpoint) => String(endpoint || "").trim())
+    .filter((endpoint, index, values) => endpoint && values.indexOf(endpoint) === index);
   const ACTIVE_ACCESS = new Set(["licensed", "official", "user-provided"]);
   const MAX_PLAYERS = 5000;
   const MAX_RESPONSE_BYTES = 2_000_000;
@@ -294,6 +304,12 @@
       ilDays: hasIlDays ? clamp(Math.round(ilDays), 1, 365) : null,
       expectedReturn,
       sourceUrl: validHttpsUrl(item.sourceUrl || item.url),
+      evidenceQuote: cleanText(item.evidenceQuote),
+      publisher: cleanText(item.publisher),
+      reportType: cleanText(item.reportType),
+      corroborated: item.corroborated === true,
+      publicationVerified: item.publicationVerified === true,
+      modelEligible: item.modelEligible !== false,
     };
   }
 
@@ -389,7 +405,10 @@
 
   function bestInjuryEvidence(qualitative) {
     return [...qualitative]
-      .filter((item) => item.isInjury && item.stateFreshness > 0)
+      .filter(
+        (item) =>
+          item.isInjury && item.modelEligible !== false && item.stateFreshness > 0
+      )
       .sort(
         (left, right) =>
           new Date(right.asOf).getTime() - new Date(left.asOf).getTime() ||
@@ -421,6 +440,21 @@
           : source.cadence,
       });
     });
+    return [...merged.values()];
+  }
+
+  function mergeEvidence(existing, incoming, type) {
+    const merged = new Map();
+    [...(Array.isArray(existing) ? existing : []), ...incoming].forEach(
+      (item) => {
+        const key = [
+          item.sourceId,
+          item.asOf,
+          type === "qualitative" ? item.sourceUrl || item.summary : item.overall,
+        ].join("|");
+        merged.set(key, item);
+      }
+    );
     return [...merged.values()];
   }
 
@@ -500,6 +534,10 @@
       )
         ? player.baseInjury
         : player.injury || null;
+      const baseInsights =
+        player.insights && typeof player.insights === "object"
+          ? player.insights
+          : { quantitative: [], qualitative: [] };
       if (!evidence) {
         return {
           ...player,
@@ -513,7 +551,9 @@
           modelScores: baseModelScores,
           news: baseNews,
           injury: baseInjury,
-          insights: { quantitative: [], qualitative: [] },
+          insights: snapshot.partial || snapshot.preserveExisting
+            ? baseInsights
+            : { quantitative: [], qualitative: [] },
         };
       }
       const modelScores =
@@ -522,7 +562,10 @@
           : {};
       const qualitative = bestQualitative(evidence.qualitative);
       const injuryEvidence = bestInjuryEvidence(evidence.qualitative);
-      let evidenceStatus = injuryEvidence?.status || qualitative?.status || "";
+      let evidenceStatus =
+        injuryEvidence?.status ||
+        (qualitative?.modelEligible !== false ? qualitative?.status : "") ||
+        "";
       if (
         evidenceStatus &&
         !isHealthyStatus(baseStatus) &&
@@ -579,13 +622,32 @@
                     "",
                   freshness: qualitative.freshness,
                   expiresAt: qualitative.expiresAt,
+                  evidenceQuote: qualitative.evidenceQuote,
+                  publisher: qualitative.publisher,
+                  reportType: qualitative.reportType,
+                  corroborated: qualitative.corroborated,
+                  publicationVerified: qualitative.publicationVerified,
+                  modelEligible: qualitative.modelEligible,
                 }
               : baseNews
             : baseNews,
-        insights: {
-          quantitative: evidence.quantitative,
-          qualitative: evidence.qualitative,
-        },
+        insights: snapshot.partial || snapshot.preserveExisting
+          ? {
+              quantitative: mergeEvidence(
+                baseInsights.quantitative,
+                evidence.quantitative,
+                "quantitative"
+              ),
+              qualitative: mergeEvidence(
+                baseInsights.qualitative,
+                evidence.qualitative,
+                "qualitative"
+              ),
+            }
+          : {
+              quantitative: evidence.quantitative,
+              qualitative: evidence.qualitative,
+            },
       };
     });
     const connectedSources = [...sourceMap.values()];
@@ -601,6 +663,36 @@
         schemaVersion: 1,
         generatedAt: generatedAt.toISOString(),
         matchedPlayers: evidenceByPlayerId.size,
+        research:
+          snapshot.research && typeof snapshot.research === "object"
+            ? {
+                provider: cleanText(snapshot.research.provider),
+                status: cleanText(snapshot.research.status),
+                requested: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.requested) || 0)
+                ),
+                cached: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.cached) || 0)
+                ),
+                queued: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.queued) || 0)
+                ),
+                pending: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.pending) || 0)
+                ),
+                authorized: snapshot.research.authorized === true,
+                returned: Math.max(
+                  0,
+                  Math.round(Number(snapshot.research.returned) || 0)
+                ),
+                truncated: snapshot.research.truncated === true,
+              }
+            : null,
+        partial: snapshot.partial === true,
       },
       model: {
         version: "2.2 evidence model",
@@ -617,6 +709,11 @@
   function requestBody(league) {
     return {
       schemaVersion: 1,
+      researchToken:
+        typeof league.researchToken === "string" &&
+        /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(league.researchToken)
+          ? league.researchToken.slice(0, 40_000)
+          : "",
       league: {
         id: String(league.league.id),
         season: Number(league.league.season),
@@ -635,14 +732,33 @@
         },
         name: cleanText(player.name),
         mlbTeam: cleanText(player.mlbTeam),
+        ownerTeamId:
+          player.ownerTeamId === null || player.ownerTeamId === undefined
+            ? null
+            : String(player.ownerTeamId),
+        status: cleanText(player.status),
+        activeRoster:
+          player.ownerTeamId !== null &&
+          player.ownerTeamId !== undefined &&
+          String(player.ownerTeamId) === String(league.activeTeamId),
+        priority: clamp(
+          Number(player.marketValue) || Number(player.ownership) || 0,
+          0,
+          100
+        ),
       })),
     };
   }
 
-  async function fetchSnapshot({ league, signal, timeout = 10000 }) {
-    if (!SOURCE_ENDPOINT) {
+  async function fetchEndpointSnapshot({
+    endpoint,
+    league,
+    signal,
+    timeout = 10000,
+  }) {
+    if (!endpoint) {
       throw new SourceDataError(
-        "Licensed source data is not configured in this environment.",
+        "Player research is not configured in this environment.",
         "SOURCE_NOT_CONFIGURED"
       );
     }
@@ -658,13 +774,17 @@
       else signal.addEventListener("abort", abortFromParent, { once: true });
     }
     try {
-      const response = await fetch(SOURCE_ENDPOINT, {
+      const payload = requestBody(league);
+      if (!RESEARCH_ENDPOINT || endpoint !== RESEARCH_ENDPOINT) {
+        delete payload.researchToken;
+      }
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody(league)),
+        body: JSON.stringify(payload),
         signal: controller.signal,
         credentials: "omit",
         cache: "no-store",
@@ -686,7 +806,7 @@
         );
       }
       const text = await response.text();
-      if (text.length > MAX_RESPONSE_BYTES) {
+      if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) {
         throw new SourceDataError(
           "The source response is too large.",
           "SOURCE_DATA_TOO_LARGE"
@@ -719,8 +839,135 @@
     }
   }
 
-  async function enrichLeague({ league, signal, timeout, now }) {
-    const snapshot = await fetchSnapshot({ league, signal, timeout });
+  function mergeSnapshots(
+    snapshots,
+    league,
+    { partial = false, preserveExisting = false } = {}
+  ) {
+    const sources = new Map();
+    const players = new Map();
+    const aliases = new Map();
+    league.players.forEach((player) => {
+      const canonical = String(player.id);
+      aliases.set(canonical, canonical);
+      if (player.externalIds?.espn) {
+        aliases.set(String(player.externalIds.espn), canonical);
+      }
+    });
+    let research = null;
+    let generatedAt = null;
+    snapshots.forEach((snapshot) => {
+      if (
+        !snapshot ||
+        Number(snapshot.schemaVersion) !== 1 ||
+        !Array.isArray(snapshot.sources) ||
+        !Array.isArray(snapshot.players)
+      ) {
+        throw new SourceDataError(
+          "The source response has an unsupported schema.",
+          "INVALID_SOURCE_DATA"
+        );
+      }
+      (snapshot.sources || []).forEach((source) => {
+        if (source?.id) sources.set(String(source.id), source);
+      });
+      (snapshot.players || []).forEach((entry) => {
+        const identifier = String(
+          entry?.externalIds?.espn || entry?.playerId || ""
+        ).trim();
+        const key = aliases.get(identifier) || identifier;
+        if (!key) return;
+        const existing = players.get(key) || {
+          ...entry,
+          quantitative: [],
+          qualitative: [],
+        };
+        players.set(key, {
+          ...existing,
+          ...entry,
+          playerId: key,
+          quantitative: [
+            ...(existing.quantitative || []),
+            ...(Array.isArray(entry.quantitative) ? entry.quantitative : []),
+          ],
+          qualitative: [
+            ...(existing.qualitative || []),
+            ...(Array.isArray(entry.qualitative) ? entry.qualitative : []),
+          ],
+        });
+      });
+      if (snapshot.research) research = snapshot.research;
+      const candidateDate = validDate(snapshot.generatedAt);
+      if (
+        candidateDate &&
+        (!generatedAt || candidateDate.getTime() > generatedAt.getTime())
+      ) {
+        generatedAt = candidateDate;
+      }
+    });
+    return {
+      schemaVersion: 1,
+      generatedAt: (generatedAt || new Date()).toISOString(),
+      sources: [...sources.values()],
+      players: [...players.values()],
+      research,
+      partial,
+      preserveExisting,
+    };
+  }
+
+  async function fetchSnapshot({
+    league,
+    signal,
+    timeout = 10000,
+    researchOnly = false,
+  }) {
+    if (SOURCE_ENDPOINTS.length === 0) {
+      throw new SourceDataError(
+        "Player research is not configured in this environment.",
+        "SOURCE_NOT_CONFIGURED"
+      );
+    }
+    const requestedEndpoints =
+      researchOnly && RESEARCH_ENDPOINT
+        ? [RESEARCH_ENDPOINT]
+        : SOURCE_ENDPOINTS;
+    const results = await Promise.allSettled(
+      requestedEndpoints.map((endpoint) =>
+        fetchEndpointSnapshot({ endpoint, league, signal, timeout })
+      )
+    );
+    const snapshots = results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+    if (snapshots.length === 0) {
+      throw results[0]?.reason;
+    }
+    const validSnapshots = snapshots.filter(
+      (snapshot) =>
+        Number(snapshot?.schemaVersion) === 1 &&
+        Array.isArray(snapshot?.sources) &&
+        Array.isArray(snapshot?.players)
+    );
+    if (validSnapshots.length === 0) {
+      throw new SourceDataError(
+        "The source response has an unsupported schema.",
+        "INVALID_SOURCE_DATA"
+      );
+    }
+    return mergeSnapshots(validSnapshots, league, {
+      partial: validSnapshots.length < requestedEndpoints.length,
+      preserveExisting: researchOnly,
+    });
+  }
+
+  async function enrichLeague({ league, signal, timeout, now, researchOnly }) {
+    const snapshot = await fetchSnapshot({
+      league,
+      signal,
+      timeout,
+      researchOnly,
+    });
     return applySnapshot(league, snapshot, { now });
   }
 
@@ -728,7 +975,7 @@
     applySnapshot,
     enrichLeague,
     fetchSnapshot,
-    hasSourceEndpoint: Boolean(SOURCE_ENDPOINT),
+    hasSourceEndpoint: SOURCE_ENDPOINTS.length > 0,
     requestBody,
     SourceDataError,
   };

@@ -5,6 +5,8 @@
     root.RosterLabConfig = Object.freeze({
       importEndpoint: "",
       sourceEndpoint: "",
+      sourceEndpoints: [],
+      researchEndpoint: "",
       // Set this after the Chrome Web Store listing is approved.
       connectorInstallUrl: "",
     });
