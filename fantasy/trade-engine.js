@@ -13,6 +13,7 @@
   const REPLACEMENT_PERCENTILE = 0.2;
   const PACKAGE_VALUE_BLEND = 0.55;
   const MAX_PROPOSALS_PER_PARTNER = 36;
+  const TARGET_PROPOSAL_EVALUATIONS = 360;
   const DAY_IN_MILLISECONDS = 86_400_000;
   const INACTIVE_COVERAGE_KINDS = new Set([
     "injured-list",
@@ -2342,6 +2343,11 @@
       context,
       includePackages
     );
+    const proposalsPerPartner = clamp(
+      Math.ceil(TARGET_PROPOSAL_EVALUATIONS / Math.max(1, teams.length - 1)),
+      MAX_PROPOSALS_PER_PARTNER,
+      96
+    );
     const candidates = [];
     const globalValue = (player) =>
       context.playerRatings.get(String(player.id))?.value || player.marketValue;
@@ -2361,6 +2367,7 @@
           incomingBundles,
           globalValue,
           position,
+          maximum: proposalsPerPartner,
         });
         proposals.forEach(({ sending, receiving }) => {
           const maximumPackageSize = Math.max(
