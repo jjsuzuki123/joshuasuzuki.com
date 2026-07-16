@@ -39,9 +39,14 @@
     longitude: -122.4194,
   };
 
-  const CACHE_KEY = "afterglow:forecast:v1";
+  const CACHE_KEY = "afterglow:forecast:v3.1";
   const CACHE_MAX_AGE = 20 * 60 * 1000;
-  const REQUEST_TIMEOUT = 9000;
+  const REQUEST_TIMEOUT = 12000;
+  const CORRIDOR_FIELDS = [
+    "cloud_cover_low",
+    "cloud_cover_mid",
+    "cloud_cover_high",
+  ];
 
   const elements = {
     form: document.getElementById("location-form"),
@@ -133,6 +138,55 @@
     }
   }
 
+  async function fetchCorridorWeather(location, weather, signal) {
+    const sunsets = weather.daily && Array.isArray(weather.daily.sunset)
+      ? weather.daily.sunset
+      : [];
+    const timezone = weather.timezone || "auto";
+    const latitudes = [];
+    const longitudes = [];
+    const meta = [];
+
+    sunsets.forEach((sunset, dayIndex) => {
+      const azimuth = scoring.solarAzimuthAtSunset(
+        location.latitude,
+        sunset
+      );
+      if (azimuth === null) return;
+
+      const points = scoring.buildSolarCorridor(
+        location.latitude,
+        location.longitude,
+        azimuth
+      );
+      points.forEach((point) => {
+        latitudes.push(point.latitude.toFixed(4));
+        longitudes.push(point.longitude.toFixed(4));
+        meta.push({
+          dayIndex,
+          distanceKm: point.distanceKm,
+          clearanceWeight: point.clearanceWeight,
+          canvasWeight: point.canvasWeight,
+          azimuth,
+        });
+      });
+    });
+
+    if (!meta.length) return { responses: [], meta: [] };
+
+    const corridorUrl = makeUrl(API.weather, {
+      latitude: latitudes.join(","),
+      longitude: longitudes.join(","),
+      timezone,
+      hourly: CORRIDOR_FIELDS.join(","),
+      forecast_days: 8,
+    });
+
+    const payload = await fetchJson(corridorUrl, signal);
+    const responses = Array.isArray(payload) ? payload : [payload];
+    return { responses, meta };
+  }
+
   async function fetchForecastData(location, signal) {
     const shared = {
       latitude: location.latitude.toFixed(4),
@@ -163,7 +217,16 @@
       airPromise,
     ]);
 
-    return { weather, air };
+    let corridor = { responses: [], meta: [] };
+    try {
+      corridor = await fetchCorridorWeather(location, weather, signal);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      // Local-point scoring remains valid if the corridor request fails.
+      corridor = { responses: [], meta: [] };
+    }
+
+    return { weather, air, corridor };
   }
 
   function shiftLocalTime(isoLocalTime, minutes) {
@@ -190,7 +253,52 @@
     return weather.timezone_abbreviation || weather.timezone || "Local time";
   }
 
-  function buildForecasts(weather, air) {
+  function buildDayCorridor(sunset, dayIndex, corridorPayload) {
+    const meta = corridorPayload && Array.isArray(corridorPayload.meta)
+      ? corridorPayload.meta
+      : [];
+    const responses =
+      corridorPayload && Array.isArray(corridorPayload.responses)
+        ? corridorPayload.responses
+        : [];
+    const afterglowTime = shiftLocalTime(sunset, 20);
+    const samples = [];
+
+    meta.forEach((entry, metaIndex) => {
+      if (entry.dayIndex !== dayIndex) return;
+      const response = responses[metaIndex];
+      if (!response || !response.hourly) return;
+
+      const atSunset = scoring.sampleHourlyAt(
+        response.hourly,
+        sunset,
+        CORRIDOR_FIELDS
+      );
+      if (!atSunset) return;
+
+      const atAfterglow = scoring.sampleHourlyAt(
+        response.hourly,
+        afterglowTime,
+        ["cloud_cover_mid", "cloud_cover_high"]
+      );
+
+      samples.push({
+        distanceKm: entry.distanceKm,
+        lowCloud: atSunset.cloud_cover_low,
+        midCloud: atSunset.cloud_cover_mid,
+        highCloud: atSunset.cloud_cover_high,
+        afterglowMidCloud: atAfterglow ? atAfterglow.cloud_cover_mid : null,
+        afterglowHighCloud: atAfterglow ? atAfterglow.cloud_cover_high : null,
+        clearanceWeight: entry.clearanceWeight,
+        canvasWeight: entry.canvasWeight,
+        azimuth: entry.azimuth,
+      });
+    });
+
+    return samples;
+  }
+
+  function buildForecasts(weather, air, corridorPayload) {
     if (
       !weather ||
       !weather.hourly ||
@@ -223,6 +331,11 @@
       );
       const hoursAhead =
         sunsetEpoch === null ? null : (sunsetEpoch - now) / (60 * 60 * 1000);
+      const solarAzimuthDeg = scoring.solarAzimuthAtSunset(
+        weather.latitude,
+        sunset
+      );
+      const corridor = buildDayCorridor(sunset, index, corridorPayload);
 
       const result = scoring.scoreSunset({
         lowCloud: sample.cloud_cover_low,
@@ -238,6 +351,8 @@
         weatherCode: sample.weather_code,
         hoursAhead,
         sampleDistanceMinutes: sample.sampleDistanceMinutes,
+        solarAzimuthDeg,
+        corridor,
       });
 
       return {
@@ -247,6 +362,8 @@
         sample,
         hourBefore,
         airSample,
+        corridor,
+        solarAzimuthDeg,
         result,
         sourceIndex: index,
       };
@@ -313,10 +430,12 @@
   }
 
   function getMetricDetails(forecast) {
-    const { result, sample, hourBefore, airSample } = forecast;
+    const { result, sample, hourBefore, airSample, corridor, solarAzimuthDeg } =
+      forecast;
     const componentMap = Object.fromEntries(
       result.components.map((component) => [component.id, component])
     );
+    const physics = result.physics || {};
 
     const lowCloud = sample.cloud_cover_low;
     const previousLowCloud = hourBefore ? hourBefore.cloud_cover_low : null;
@@ -325,36 +444,52 @@
         ? lowCloud - previousLowCloud
         : null;
 
-    let horizonNote = "Lower cloud means a clearer line to the setting sun.";
-    if (trend !== null && trend <= -8) {
-      horizonNote = "Low cloud is clearing as sunset approaches.";
+    let corridorNote =
+      "Low cloud along the sunset azimuth that can cut off low-angle sunlight.";
+    if (Array.isArray(corridor) && corridor.length >= 3) {
+      corridorNote = `Sampled ${corridor.length} points along the solar corridor${
+        Number.isFinite(solarAzimuthDeg)
+          ? ` at ${Math.round(solarAzimuthDeg)}°`
+          : ""
+      }.`;
+    } else if (trend !== null && trend <= -8) {
+      corridorNote = "Low cloud is clearing as sunset approaches.";
     } else if (trend !== null && trend >= 8) {
-      horizonNote = "Low cloud is building near the sunset window.";
+      corridorNote = "Low cloud is building near the sunset window.";
     }
 
     const aerosolValue = airSample ? airSample.aerosol_optical_depth : null;
+    const opticalDepth =
+      physics.opticalDepth === null || physics.opticalDepth === undefined
+        ? null
+        : physics.opticalDepth;
 
-    return [
+    const metrics = [
+      {
+        component: componentMap.corridor,
+        icon: "CRD",
+        color: "#ffb45f",
+        raw: Array.isArray(corridor) && corridor.length
+          ? `${corridor.length} corridor pts · ${roundPercent(lowCloud)} local low`
+          : `${roundPercent(lowCloud)} low cloud`,
+        note: corridorNote,
+      },
       {
         component: componentMap.cloudCanvas,
         icon: "CLD",
         color: "#ff7b6b",
         raw: `${roundPercent(sample.cloud_cover_mid)} mid · ${roundPercent(sample.cloud_cover_high)} high`,
-        note: "Partial elevated cloud gives sunlight a surface to color.",
+        note: "Elevated cloud that can reflect reddened light after the surface is in shadow.",
       },
       {
-        component: componentMap.horizon,
-        icon: "HRZ",
-        color: "#ffb45f",
-        raw: `${roundPercent(lowCloud)} low cloud`,
-        note: horizonNote,
-      },
-      {
-        component: componentMap.visibility,
-        icon: "VIS",
+        component: componentMap.atmosphere,
+        icon: "ATM",
         color: "#d9b6ff",
-        raw: formatVisibility(sample.visibility),
-        note: "Long visibility keeps distant color and cloud edges distinct.",
+        raw:
+          opticalDepth === null
+            ? formatVisibility(sample.visibility)
+            : `${formatVisibility(sample.visibility)} · τ ${opticalDepth.toFixed(2)}`,
+        note: "Beer–Lambert transmittance proxy from visibility, humidity, and aerosol load.",
       },
       {
         component: componentMap.precipitation,
@@ -368,20 +503,22 @@
         icon: "HUM",
         color: "#79d7cf",
         raw: `${roundPercent(sample.relative_humidity_2m)} relative humidity`,
-        note: "Very humid air raises the risk of haze or fog.",
+        note: "High humidity grows haze and reduces color saturation.",
       },
       {
         component: componentMap.aerosol,
         icon: "AOD",
         color: "#ffe7a5",
         raw: Number.isFinite(aerosolValue)
-          ? `Optical depth ${aerosolValue.toFixed(2)}`
+          ? `AOD ${aerosolValue.toFixed(2)}`
           : "Data unavailable",
         note: Number.isFinite(aerosolValue)
-          ? "A little haze can deepen warm color; too much hides it."
-          : "This input was removed and the other weights were rebalanced.",
+          ? "Cleaner tropospheric air keeps color vivid; smoke and dust mute it."
+          : "Aerosol term omitted; transmittance uses visibility and humidity only.",
       },
     ];
+
+    return metrics.filter((metric) => metric.component);
   }
 
   function makeMetricCard(metric) {
@@ -398,7 +535,7 @@
 
     const weight = document.createElement("span");
     weight.className = "metric-weight";
-    weight.textContent = `${metric.component.weight}% weight`;
+    weight.textContent = `${metric.component.weight}% importance`;
     top.append(icon, weight);
 
     const titleRow = document.createElement("div");
@@ -572,7 +709,11 @@
   }
 
   function renderPayload(payload, location, fetchedAt, cached) {
-    const forecasts = buildForecasts(payload.weather, payload.air);
+    const forecasts = buildForecasts(
+      payload.weather,
+      payload.air,
+      payload.corridor
+    );
     if (!forecasts.length) {
       throw new Error("No upcoming sunset forecast was available.");
     }

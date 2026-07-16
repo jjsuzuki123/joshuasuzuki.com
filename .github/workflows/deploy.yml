@@ -48,13 +48,29 @@ jobs:
             echo "Fantasy backend bootstrap is not ready; continuing with static deployment."
           fi
 
-      - name: Test fantasy app
+      - name: Validate RosterLab
         run: |
+          set -euo pipefail
+          node --check fantasy/app.js
+          node --check fantasy/config.js
+          node --check fantasy/data.js
+          node --check fantasy/espn-client.js
+          node --check fantasy/espn-connector.js
+          node --check fantasy/source-client.js
+          node --check fantasy/trade-engine.js
+          node --check fantasy/football-data.js
+          node --check fantasy/football-value.js
+          node --check fantasy/football-trade.js
+          node --check fantasy/football/app.js
           node scripts/fantasy-trade-engine.test.js
           node scripts/fantasy-espn-client.test.js
+          node scripts/fantasy-espn-connector.test.js
           node scripts/fantasy-source-client.test.js
           node scripts/fantasy-private-import.test.js
           node scripts/fantasy-relay-client.test.js
+          node --test scripts/fantasy-football-trade.test.js
+          npm run check --prefix extensions/rosterlab-espn
+          npm test --prefix extensions/rosterlab-espn
 
       - name: Validate fantasy import infrastructure
         run: |
@@ -111,11 +127,31 @@ jobs:
             --exclude ".env.*" \
             --exclude "*.zip" \
             --exclude "admin-backend/*" \
+            --exclude "extensions/*" \
             --exclude "fantasy-backend/*" \
             --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
             --exclude "trust-policy.json"
+
+      - name: Publish RosterLab route and config
+        run: |
+          aws s3api put-object \
+            --bucket "${S3_BUCKET}" \
+            --key "fantasy/" \
+            --body "fantasy/index.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+          aws s3api put-object \
+            --bucket "${S3_BUCKET}" \
+            --key "fantasy/football/" \
+            --body "fantasy/football/index.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+          aws s3 cp "s3://${S3_BUCKET}/fantasy/config.js" "s3://${S3_BUCKET}/fantasy/config.js" \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "application/javascript; charset=utf-8"
 
       - name: Set HTML Cache-Control (only if files exist)
         run: |
@@ -139,6 +175,9 @@ jobs:
           set_cache "admin/index.html"
           set_cache "sunset/index.html"
           set_cache "fantasy/index.html"
+          set_cache "fantasy/football/index.html"
+          set_cache "fantasy/connector/index.html"
+          set_cache "fantasy/connector/privacy.html"
 
       - name: Disable caching for runtime configuration
         run: |
@@ -163,6 +202,14 @@ jobs:
               --bucket "${S3_BUCKET}" \
               --key "${key}" \
               --body "fantasy/index.html" \
+              --cache-control "no-cache, no-store, must-revalidate" \
+              --content-type "text/html; charset=utf-8" >/dev/null
+          done
+          for key in "fantasy/football" "fantasy/football/"; do
+            aws s3api put-object \
+              --bucket "${S3_BUCKET}" \
+              --key "${key}" \
+              --body "fantasy/football/index.html" \
               --cache-control "no-cache, no-store, must-revalidate" \
               --content-type "text/html; charset=utf-8" >/dev/null
           done

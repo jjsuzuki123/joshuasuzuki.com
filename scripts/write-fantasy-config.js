@@ -30,6 +30,8 @@ const source = `(function configureRosterLab(root) {
   root.RosterLabConfig = Object.freeze({
     importEndpoint: ${JSON.stringify(endpoint)},
     sourceEndpoint: ${JSON.stringify(sourceEndpoint)},
+    // Set this after the Chrome Web Store listing is approved.
+    connectorInstallUrl: "",
   });
 })(typeof globalThis !== "undefined" ? globalThis : this);
 `;

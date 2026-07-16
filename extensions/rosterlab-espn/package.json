@@ -1,0 +1,10 @@
+{
+  "name": "rosterlab-espn-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check service-worker.js && node --check content/rosterlab-bridge.js && node --check content/espn-location.js && node --check popup.js && node --check lib/espn.js && node --check lib/protocol.js && node --check lib/session.js",
+    "test": "node --test tests/*.test.js"
+  }
+}

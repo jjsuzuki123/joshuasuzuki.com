@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="RosterLab football trade calculator with settings-aware values and roster-slot consolidation math."
+    />
+    <meta name="theme-color" content="#f6f7f2" />
+    <title>RosterLab | Fantasy football trade calculator</title>
+    <link rel="stylesheet" href="/fantasy/football/styles.css?v=1" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/fantasy/football/">
+          <span class="brand-mark" aria-hidden="true">RL</span>
+          <span>
+            <strong>RosterLab</strong>
+            <small>Football · Redraft</small>
+          </span>
+        </a>
+        <nav class="top-nav" aria-label="Sport switcher">
+          <a href="/fantasy/football/">Football</a>
+          <a href="/fantasy/index.html">Baseball</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content" class="page">
+      <header class="hero">
+        <p class="eyebrow">Redraft trade calculator</p>
+        <h1>Settings-aware values. Roster slots that matter.</h1>
+        <p class="lede">
+          Build a trade, then see adjusted value after consolidation and
+          roster-space costs — not just who gets more players.
+        </p>
+      </header>
+
+      <section class="settings-bar" aria-label="League settings">
+        <label>
+          <span>League size</span>
+          <select id="setting-league-size">
+            <option value="8">8</option>
+            <option value="10">10</option>
+            <option value="12" selected>12</option>
+            <option value="14">14</option>
+            <option value="16">16</option>
+          </select>
+        </label>
+        <label>
+          <span>PPR</span>
+          <select id="setting-ppr">
+            <option value="0">Standard</option>
+            <option value="0.5">Half</option>
+            <option value="1" selected>Full</option>
+          </select>
+        </label>
+        <label class="toggle">
+          <input id="setting-superflex" type="checkbox" />
+          <span>Superflex</span>
+        </label>
+        <label class="toggle">
+          <input id="setting-tep" type="checkbox" />
+          <span>TE premium</span>
+        </label>
+      </section>
+
+      <section class="calculator" aria-labelledby="calc-heading">
+        <div class="panel-head">
+          <h2 id="calc-heading">Trade calculator</h2>
+          <p id="trade-summary" class="verdict">Add players to both sides to evaluate a trade.</p>
+        </div>
+
+        <div class="trade-grid">
+          <div class="trade-side" data-side="a">
+            <div class="team-head">
+              <h3>Team One</h3>
+              <div class="totals">
+                <div>
+                  <span class="label">Adjusted</span>
+                  <strong id="side-a-adjusted">0</strong>
+                </div>
+                <div>
+                  <span class="label">Raw</span>
+                  <span id="side-a-raw">0</span>
+                </div>
+              </div>
+            </div>
+            <div class="player-search">
+              <input
+                id="search-a"
+                type="search"
+                placeholder="Add a player…"
+                aria-label="Add player to Team One"
+              />
+              <ul id="suggestions-a" class="suggestions" hidden></ul>
+            </div>
+            <ul id="side-a-list" class="player-list"></ul>
+            <p id="side-a-note" class="slot-note"></p>
+          </div>
+
+          <div class="trade-grid-mid" aria-hidden="true">
+            <span>vs</span>
+          </div>
+
+          <div class="trade-side" data-side="b">
+            <div class="team-head">
+              <h3>Team Two</h3>
+              <div class="totals">
+                <div>
+                  <span class="label">Adjusted</span>
+                  <strong id="side-b-adjusted">0</strong>
+                </div>
+                <div>
+                  <span class="label">Raw</span>
+                  <span id="side-b-raw">0</span>
+                </div>
+              </div>
+            </div>
+            <div class="player-search">
+              <input
+                id="search-b"
+                type="search"
+                placeholder="Add a player…"
+                aria-label="Add player to Team Two"
+              />
+              <ul id="suggestions-b" class="suggestions" hidden></ul>
+            </div>
+            <ul id="side-b-list" class="player-list"></ul>
+            <p id="side-b-note" class="slot-note"></p>
+          </div>
+        </div>
+
+        <div class="fairness-bar">
+          <div class="fairness-meta">
+            <span>Fairness</span>
+            <strong id="fairness-score">—</strong>
+          </div>
+          <div class="fairness-track" aria-hidden="true">
+            <div id="fairness-fill"></div>
+          </div>
+          <ul id="trade-notes" class="trade-notes"></ul>
+        </div>
+      </section>
+
+      <section class="panel rankings-panel">
+        <div class="panel-head">
+          <h2>Player rankings</h2>
+          <p class="subtitle">
+            Model-based redraft values for the settings above. Not a live trade
+            database.
+          </p>
+          <label class="rank-filter">
+            <span class="sr-only">Filter rankings</span>
+            <input id="rank-filter" type="search" placeholder="Filter players…" />
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Player</th>
+                <th scope="col">Pos</th>
+                <th scope="col">Team</th>
+                <th scope="col">Value</th>
+                <th scope="col">Proj</th>
+              </tr>
+            </thead>
+            <tbody id="rankings-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel model-panel">
+        <h2>How values work</h2>
+        <div class="model-grid">
+          <article>
+            <h3>Player value</h3>
+            <p>
+              ~45% projected points under your scoring (with positional VORP),
+              25% market/ADP-style anchor, 20% skill/efficiency fixtures, plus
+              bounded role/injury adjustments. Superflex lifts QBs; TEP lifts TEs.
+            </p>
+          </article>
+          <article>
+            <h3>Roster slots</h3>
+            <p>
+              Unequal trades are not scored as “more players = better.” Receiving more
+              players pays a roster-space tax near replacement value. Consolidating
+              into fewer players earns a premium — starting spots are scarce.
+            </p>
+          </article>
+          <article>
+            <h3>Sources</h3>
+            <ul id="sources-list" class="sources-list"></ul>
+            <p class="fineprint">
+              Fixture data only — not live feeds and not a claim of real-trade
+              market methodology.
+            </p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        <a href="/fantasy/index.html">Baseball RosterLab</a>
+        · Football calculator (no platform sync)
+      </p>
+    </footer>
+
+    <script src="/fantasy/football-data.js?v=1"></script>
+    <script src="/fantasy/football-value.js?v=1"></script>
+    <script src="/fantasy/football-trade.js?v=1"></script>
+    <script src="/fantasy/football/app.js?v=1"></script>
+  </body>
+</html>
