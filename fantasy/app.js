@@ -388,10 +388,26 @@
     }">${escapeHtml(initials(player.name))}</span>`;
   }
 
+  function playerAvailabilityText(player) {
+    const availability = playerRating(player)?.availability;
+    if (!availability || availability.factor >= 0.95) return "";
+    const returnText = availability.expectedReturn
+      ? ` · expected ${new Intl.DateTimeFormat(undefined, {
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        }).format(new Date(availability.expectedReturn))}`
+      : "";
+    return `${availability.label}${returnText}`;
+  }
+
   function playerMeta(player) {
+    const availability = playerAvailabilityText(player);
     return `${escapeHtml(player.mlbTeam)} · ${escapeHtml(
       player.positions.join("/")
-    )} · Model ${escapeHtml(playerModelValue(player))}`;
+    )}${availability ? ` · ${escapeHtml(availability)}` : ""} · Model ${escapeHtml(
+      playerModelValue(player)
+    )}`;
   }
 
   function renderTradePlayer(player) {
@@ -542,6 +558,12 @@
     const unmodeledCategories = Array.isArray(state.data.unmodeledCategories)
       ? state.data.unmodeledCategories
       : [];
+    const hasCurrentNews = state.data.sources.some(
+      (source) =>
+        ["qualitative", "mixed"].includes(source.kind) &&
+        source.status === "connected"
+    );
+    const newsCoverageMissing = !isDemo && !hasCurrentNews;
     elements.sidebarTeamMark.textContent = team.abbreviation || initials(team.name);
     elements.sidebarTeamMark.style.background = safeColor(team.color);
     elements.sidebarTeamName.textContent = team.name;
@@ -557,7 +579,8 @@
     elements.dataNotice.hidden =
       !isDemo &&
       unmodeledCategories.length === 0 &&
-      !isHeadToHeadCategories;
+      !isHeadToHeadCategories &&
+      !newsCoverageMissing;
     if (isDemo) {
       elements.dataNoticeMessage.textContent =
         "You are viewing an illustrative league. Values and news are demo fixtures, not live fantasy advice.";
@@ -572,11 +595,23 @@
         isHeadToHeadCategories
           ? " H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation."
           : ""
+      }${
+        newsCoverageMissing
+          ? " ESPN injury designations affect values, but current player news and return timelines are not connected."
+          : ""
       }`;
       elements.dataNoticeAction.hidden = true;
     } else if (isHeadToHeadCategories) {
       elements.dataNoticeMessage.textContent =
-        "H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation.";
+        `H2H recommendations use category-strength and standings approximations, not a future weekly matchup simulation.${
+          newsCoverageMissing
+            ? " ESPN injury designations affect values, but current player news and return timelines are not connected."
+            : ""
+        }`;
+      elements.dataNoticeAction.hidden = true;
+    } else if (newsCoverageMissing) {
+      elements.dataNoticeMessage.textContent =
+        "ESPN injury designations affect player and category values. Current player news and return timelines require a configured licensed news source.";
       elements.dataNoticeAction.hidden = true;
     }
     elements.dataStateDot.className = `status-dot ${
@@ -792,7 +827,15 @@
   }
 
   function renderMarketSignals() {
-    const newsPlayers = state.data.players.filter((player) => player.news);
+    const newsPlayers = state.data.players.filter((player) => {
+      if (!player.news) return false;
+      const expiresAt = new Date(player.news.expiresAt);
+      return (
+        !player.news.expiresAt ||
+        Number.isNaN(expiresAt.getTime()) ||
+        expiresAt.getTime() > Date.now()
+      );
+    });
     const movers = [...state.data.players]
       .filter((player) => !newsPlayers.some((newsPlayer) => newsPlayer.id === player.id))
       .sort((left, right) => Math.abs(right.trend) - Math.abs(left.trend));
@@ -821,17 +864,33 @@
               ? `ESPN ${player.statSource}`
               : "League market");
         const rating = playerRating(player);
+        const availability = playerAvailabilityText(player);
         const detail = player.news
-          ? player.news.headline
+          ? `${availability ? `${availability} · ` : ""}${player.news.headline}`
           : `${player.projection} · ${Math.round(
               rating.confidence * 100
-            )}% evidence confidence · model ${rating.value}`;
+            )}% evidence confidence · model ${rating.value}${
+              availability ? ` · ${availability}` : ""
+            }`;
+        const newsUrl = safeExternalUrl(player.news?.sourceUrl);
+        const sourceMarkup =
+          player.news && newsUrl !== "#"
+            ? `<a class="signal-source" href="${escapeHtml(
+                newsUrl
+              )}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(
+                `${source} news (opens in a new tab)`
+              )}">${escapeHtml(source)} ↗</a>`
+            : `<span class="signal-source">${escapeHtml(source)}</span>`;
         return `
           <article class="signal-card">
             <div class="signal-card-top">
-              <span class="signal-source">${escapeHtml(source)}${
-                state.data.mode === "demo" || player.news?.fixture ? " · demo" : ""
-              }</span>
+              <span class="signal-source-group">
+                ${sourceMarkup}${
+                  state.data.mode === "demo" || player.news?.fixture
+                    ? '<span class="signal-source">· demo</span>'
+                    : ""
+                }
+              </span>
               <span class="signal-trend ${player.trend < 0 ? "is-down" : ""}">
                 ${escapeHtml(formatTrend(player.trend))}
               </span>
@@ -1018,7 +1077,11 @@
           <strong>${escapeHtml(player.name)}</strong>
           <small>${escapeHtml(player.mlbTeam)} · ${escapeHtml(
             player.positions.join("/")
-          )}</small>
+          )}${
+            playerAvailabilityText(player)
+              ? ` · ${escapeHtml(playerAvailabilityText(player))}`
+              : ""
+          }</small>
         </span>
         <span class="player-value">
           <strong>${escapeHtml(playerFitValue(player))}</strong>
@@ -1439,7 +1502,11 @@
                   <strong>${escapeHtml(player.name)}</strong>
                   <span>${escapeHtml(player.mlbTeam)} · ${escapeHtml(
                     player.positions.join("/")
-                  )}</span>
+                  )}${
+                    playerAvailabilityText(player)
+                      ? ` · ${escapeHtml(playerAvailabilityText(player))}`
+                      : ""
+                  }</span>
                 </span>
               </div>
             </td>

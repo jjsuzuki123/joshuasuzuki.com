@@ -9,7 +9,7 @@
     />
     <meta name="theme-color" content="#f6f7f2" />
     <title>RosterLab | Fantasy baseball trade analysis</title>
-    <link rel="stylesheet" href="/fantasy/styles.css?v=5" />
+    <link rel="stylesheet" href="/fantasy/styles.css?v=6" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -524,9 +524,10 @@
                 </div>
                 <div id="model-weights" class="model-weights"></div>
                 <p class="model-note">
-                  The base value uses only connected evidence. Availability and role reports adjust
-                  it after the weighted blend. Team strategy is applied separately, so a punted
-                  category cannot inflate a trade recommendation.
+                  The base value uses only connected evidence. Injury duration scales player value
+                  and category contribution after the weighted blend; dated role reports make
+                  smaller adjustments. Team strategy is applied separately, so a punted category
+                  cannot inflate a trade recommendation.
                 </p>
               </section>
 
@@ -537,6 +538,7 @@
                   <li>Private ESPN requests pass through a stateless, rate-limited relay.</li>
                   <li>Projection and news feeds enter through one versioned, normalized endpoint.</li>
                   <li>RotoWire data is accepted only when the endpoint marks it as licensed.</li>
+                  <li>Undocumented ESPN news endpoints and Yahoo pages are never scraped.</li>
                   <li>Every provider record carries an update time, confidence, and provenance.</li>
                 </ul>
                 <p>
@@ -716,11 +718,11 @@
       </div>
     </noscript>
 
-    <script src="/fantasy/config.js?v=2" defer></script>
-    <script src="/fantasy/data.js?v=2" defer></script>
-    <script src="/fantasy/trade-engine.js?v=2" defer></script>
-    <script src="/fantasy/espn-client.js?v=2" defer></script>
-    <script src="/fantasy/source-client.js?v=2" defer></script>
-    <script src="/fantasy/app.js?v=2" defer></script>
+    <script src="/fantasy/config.js?v=6" defer></script>
+    <script src="/fantasy/data.js?v=6" defer></script>
+    <script src="/fantasy/trade-engine.js?v=6" defer></script>
+    <script src="/fantasy/espn-client.js?v=6" defer></script>
+    <script src="/fantasy/source-client.js?v=6" defer></script>
+    <script src="/fantasy/app.js?v=6" defer></script>
   </body>
 </html>

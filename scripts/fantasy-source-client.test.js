@@ -117,6 +117,24 @@ const snapshot = {
       ],
     },
     {
+      playerId: "zack-wheeler",
+      qualitative: [
+        {
+          sourceId: "rotowire",
+          asOf: "2026-07-06T18:35:00.000Z",
+          confidence: 0.98,
+          type: "injury",
+          summary: "Transferred to the 60-day injured list.",
+          impact: "injured",
+          injuryStatus: "60-day IL",
+          severity: "long-term",
+          ilDays: 60,
+          expectedReturn: "2026-08-15T00:00:00.000Z",
+          sourceUrl: "https://www.rotowire.com/baseball/player/example",
+        },
+      ],
+    },
+    {
       playerId: "does-not-exist",
       quantitative: [
         {
@@ -134,13 +152,16 @@ const willSmith = enriched.players.find((player) => player.id === "will-smith");
 const tannerScott = enriched.players.find(
   (player) => player.id === "tanner-scott"
 );
-assert.equal(enriched.sourceSnapshot.matchedPlayers, 2);
+const zackWheeler = enriched.players.find(
+  (player) => player.id === "zack-wheeler"
+);
+assert.equal(enriched.sourceSnapshot.matchedPlayers, 3);
 assert.equal(enriched.sourceSnapshot.schemaVersion, 1);
 assert.equal(
   enriched.league.insightsUpdatedAt,
   "2026-07-06T18:55:00.000Z"
 );
-assert.equal(enriched.model.version, "2.1 evidence model");
+assert.equal(enriched.model.version, "2.2 evidence model");
 assert.ok(willSmith.modelScores.homeRuns > willSmith.scores.homeRuns);
 assert.equal(willSmith.modelScores.unknownCategory, undefined);
 assert.ok(willSmith.signals.projection > league.players[0].signals.projection);
@@ -149,6 +170,17 @@ assert.equal(willSmith.news.source, "RotoWire");
 assert.equal(willSmith.news.headline, "Moved into the heart of the order.");
 assert.equal(tannerScott.status, "Day-to-day");
 assert.ok(tannerScott.insights.qualitative[0].impact < 0);
+assert.equal(zackWheeler.status, "60-day IL");
+assert.equal(zackWheeler.injury.severity, "long-term");
+assert.equal(zackWheeler.injury.ilDays, 60);
+assert.equal(
+  zackWheeler.injury.expectedReturn,
+  "2026-08-15T00:00:00.000Z"
+);
+assert.equal(
+  zackWheeler.news.sourceUrl,
+  "https://www.rotowire.com/baseball/player/example"
+);
 assert.equal(
   enriched.sources.find((source) => source.id === "fangraphs").status,
   "connected"
@@ -195,6 +227,140 @@ assert.equal(
   "Healthy"
 );
 
+const persistentInjurySnapshot = {
+  schemaVersion: 1,
+  generatedAt: "2026-07-06T18:55:00.000Z",
+  sources: [
+    {
+      id: "rotowire",
+      name: "RotoWire",
+      url: "https://www.rotowire.com/baseball/",
+      kind: "qualitative",
+      access: "licensed",
+      updatedAt: "2026-07-06T18:45:00.000Z",
+    },
+  ],
+  players: [
+    {
+      playerId: "zack-wheeler",
+      qualitative: [
+        {
+          sourceId: "rotowire",
+          asOf: "2026-05-19T18:00:00.000Z",
+          type: "injury",
+          summary: "Moved to the 60-day IL.",
+          injuryStatus: "60-day IL",
+          severity: "long-term",
+          ilDays: 60,
+          expectedReturn: "2026-08-15T00:00:00.000Z",
+        },
+      ],
+    },
+  ],
+};
+const persistentInjury = client.applySnapshot(
+  league,
+  persistentInjurySnapshot,
+  { now }
+);
+const persistentWheeler = persistentInjury.players.find(
+  (player) => player.id === "zack-wheeler"
+);
+assert.equal(persistentWheeler.status, "60-day IL");
+assert.equal(persistentWheeler.injury.ilDays, 60);
+assert.ok(persistentWheeler.injury.freshness > 0);
+assert.equal(persistentWheeler.news, null);
+
+const espnIlLeague = {
+  ...league,
+  players: league.players.map((player) =>
+    player.id === "tanner-scott"
+      ? {
+          ...player,
+          status: "IL",
+          isInjuredReserve: true,
+        }
+      : player
+  ),
+};
+const roleStatusSnapshot = {
+  schemaVersion: 1,
+  generatedAt: "2026-07-06T18:55:00.000Z",
+  sources: snapshot.sources,
+  players: [
+    {
+      playerId: "tanner-scott",
+      qualitative: [
+        {
+          sourceId: "rotowire",
+          asOf: "2026-07-06T18:45:00.000Z",
+          type: "role",
+          summary: "Expected to close when active.",
+          status: "Day-to-day",
+          ilDays: null,
+        },
+      ],
+    },
+  ],
+};
+const roleNoteOnIl = client.applySnapshot(espnIlLeague, roleStatusSnapshot, {
+  now,
+});
+assert.equal(
+  roleNoteOnIl.players.find((player) => player.id === "tanner-scott").status,
+  "IL"
+);
+
+const clearedSnapshot = {
+  schemaVersion: 1,
+  generatedAt: "2026-07-06T18:56:00.000Z",
+  sources: snapshot.sources,
+  players: [],
+};
+const cleared = client.applySnapshot(enriched, clearedSnapshot, { now });
+const clearedWheeler = cleared.players.find(
+  (player) => player.id === "zack-wheeler"
+);
+assert.equal(clearedWheeler.status, "Healthy");
+assert.equal(clearedWheeler.injury, null);
+assert.equal(clearedWheeler.news, null);
+
+const recoverySnapshot = {
+  schemaVersion: 1,
+  generatedAt: "2026-07-06T18:56:00.000Z",
+  sources: snapshot.sources,
+  players: [
+    {
+      playerId: "zack-wheeler",
+      qualitative: [
+        {
+          sourceId: "rotowire",
+          asOf: "2026-07-05T18:00:00.000Z",
+          confidence: 1,
+          type: "injury",
+          injuryStatus: "60-day IL",
+          severity: "long-term",
+          ilDays: 60,
+        },
+        {
+          sourceId: "rotowire",
+          asOf: "2026-07-06T18:00:00.000Z",
+          confidence: 0.6,
+          type: "transaction",
+          injuryStatus: "Active",
+          severity: "active",
+        },
+      ],
+    },
+  ],
+};
+const recovered = client.applySnapshot(league, recoverySnapshot, { now });
+const recoveredWheeler = recovered.players.find(
+  (player) => player.id === "zack-wheeler"
+);
+assert.equal(recoveredWheeler.status, "Active");
+assert.equal(recoveredWheeler.injury.severity, "active");
+
 const unlicensedSnapshot = {
   schemaVersion: 1,
   generatedAt: "2026-07-06T18:55:00.000Z",
@@ -231,6 +397,28 @@ assert.equal(
   "fixture"
 );
 
+["official", "user-provided"].forEach((access) => {
+  const mislabeledRotowire = client.applySnapshot(
+    league,
+    {
+      ...unlicensedSnapshot,
+      sources: [
+        {
+          ...unlicensedSnapshot.sources[0],
+          access,
+          updatedAt: "2026-07-06T18:45:00.000Z",
+        },
+      ],
+    },
+    { now }
+  );
+  assert.equal(
+    mislabeledRotowire.players.find((player) => player.id === "tanner-scott")
+      .status,
+    "Healthy"
+  );
+});
+
 assert.throws(
   () =>
     client.applySnapshot(
@@ -263,7 +451,7 @@ async function runFetchTest() {
   assert.equal(body.schemaVersion, 1);
   assert.equal(body.players.length, league.players.length);
   assert.equal(body.players[0].name, league.players[0].name);
-  assert.equal(fetched.sourceSnapshot.matchedPlayers, 2);
+  assert.equal(fetched.sourceSnapshot.matchedPlayers, 3);
   delete global.RosterLabConfig;
   console.log("Fantasy source client tests passed.");
 }

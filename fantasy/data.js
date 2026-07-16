@@ -329,7 +329,7 @@
       },
     ],
     model: {
-      version: "2.1 demo evidence model",
+      version: "2.2 demo evidence model",
       weights: [
         { label: "Market and rank anchor", value: 50 },
         { label: "Category production", value: 30 },

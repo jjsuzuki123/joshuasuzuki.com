@@ -8,6 +8,11 @@ baseball endpoint, and returns the league payload to RosterLab. It does not
 store credentials or league data. ESPN may continue accepting the same session
 values after the request, so users must still treat them like passwords.
 
+The relay imports the injury designation already present in the league payload,
+but it does not crawl ESPN, Yahoo, or other news pages. Recent player news and
+return timelines belong behind RosterLab's separate licensed evidence endpoint;
+provider credentials must remain server-side.
+
 ## Security controls
 
 - Only configured RosterLab origins can call the function from a browser.

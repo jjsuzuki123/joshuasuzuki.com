@@ -681,6 +681,26 @@
       .join(" · ") || "Imported from ESPN";
   }
 
+  function normalizeEspnInjuryStatus(value, isInjuredReserve) {
+    const raw = String(value || "ACTIVE")
+      .trim()
+      .toUpperCase()
+      .replaceAll("-", "_")
+      .replaceAll(" ", "_");
+    if (raw === "ACTIVE" && !isInjuredReserve) return "Healthy";
+    if (raw === "DAY_TO_DAY" || raw === "DTD") return "Day-to-day";
+    if (/SIXTY_DAY|60_DAY|IL60|D60/.test(raw)) return "60-day IL";
+    if (/FIFTEEN_DAY|15_DAY|IL15|D15/.test(raw)) return "15-day IL";
+    if (/TEN_DAY|10_DAY|IL10|D10/.test(raw)) return "10-day IL";
+    if (/SEVEN_DAY|7_DAY|IL7|D7/.test(raw)) return "7-day IL";
+    if (raw === "INJURY_RESERVE" || isInjuredReserve) return "IL";
+    return raw
+      .split("_")
+      .filter(Boolean)
+      .map((part) => `${part[0]}${part.slice(1).toLowerCase()}`)
+      .join(" ");
+  }
+
   function parsePlayer(entry, ownerTeamId, categories, categorySources) {
     const poolEntry = entry.playerPoolEntry || {};
     const raw = poolEntry.player || {};
@@ -711,10 +731,14 @@
       8,
       99
     );
-    const rawStatus = String(raw.injuryStatus || "ACTIVE").replaceAll("_", " ");
     const lineupSlotId = numeric(entry.lineupSlotId);
     const lineupSlot =
       lineupSlotId === null ? null : LINEUP_POSITION_BY_ID[lineupSlotId] || null;
+    const rawInjuryStatus = String(raw.injuryStatus || "ACTIVE").toUpperCase();
+    const status = normalizeEspnInjuryStatus(
+      rawInjuryStatus,
+      lineupSlot === "IL"
+    );
     const preferredStats =
       Object.keys(statMaps.projection).length > 0
         ? statMaps.projection
@@ -757,7 +781,7 @@
       marketValue: value,
       trend: clamp(Math.round(trend * 10) / 10, -12, 12),
       ownership: ownership === null ? value : Math.round(ownership),
-      status: rawStatus === "ACTIVE" ? "Healthy" : rawStatus,
+      status,
       projection: projectionLabel(
         type,
         categoryData.values,
@@ -793,6 +817,7 @@
           rank,
           ownership,
           statSource,
+          injuryStatus: rawInjuryStatus,
         },
       },
       news: null,
@@ -1008,7 +1033,7 @@
         },
       ],
       model: {
-        version: "2.1 evidence model",
+        version: "2.2 evidence model",
         weights: [
           { label: "Market and rank anchor", value: 50 },
           { label: "Category production", value: 30 },
