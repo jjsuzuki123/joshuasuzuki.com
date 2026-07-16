@@ -719,4 +719,252 @@ assert.ok(
   )
 );
 
+const threeForOne = evaluateTrade({
+  teamId: "sellers",
+  partnerTeamId: "buyers",
+  sendingIds: ["star"],
+  receivingIds: ["mid-one", "mid-two", "buyer-filler"],
+  players: packagePlayers,
+  teams: packageTeams,
+  categories: packageCategories,
+});
+const twoForOne = evaluateTrade({
+  teamId: "sellers",
+  partnerTeamId: "buyers",
+  sendingIds: ["star"],
+  receivingIds: ["mid-one", "mid-two"],
+  players: packagePlayers,
+  teams: packageTeams,
+  categories: packageCategories,
+});
+assert.equal(threeForOne.droppedPlayers.length, 2);
+assert.ok(
+  threeForOne.discardedIncoming.some(
+    (player) => player.id === "buyer-filler"
+  )
+);
+assert.equal(threeForOne.partnerReplacementPlayers.length, 2);
+assert.equal(threeForOne.partnerDepthPenalty, 0);
+assert.ok(
+  threeForOne.teamValueDelta <= twoForOne.teamValueDelta + 0.1
+);
+assert.ok(threeForOne.teamScore < twoForOne.teamScore);
+assert.ok(
+  threeForOne.teamValueDelta <
+    threeForOne.listedValueIn - threeForOne.listedValueOut
+);
+assert.ok(
+  packageOpportunities.some(
+    (opportunity) =>
+      opportunity.sending.length === 3 &&
+      opportunity.receiving.length === 1
+  )
+);
+
+const largePackageTeams = [
+  { id: "star-team", name: "Star team" },
+  { id: "depth-team", name: "Depth team" },
+];
+const largePackagePlayers = [
+  {
+    id: "large-star",
+    name: "Large-package star",
+    ownerTeamId: "star-team",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 96,
+    status: "Healthy",
+    scores: { runs: 96 },
+  },
+  ...Array.from({ length: 7 }, (_value, index) => ({
+    id: `incumbent-${index}`,
+    name: `Incumbent ${index}`,
+    ownerTeamId: "star-team",
+    type: "hitter",
+    positions: ["UTIL"],
+    marketValue: 55,
+    status: "Healthy",
+    scores: { runs: 55 },
+  })),
+  {
+    id: "useful-depth",
+    name: "Useful depth",
+    ownerTeamId: "depth-team",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 65,
+    status: "Healthy",
+    scores: { runs: 65 },
+  },
+  ...Array.from({ length: 8 }, (_value, index) => ({
+    id: `marginal-${index}`,
+    name: `Marginal ${index}`,
+    ownerTeamId: "depth-team",
+    type: "hitter",
+    positions: ["UTIL"],
+    marketValue: 10,
+    status: "Healthy",
+    scores: { runs: 10 },
+  })),
+];
+const eightPlayerIds = [
+  "useful-depth",
+  ...Array.from({ length: 7 }, (_value, index) => `marginal-${index}`),
+];
+const eightForOne = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: eightPlayerIds,
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
+const reorderedEightForOne = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: [
+    "marginal-0",
+    "marginal-1",
+    "useful-depth",
+    "marginal-2",
+    "marginal-3",
+    "marginal-4",
+    "marginal-5",
+    "marginal-6",
+  ],
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
+const oneForOneDepth = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: ["useful-depth"],
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
+assert.equal(eightForOne.valid, true);
+assert.equal(eightForOne.droppedPlayers.length, 7);
+assert.equal(eightForOne.discardedIncoming.length, 7);
+assert.ok(eightForOne.valueIn - oneForOneDepth.valueIn < 17);
+assert.ok(
+  Math.abs(eightForOne.teamValueDelta - oneForOneDepth.teamValueDelta) <
+    0.1
+);
+assert.ok(eightForOne.teamScore < oneForOneDepth.teamScore);
+assert.equal(reorderedEightForOne.valueIn, eightForOne.valueIn);
+assert.equal(reorderedEightForOne.fairness, eightForOne.fairness);
+assert.equal(reorderedEightForOne.score, eightForOne.score);
+assert.deepEqual(
+  reorderedEightForOne.discardedIncoming
+    .map((player) => player.id)
+    .sort(),
+  eightForOne.discardedIncoming.map((player) => player.id).sort()
+);
+
+const nineForOne = evaluateTrade({
+  teamId: "star-team",
+  partnerTeamId: "depth-team",
+  sendingIds: ["large-star"],
+  receivingIds: [...eightPlayerIds, "marginal-7"],
+  players: largePackagePlayers,
+  teams: largePackageTeams,
+  categories: packageCategories,
+});
+assert.equal(nineForOne.valid, false);
+assert.match(nineForOne.reason, /up to 8 players/);
+
+const elitePackageTeams = [
+  { id: "ohtani-team", name: "Ohtani team" },
+  { id: "elite-depth", name: "Elite depth" },
+];
+const elitePackagePlayers = [
+  {
+    id: "ohtani",
+    name: "Shohei Ohtani",
+    ownerTeamId: "ohtani-team",
+    type: "hitter",
+    positions: ["UTIL"],
+    marketValue: 99,
+    status: "Healthy",
+    scores: { runs: 99 },
+  },
+  {
+    id: "ohtani-bench",
+    name: "Ohtani team bench",
+    ownerTeamId: "ohtani-team",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 35,
+    status: "Healthy",
+    scores: { runs: 35 },
+  },
+  {
+    id: "elite-one",
+    name: "Elite one",
+    ownerTeamId: "elite-depth",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 90,
+    status: "Healthy",
+    scores: { runs: 90 },
+  },
+  {
+    id: "elite-two",
+    name: "Elite two",
+    ownerTeamId: "elite-depth",
+    type: "hitter",
+    positions: ["SS"],
+    marketValue: 90,
+    status: "Healthy",
+    scores: { runs: 90 },
+  },
+];
+const oneEliteForOhtani = evaluateTrade({
+  teamId: "ohtani-team",
+  partnerTeamId: "elite-depth",
+  sendingIds: ["ohtani"],
+  receivingIds: ["elite-one"],
+  players: elitePackagePlayers,
+  teams: elitePackageTeams,
+  categories: packageCategories,
+});
+const twoEliteForOhtani = evaluateTrade({
+  teamId: "ohtani-team",
+  partnerTeamId: "elite-depth",
+  sendingIds: ["ohtani"],
+  receivingIds: ["elite-one", "elite-two"],
+  players: elitePackagePlayers,
+  teams: elitePackageTeams,
+  categories: packageCategories,
+});
+const reorderedEliteForOhtani = evaluateTrade({
+  teamId: "ohtani-team",
+  partnerTeamId: "elite-depth",
+  sendingIds: ["ohtani"],
+  receivingIds: ["elite-two", "elite-one"],
+  players: elitePackagePlayers,
+  teams: elitePackageTeams,
+  categories: packageCategories,
+});
+assert.ok(
+  twoEliteForOhtani.valueIn - oneEliteForOhtani.valueIn > 75
+);
+assert.ok(
+  twoEliteForOhtani.teamValueDelta >
+    oneEliteForOhtani.teamValueDelta
+);
+assert.equal(
+  reorderedEliteForOhtani.valueIn,
+  twoEliteForOhtani.valueIn
+);
+assert.equal(
+  reorderedEliteForOhtani.score,
+  twoEliteForOhtani.score
+);
+
 console.log("Fantasy trade engine tests passed.");

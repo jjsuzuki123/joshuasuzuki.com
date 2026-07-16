@@ -100,9 +100,17 @@ redistributes that weight across the remaining categories.
 Every trade recomputes both teams' category totals and approximate rotisserie
 points. Partner interest uses the other manager's category priorities,
 roster-specific player value, package shape, star premium, and projected
-standings movement. Recommendations must clear minimum fairness and partner
-interest thresholds. The score is an explainable decision aid, not a claimed
-probability that another manager will accept.
+standings movement. Multi-player packages use diminishing asset weights. The
+engine trims overfull post-trade rosters, removes players below the roster
+cutoff, and models replacement-level waiver additions for newly opened spots.
+Package weights decay geometrically after the third asset, so even an 8-for-1
+offer cannot manufacture value by stacking marginal players indefinitely. The
+second and third assets retain more weight when they are independently elite
+and close in quality to the package headliner, so two 90-level players are not
+treated like one star plus ordinary depth.
+Recommendations must clear minimum fairness and partner-interest thresholds.
+The score is an explainable decision aid, not a claimed probability that
+another manager will accept.
 
 ## Licensed evidence endpoint
 

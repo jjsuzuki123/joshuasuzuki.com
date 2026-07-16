@@ -9,7 +9,9 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createTradeEngine() {
   "use strict";
 
-  const VALUE_WEIGHTS = [1, 0.68, 0.45];
+  const MAX_TRADE_PLAYERS_PER_SIDE = 8;
+  const REPLACEMENT_PERCENTILE = 0.2;
+  const REPLACEMENT_CATEGORY_PERCENTILE = 0.1;
   const POSITION_REQUIREMENTS = {
     C: { minimum: 1, cost: 10 },
     "1B": { minimum: 1, cost: 4 },
@@ -38,6 +40,22 @@
     return finiteValues.length % 2 === 0
       ? (finiteValues[middle - 1] + finiteValues[middle]) / 2
       : finiteValues[middle];
+  }
+
+  function percentile(values, amount) {
+    const finiteValues = values
+      .filter(Number.isFinite)
+      .sort((left, right) => left - right);
+    if (finiteValues.length === 0) return null;
+    const index = clamp(amount, 0, 1) * (finiteValues.length - 1);
+    const lower = Math.floor(index);
+    const upper = Math.ceil(index);
+    if (lower === upper) return finiteValues[lower];
+    const fraction = index - lower;
+    return (
+      finiteValues[lower] +
+      (finiteValues[upper] - finiteValues[lower]) * fraction
+    );
   }
 
   function weightedMean(entries) {
@@ -539,14 +557,42 @@
     };
   }
 
+  function baseBundleWeight(index) {
+    if (index === 0) return 1;
+    if (index === 1) return 0.62;
+    if (index === 2) return 0.38;
+    return 0.24 * 0.65 ** (index - 3);
+  }
+
+  function packageWeight(index, value, topValue) {
+    const base = baseBundleWeight(index);
+    if (index === 0 || index > 2 || topValue <= 0) return base;
+
+    const absoluteQuality = clamp((value - 70) / 25, 0, 1);
+    const relativeQuality = clamp(
+      (value / topValue - 0.7) / 0.3,
+      0,
+      1
+    );
+    const eliteSimilarity = Math.sqrt(
+      absoluteQuality * relativeQuality
+    );
+    const eliteCeiling = index === 1 ? 0.95 : 0.72;
+    return base + (eliteCeiling - base) * eliteSimilarity;
+  }
+
   function bundleValue(players, valueForPlayer) {
+    const values = [...players]
+      .map((player) => valueForPlayer(player))
+      .filter(Number.isFinite)
+      .sort((left, right) => right - left);
+    const topValue = values[0] || 0;
     return round(
       sum(
-        [...players]
-          .map((player) => valueForPlayer(player))
-          .filter(Number.isFinite)
-          .sort((left, right) => right - left)
-          .map((value, index) => value * (VALUE_WEIGHTS[index] || 0.35))
+        values.map(
+          (value, index) =>
+            value * packageWeight(index, value, topValue)
+        )
       ),
       1
     );
@@ -789,6 +835,208 @@
     return {
       ...base,
       contextualValue: contextualPlayerValue(player, profile, leagueContext),
+    };
+  }
+
+  function replacementPlayerForSlot({
+    slotPlayer,
+    teamId,
+    index,
+    context,
+  }) {
+    const type = slotPlayer?.type || "hitter";
+    const relevantPlayers = context.players.filter(
+      (player) => player.type === type && !player.isReplacement
+    );
+    const ratingValues = relevantPlayers.map(
+      (player) => context.playerRatings.get(String(player.id))?.value
+    );
+    const rosteredFloor =
+      percentile(ratingValues, REPLACEMENT_PERCENTILE) || 35;
+    const replacementValue = round(
+      clamp(rosteredFloor * 0.55, 12, 40),
+      1
+    );
+    const scores = {};
+    const categoryValues = {};
+    const categoryWeights = {};
+
+    context.categories
+      .filter((category) =>
+        playerMatchesCategoryGroup({ type }, category)
+      )
+      .forEach((category) => {
+        const categoryScores = relevantPlayers
+          .map((player) => scoreFor(player, category.id))
+          .filter(Number.isFinite);
+        const score = percentile(
+          categoryScores,
+          REPLACEMENT_CATEGORY_PERCENTILE
+        );
+        if (Number.isFinite(score)) scores[category.id] = round(score, 1);
+
+        const rawValues = relevantPlayers
+          .map((player) => categoryValueFor(player, category.id))
+          .filter(Number.isFinite);
+        if (rawValues.length > 0) {
+          const rawPercentile =
+            category.direction === "lower"
+              ? 1 - REPLACEMENT_CATEGORY_PERCENTILE
+              : REPLACEMENT_CATEGORY_PERCENTILE;
+          categoryValues[category.id] = round(
+            percentile(rawValues, rawPercentile),
+            category.aggregation === "rate" ? 4 : 1
+          );
+        }
+        if (category.aggregation === "rate") {
+          const weights = relevantPlayers
+            .map((player) => player.categoryWeights?.[category.id])
+            .filter((weight) => Number.isFinite(weight) && weight > 0);
+          const weight = median(weights);
+          if (weight > 0) categoryWeights[category.id] = weight;
+        }
+      });
+
+    return {
+      id: `replacement:${teamId}:${index}`,
+      name: "Waiver replacement",
+      ownerTeamId: String(teamId),
+      type,
+      positions:
+        Array.isArray(slotPlayer?.positions) &&
+        slotPlayer.positions.length > 0
+          ? [...slotPlayer.positions]
+          : [type === "pitcher" ? "P" : "UTIL"],
+      marketValue: replacementValue,
+      trend: 0,
+      ownership: 0,
+      status: "Healthy",
+      projection: "Replacement-level estimate",
+      modelScores: scores,
+      categoryValues,
+      categoryWeights,
+      rateWeight:
+        median(
+          relevantPlayers
+            .map((player) => player.rateWeight)
+            .filter((weight) => Number.isFinite(weight) && weight > 0)
+        ) || 1,
+      signals: {
+        projection: replacementValue,
+        underlying: replacementValue,
+        consensus: replacementValue,
+      },
+      isReplacement: true,
+    };
+  }
+
+  function contextualRosterValue(
+    roster,
+    profile,
+    context,
+    scarcityRoster = profile?.roster
+  ) {
+    const scarcityProfile = profile
+      ? { ...profile, roster: scarcityRoster || roster }
+      : profile;
+    return sum(
+      roster.map((player) =>
+        contextualPlayerValue(player, scarcityProfile, context)
+      )
+    );
+  }
+
+  function buildPostTradeRoster({
+    beforeRoster,
+    outgoing,
+    incoming,
+    teamId,
+    profile,
+    context,
+  }) {
+    const outgoingIds = new Set(
+      outgoing.map((player) => String(player.id))
+    );
+    const incomingIds = new Set(
+      incoming.map((player) => String(player.id))
+    );
+    const roster = [
+      ...beforeRoster.filter(
+        (player) => !outgoingIds.has(String(player.id))
+      ),
+      ...incoming,
+    ];
+    const targetSize = beforeRoster.length;
+    const droppedPlayers = [];
+
+    while (roster.length > targetSize) {
+      const simulatedProfile = { ...profile, roster };
+      const dropCandidates = roster.map((player, index) => {
+        const afterDrop = roster.filter(
+          (_candidate, candidateIndex) => candidateIndex !== index
+        );
+        const coverageCost =
+          rosterCoverage(beforeRoster, afterDrop).penalty * 3;
+        return {
+          index,
+          player,
+          cost:
+            contextualPlayerValue(player, simulatedProfile, context) +
+            coverageCost,
+        };
+      });
+      dropCandidates.sort(
+        (left, right) =>
+          left.cost - right.cost ||
+          String(left.player.id).localeCompare(String(right.player.id))
+      );
+      const selected = dropCandidates[0];
+      droppedPlayers.push(selected.player);
+      roster.splice(selected.index, 1);
+    }
+
+    const replacementPlayers = [];
+    if (roster.length < targetSize) {
+      const openSlots = targetSize - roster.length;
+      const slotPlayers = [...outgoing]
+        .sort(
+          (left, right) =>
+            contextualPlayerValue(right, profile, context) -
+            contextualPlayerValue(left, profile, context)
+        )
+        .slice(incoming.length);
+      for (let index = 0; index < openSlots; index += 1) {
+        const replacement = replacementPlayerForSlot({
+          slotPlayer:
+            slotPlayers[index] ||
+            outgoing[index] ||
+            beforeRoster[beforeRoster.length - 1],
+          teamId,
+          index,
+          context,
+        });
+        replacementPlayers.push(replacement);
+        roster.push(replacement);
+      }
+    }
+
+    const forcedDrops = droppedPlayers.filter(
+      (player) => !incomingIds.has(String(player.id))
+    );
+    const discardedIncoming = droppedPlayers.filter((player) =>
+      incomingIds.has(String(player.id))
+    );
+    const depthPenalty =
+      forcedDrops.length * 1.5 +
+      discardedIncoming.length * 2.5;
+
+    return {
+      roster,
+      droppedPlayers,
+      forcedDrops,
+      discardedIncoming,
+      replacementPlayers,
+      depthPenalty: round(depthPenalty, 1),
     };
   }
 
@@ -1042,6 +1290,15 @@
       return { valid: false, reason: "Add at least one player to each side." };
     }
     if (
+      uniqueSendingIds.length > MAX_TRADE_PLAYERS_PER_SIDE ||
+      uniqueReceivingIds.length > MAX_TRADE_PLAYERS_PER_SIDE
+    ) {
+      return {
+        valid: false,
+        reason: `Trade packages support up to ${MAX_TRADE_PLAYERS_PER_SIDE} players per side.`,
+      };
+    }
+    if (
       uniqueSendingIds.length !== (sendingIds || []).length ||
       uniqueReceivingIds.length !== (receivingIds || []).length
     ) {
@@ -1064,27 +1321,27 @@
       };
     }
 
-    const sentIds = new Set(sending.map((player) => String(player.id)));
-    const receivedIds = new Set(receiving.map((player) => String(player.id)));
-    const teamAfter = [
-      ...teamProfile.roster.filter(
-        (player) => !sentIds.has(String(player.id))
-      ),
-      ...receiving,
-    ];
-    const partnerAfter = [
-      ...partnerProfile.roster.filter(
-        (player) => !receivedIds.has(String(player.id))
-      ),
-      ...sending,
-    ];
+    const teamAdjustment = buildPostTradeRoster({
+      beforeRoster: teamProfile.roster,
+      outgoing: sending,
+      incoming: receiving,
+      teamId: teamKey,
+      profile: teamProfile,
+      context: leagueContext,
+    });
+    const partnerAdjustment = buildPostTradeRoster({
+      beforeRoster: partnerProfile.roster,
+      outgoing: receiving,
+      incoming: sending,
+      teamId: partnerKey,
+      profile: partnerProfile,
+      context: leagueContext,
+    });
+    const teamAfter = teamAdjustment.roster;
+    const partnerAfter = partnerAdjustment.roster;
     const globalValue = (player) =>
       leagueContext.playerRatings.get(String(player.id))?.value ??
       player.marketValue;
-    const teamValue = (player) =>
-      contextualPlayerValue(player, teamProfile, leagueContext);
-    const partnerValue = (player) =>
-      contextualPlayerValue(player, partnerProfile, leagueContext);
     const valueOut = bundleValue(sending, globalValue);
     const valueIn = bundleValue(receiving, globalValue);
     const valueDelta = round(valueIn - valueOut, 1);
@@ -1092,12 +1349,31 @@
     const valueGapRatio = Math.abs(valueDelta) / comparisonValue;
     const fairness = clamp(Math.round(100 - valueGapRatio * 125), 0, 100);
     const teamValueDelta = round(
-      bundleValue(receiving, teamValue) - bundleValue(sending, teamValue),
+      contextualRosterValue(
+        teamAfter,
+        teamProfile,
+        leagueContext,
+        teamAfter
+      ) -
+        contextualRosterValue(
+          teamProfile.roster,
+          teamProfile,
+          leagueContext
+        ),
       1
     );
     const partnerValueDelta = round(
-      bundleValue(sending, partnerValue) -
-        bundleValue(receiving, partnerValue),
+      contextualRosterValue(
+        partnerAfter,
+        partnerProfile,
+        leagueContext,
+        partnerAfter
+      ) -
+        contextualRosterValue(
+          partnerProfile.roster,
+          partnerProfile,
+          leagueContext
+        ),
       1
     );
 
@@ -1122,7 +1398,9 @@
     const partnerRotoPointGain = sum(
       deltas.map((delta) => delta.partnerPointDelta)
     );
-    const rosterSizePenalty = Math.abs(sending.length - receiving.length) * 2.5;
+    const packageImbalance = Math.abs(sending.length - receiving.length);
+    const teamDepthPenalty = teamAdjustment.depthPenalty;
+    const partnerDepthPenalty = partnerAdjustment.depthPenalty;
     const teamCoverage = rosterCoverage(teamProfile.roster, teamAfter);
     const partnerCoverage = rosterCoverage(
       partnerProfile.roster,
@@ -1131,11 +1409,18 @@
     const incomingTrend = mean(receiving.map((player) => player.trend || 0));
     const outgoingTrend = mean(sending.map((player) => player.trend || 0));
     const trendDelta = incomingTrend - outgoingTrend;
+    const incomingStarValue = Math.max(...receiving.map(globalValue));
     const partnerGivesStar =
-      Math.max(...receiving.map(globalValue)) >= 88 &&
+      incomingStarValue >= 88 &&
       sending.length > receiving.length;
     const starPremiumPenalty = partnerGivesStar
-      ? clamp(7 - Math.max(0, partnerValueDelta) * 0.35, 0, 7)
+      ? clamp(
+          (sending.length - receiving.length) * 4 +
+            (incomingStarValue - 88) * 0.35 -
+            Math.max(0, partnerValueDelta) * 0.2,
+          0,
+          15
+        )
       : 0;
     const confidence = mean(
       [...sending, ...receiving].map(
@@ -1150,7 +1435,7 @@
           teamNeedGain * 3.3 +
           teamValueDelta * 0.7 +
           rotoPointGain * 2 -
-          rosterSizePenalty +
+          teamDepthPenalty +
           trendDelta * 0.2 -
           teamCoverage.penalty
       ),
@@ -1163,7 +1448,7 @@
           partnerNeedGain * 3.3 +
           partnerValueDelta * 0.72 +
           partnerRotoPointGain * 2 -
-          rosterSizePenalty -
+          partnerDepthPenalty -
           starPremiumPenalty -
           partnerCoverage.penalty
       ),
@@ -1176,7 +1461,8 @@
       partnerValueDelta * 0.075 +
       (fairness - 70) * 0.018 +
       partnerRotoPointGain * 0.22 -
-      rosterSizePenalty * 0.06 -
+      partnerDepthPenalty * 0.1 -
+      packageImbalance * 0.03 -
       starPremiumPenalty * 0.1 -
       partnerCoverage.penalty * 0.15;
     const acceptance = Math.min(
@@ -1246,6 +1532,17 @@
       dataConfidence: Math.round(confidence * 100),
       rosterFitPenalty: teamCoverage.penalty,
       partnerRosterFitPenalty: partnerCoverage.penalty,
+      depthPenalty: teamDepthPenalty,
+      partnerDepthPenalty,
+      packageImbalance,
+      droppedPlayers: teamAdjustment.droppedPlayers,
+      partnerDroppedPlayers: partnerAdjustment.droppedPlayers,
+      discardedIncoming: teamAdjustment.discardedIncoming,
+      partnerDiscardedIncoming:
+        partnerAdjustment.discardedIncoming,
+      replacementPlayers: teamAdjustment.replacementPlayers,
+      partnerReplacementPlayers:
+        partnerAdjustment.replacementPlayers,
       missingPositions: teamCoverage.missing,
       partnerMissingPositions: partnerCoverage.missing,
       realistic,
@@ -1301,7 +1598,15 @@
       reason = `Adds ${categoryNames(gainDeltas)}${pointText}.`;
     }
     let partnerReason = `${partnerProfile.team.name} receives comparable model value.`;
-    if (result.partnerRosterFitPenalty >= 8) {
+    if (result.partnerDiscardedIncoming.length > 0) {
+      partnerReason = `${partnerProfile.team.name} would immediately cut ${result.partnerDiscardedIncoming.length} incoming player${
+        result.partnerDiscardedIncoming.length === 1 ? "" : "s"
+      }, so that depth adds no roster value.`;
+    } else if (result.partnerDroppedPlayers.length > 0) {
+      partnerReason = `${partnerProfile.team.name} must clear ${result.partnerDroppedPlayers.length} roster spot${
+        result.partnerDroppedPlayers.length === 1 ? "" : "s"
+      } to accept the package.`;
+    } else if (result.partnerRosterFitPenalty >= 8) {
       partnerReason = `${partnerProfile.team.name} would need to replace ${
         result.partnerMissingPositions[0]?.position || "a lineup slot"
       }, which lowers its interest.`;
@@ -1322,7 +1627,15 @@
       )} points of roster-specific value.`;
     }
     let risk = "No major loss in a category you are competing in.";
-    if (result.rosterFitPenalty >= 8) {
+    if (result.discardedIncoming.length > 0) {
+      risk = `${result.discardedIncoming.length} incoming player${
+        result.discardedIncoming.length === 1 ? "" : "s"
+      } projects below your roster cutoff.`;
+    } else if (result.replacementPlayers.length > 0) {
+      risk = `The deal relies on ${result.replacementPlayers.length} waiver replacement${
+        result.replacementPlayers.length === 1 ? "" : "s"
+      } to refill the open roster spots.`;
+    } else if (result.rosterFitPenalty >= 8) {
       risk = `The deal leaves your ${
         result.missingPositions[0]?.position || "lineup"
       } slot uncovered.`;
@@ -1414,25 +1727,42 @@
 
   function combinations(players, size) {
     const result = [];
-    for (let left = 0; left < players.length; left += 1) {
-      for (let right = left + 1; right < players.length; right += 1) {
-        if (size === 2) result.push([players[left], players[right]]);
+    function visit(start, selected) {
+      if (selected.length === size) {
+        result.push(selected);
+        return;
+      }
+      for (let index = start; index < players.length; index += 1) {
+        visit(index + 1, [...selected, players[index]]);
       }
     }
+    visit(0, []);
     return result;
   }
 
-  function candidateBundles(players, context, includePairs) {
+  function candidateBundles(players, context, includePackages) {
     const singles = players.map((player) => [player]);
-    if (!includePairs) return singles;
-    const pairPool = [...players]
-      .sort(
-        (left, right) =>
-          (context.playerRatings.get(String(right.id))?.value || 0) -
-          (context.playerRatings.get(String(left.id))?.value || 0)
-      )
-      .slice(0, 8);
-    return [...singles, ...combinations(pairPool, 2)];
+    if (!includePackages) return singles;
+    const sorted = [...players].sort(
+      (left, right) =>
+        (context.playerRatings.get(String(right.id))?.value || 0) -
+        (context.playerRatings.get(String(left.id))?.value || 0)
+    );
+    const pairPool = sorted.slice(0, 9);
+    const trioPool = [
+      ...sorted.slice(0, 7),
+      ...sorted.slice(-2),
+    ].filter(
+      (player, index, pool) =>
+        pool.findIndex(
+          (candidate) => String(candidate.id) === String(player.id)
+        ) === index
+    );
+    return [
+      ...singles,
+      ...combinations(pairPool, 2),
+      ...combinations(trioPool, 3),
+    ];
   }
 
   function findTradeOpportunities({
@@ -1491,7 +1821,17 @@
             const valueIn = bundleValue(receiving, globalValue);
             const gapRatio =
               Math.abs(valueIn - valueOut) / Math.max((valueIn + valueOut) / 2, 1);
-            if (gapRatio > (sending.length === receiving.length ? 0.32 : 0.27)) {
+            const maximumPackageSize = Math.max(
+              sending.length,
+              receiving.length
+            );
+            const allowedGap =
+              sending.length === receiving.length
+                ? 0.32
+                : maximumPackageSize >= 3
+                  ? 0.38
+                  : 0.3;
+            if (gapRatio > allowedGap) {
               return;
             }
             const result = evaluateTrade({
@@ -1541,7 +1881,13 @@
               grade: getGrade(adjustedScore),
             };
             if (realisticOnly && !adjustedResult.realistic) return;
-            if (adjustedResult.score < 49) return;
+            const minimumScore =
+              realisticOnly
+                ? 49
+                : maximumPackageSize >= 3
+                  ? 30
+                  : 44;
+            if (adjustedResult.score < minimumScore) return;
             candidates.push({
               id: opportunityKey(partnerTeam.id, sending, receiving),
               partnerTeam,

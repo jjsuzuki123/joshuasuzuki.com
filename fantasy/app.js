@@ -16,6 +16,7 @@
   const WATCHLIST_STORAGE_KEY = "rosterlab:watchlist:v1";
   const SAVED_TRADES_STORAGE_KEY = "rosterlab:saved-trades:v1";
   const STRATEGY_STORAGE_KEY = "rosterlab:strategies:v1";
+  const MAX_TRADE_PLAYERS_PER_SIDE = 8;
   const ROUTES = {
     overview: { title: "Overview", kicker: "Your league" },
     finder: { title: "Trade finder", kicker: "Opportunity board" },
@@ -1053,7 +1054,15 @@
       )
       .slice(0, 5);
     const partnerFitText =
-      evaluation.partnerRosterFitPenalty >= 8
+      evaluation.partnerDiscardedIncoming.length > 0
+        ? `${evaluation.partnerDiscardedIncoming.length} incoming player${
+            evaluation.partnerDiscardedIncoming.length === 1 ? "" : "s"
+          } would fall below their roster cutoff and add no usable depth.`
+        : evaluation.partnerDroppedPlayers.length > 0
+          ? `They must cut ${evaluation.partnerDroppedPlayers.length} player${
+              evaluation.partnerDroppedPlayers.length === 1 ? "" : "s"
+            } before accepting this package.`
+          : evaluation.partnerRosterFitPenalty >= 8
         ? `The offer leaves their ${
             evaluation.partnerMissingPositions[0]?.position || "lineup"
           } slot uncovered, so the interest score is capped.`
@@ -1062,6 +1071,23 @@
           }${evaluation.partnerValueDelta} fit value and ${
             evaluation.partnerRotoPointGain >= 0 ? "+" : ""
           }${evaluation.partnerRotoPointGain} projected standings points.`;
+    const rosterEffects = [
+      evaluation.droppedPlayers.length > 0
+        ? `${evaluation.droppedPlayers.length} roster cut${
+            evaluation.droppedPlayers.length === 1 ? "" : "s"
+          } required`
+        : null,
+      evaluation.discardedIncoming.length > 0
+        ? `${evaluation.discardedIncoming.length} incoming player${
+            evaluation.discardedIncoming.length === 1 ? "" : "s"
+          } below your roster cutoff`
+        : null,
+      evaluation.replacementPlayers.length > 0
+        ? `${evaluation.replacementPlayers.length} waiver replacement${
+            evaluation.replacementPlayers.length === 1 ? "" : "s"
+          } assumed`
+        : null,
+    ].filter(Boolean);
     elements.labResult.innerHTML = `
       <div class="result-grade-header">
         <div class="result-grade-top">
@@ -1120,6 +1146,14 @@
                 : '<div class="impact-row"><span>Category mix</span><strong>Even</strong></div>'
             }
           </div>
+        </div>
+        <div class="result-section result-mutual-fit">
+          <span>Roster spot effect</span>
+          <p>${escapeHtml(
+            rosterEffects.length > 0
+              ? rosterEffects.join(" · ")
+              : "No cuts or waiver replacements are required."
+          )}</p>
         </div>
         <div class="result-meter-row">
           <div class="result-meter">
@@ -1552,6 +1586,23 @@
     if (!opportunity) return;
     const gainChips = opportunity.result.gains.slice(0, 3);
     const lossChips = opportunity.result.losses.slice(0, 2);
+    const rosterNotes = [
+      opportunity.result.droppedPlayers.length > 0
+        ? `${opportunity.result.droppedPlayers.length} cut${
+            opportunity.result.droppedPlayers.length === 1 ? "" : "s"
+          } required`
+        : null,
+      opportunity.result.discardedIncoming.length > 0
+        ? `${opportunity.result.discardedIncoming.length} incoming player${
+            opportunity.result.discardedIncoming.length === 1 ? "" : "s"
+          } below cutoff`
+        : null,
+      opportunity.result.replacementPlayers.length > 0
+        ? `${opportunity.result.replacementPlayers.length} waiver replacement${
+            opportunity.result.replacementPlayers.length === 1 ? "" : "s"
+          } assumed`
+        : null,
+    ].filter(Boolean);
     elements.tradeDialogContent.innerHTML = `
       <div class="trade-detail-heading">
         <div>
@@ -1601,6 +1652,16 @@
         <div class="detail-point">
           <span>Main risk</span>
           <p>${escapeHtml(opportunity.risk)}</p>
+        </div>
+      </div>
+      <div class="detail-category-row">
+        <span>Roster spot effect</span>
+        <div class="category-chips">
+          <span class="category-chip">${escapeHtml(
+            rosterNotes.length > 0
+              ? rosterNotes.join(" · ")
+              : "No cuts or waiver replacements required"
+          )}</span>
         </div>
       </div>
       <div class="detail-category-row">
@@ -1753,8 +1814,10 @@
     const key = String(playerId);
     if (collection.has(key)) {
       collection.delete(key);
-    } else if (collection.size >= 3) {
-      showToast("Trade scenarios support up to three players per side.");
+    } else if (collection.size >= MAX_TRADE_PLAYERS_PER_SIDE) {
+      showToast(
+        `Trade scenarios support up to ${MAX_TRADE_PLAYERS_PER_SIDE} players per side.`
+      );
       return;
     } else {
       collection.add(key);
