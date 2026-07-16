@@ -20,6 +20,8 @@
     weather: "https://api.open-meteo.com/v1/forecast",
     air: "https://air-quality-api.open-meteo.com/v1/air-quality",
     geocoding: "https://geocoding-api.open-meteo.com/v1/search",
+    reverseGeocoding:
+      "https://api.bigdatacloud.net/data/reverse-geocode-client",
   };
 
   const WEATHER_FIELDS = [
@@ -41,6 +43,10 @@
 
   const CACHE_KEY = "afterglow:forecast:v3.1";
   const CACHE_MAX_AGE = 20 * 60 * 1000;
+  // The last-used location persists far longer than the forecast data cache so a
+  // refresh reopens where the user left off instead of the default city.
+  const LAST_LOCATION_KEY = "afterglow:last-location:v1";
+  const LAST_LOCATION_MAX_AGE = 90 * 24 * 60 * 60 * 1000;
   const REQUEST_TIMEOUT = 12000;
   const CORRIDOR_FIELDS = [
     "cloud_cover_low",
@@ -818,6 +824,56 @@
     }
   }
 
+  function isValidLocation(location) {
+    return (
+      location &&
+      Number.isFinite(location.latitude) &&
+      location.latitude >= -90 &&
+      location.latitude <= 90 &&
+      Number.isFinite(location.longitude) &&
+      location.longitude >= -180 &&
+      location.longitude <= 180
+    );
+  }
+
+  function writeLastLocation(location) {
+    if (!isValidLocation(location)) return;
+    try {
+      localStorage.setItem(
+        LAST_LOCATION_KEY,
+        JSON.stringify({
+          location: {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            name: location.name || "Saved location",
+            region: location.region || "",
+            source: location.source || "search",
+          },
+          savedAt: Date.now(),
+        })
+      );
+    } catch (error) {
+      // Storage may be unavailable in private mode; memory is best-effort.
+    }
+  }
+
+  function readLastLocation() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(LAST_LOCATION_KEY));
+      if (
+        !stored ||
+        !isValidLocation(stored.location) ||
+        !Number.isFinite(stored.savedAt) ||
+        Date.now() - stored.savedAt > LAST_LOCATION_MAX_AGE
+      ) {
+        return null;
+      }
+      return stored.location;
+    } catch (error) {
+      return null;
+    }
+  }
+
   function updateUrl(location) {
     const url = new URL(window.location.href);
     url.searchParams.set("lat", location.latitude.toFixed(4));
@@ -878,6 +934,7 @@
       const fetchedAt = Date.now();
       renderPayload(data, location, fetchedAt, false);
       writeCache(location, data, fetchedAt);
+      writeLastLocation(location);
       if (settings.updateHistory) updateUrl(location);
       elements.searchStatus.textContent = `Live forecast ready for ${location.name}.`;
     } catch (error) {
@@ -927,6 +984,39 @@
     }
   }
 
+  // Turn precise device coordinates into a readable place name. Best-effort:
+  // if the lookup fails, callers fall back to a coordinate label.
+  async function reverseGeocode(latitude, longitude, signal) {
+    const url = makeUrl(API.reverseGeocoding, {
+      latitude: latitude.toFixed(4),
+      longitude: longitude.toFixed(4),
+      localityLanguage: document.documentElement.lang || "en",
+    });
+
+    const data = await fetchJson(url, signal);
+    const name =
+      data.locality ||
+      data.city ||
+      data.principalSubdivision ||
+      data.countryName ||
+      null;
+    if (!name) return null;
+
+    // BigDataCloud returns ISO names like "United States of America (the)".
+    const country = data.countryName
+      ? data.countryName.replace(/\s*\(the\)$/i, "")
+      : "";
+    const regionParts = [];
+    if (data.city && data.city !== name) regionParts.push(data.city);
+    if (data.principalSubdivision) regionParts.push(data.principalSubdivision);
+    if (country) regionParts.push(country);
+    const region = regionParts
+      .filter((part, index, all) => part && all.indexOf(part) === index)
+      .join(", ");
+
+    return { name, region };
+  }
+
   async function handleSearch(query) {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
@@ -963,15 +1053,37 @@
     setControlsBusy(true);
     elements.searchStatus.textContent = "Getting your location…";
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         if (intent !== activeIntent) return;
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const coordLabel = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+
+        let name = "Your location";
+        let region = coordLabel;
+        let resolvedName = false;
+        elements.searchStatus.textContent = "Pinpointing your location…";
+        try {
+          const place = await reverseGeocode(latitude, longitude);
+          if (intent !== activeIntent) return;
+          if (place && place.name) {
+            name = place.name;
+            region = place.region || coordLabel;
+            resolvedName = true;
+          }
+        } catch (error) {
+          if (intent !== activeIntent) return;
+          // Keep the coordinate label when naming is unavailable.
+        }
+
         const location = {
-          name: "Current location",
-          region: `${position.coords.latitude.toFixed(2)}, ${position.coords.longitude.toFixed(2)}`,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
+          name,
+          region,
+          latitude,
+          longitude,
+          source: "geolocation",
         };
-        elements.input.value = "";
+        elements.input.value = resolvedName ? name : "";
         loadForecast(location, { intent });
       },
       (error) => {
@@ -983,9 +1095,9 @@
             : "Your location could not be read. Search for a city instead.";
       },
       {
-        enableHighAccuracy: false,
-        timeout: 8000,
-        maximumAge: 10 * 60 * 1000,
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 5 * 60 * 1000,
       }
     );
   }
@@ -1025,7 +1137,7 @@
       try {
         renderPayload(cached.data, cached.location, cached.fetchedAt, true);
         elements.input.value =
-          cached.location.name === "Current location" ? "" : cached.location.name;
+          cached.location.name === "Your location" ? "" : cached.location.name;
         loadForecast(cached.location, {
           preserveContent: true,
           updateHistory: false,
@@ -1034,6 +1146,16 @@
       } catch (error) {
         localStorage.removeItem(CACHE_KEY);
       }
+    }
+
+    // Fresh forecast data has expired, but reopen the last-used place instead of
+    // resetting to the default city.
+    const lastLocation = readLastLocation();
+    if (lastLocation) {
+      elements.input.value =
+        lastLocation.name === "Your location" ? "" : lastLocation.name;
+      loadForecast(lastLocation, { updateHistory: false });
+      return;
     }
 
     elements.input.value = DEFAULT_LOCATION.name;

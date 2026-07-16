@@ -41,6 +41,16 @@ They are **not** an additive decomposition of \(Q\).
   precipitation probability, weather code, and local sunset time
 - Air Quality API: aerosol optical depth at 550 nm
 - Geocoding API: city and place search
+- Reverse geocoding (BigDataCloud, no key): names precise device coordinates
+  from the browser's location services for granular, non-templated locations
+
+### Location memory
+
+The last-used location is stored under `afterglow:last-location:v1`, separate
+from the 20-minute forecast data cache. On load the app resolves the location in
+this order: URL `?lat/lon` parameters, then a fresh cached forecast, then the
+remembered last location, then the default city. A refresh reopens where the user
+left off instead of resetting to the default.
 
 ### Solar corridor sampling
 
