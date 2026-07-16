@@ -15,6 +15,20 @@
     typeof config.importEndpoint === "string"
       ? config.importEndpoint.trim()
       : "";
+  const AVAILABLE_PLAYER_LIMIT = 100;
+  const ESPN_PLAYER_FILTER = JSON.stringify({
+    players: {
+      filterStatus: { value: ["FREEAGENT", "WAIVERS"] },
+      filterStatsForSplitTypeIds: { value: [0, 1] },
+      limit: AVAILABLE_PLAYER_LIMIT,
+      sortPercOwned: { sortPriority: 1, sortAsc: false },
+      sortDraftRanks: {
+        sortPriority: 100,
+        sortAsc: true,
+        value: "STANDARD",
+      },
+    },
+  });
 
   class LeagueImportError extends Error {
     constructor(message, code) {
@@ -290,6 +304,49 @@
     }`;
   }
 
+  function rosterSettingsFor(settings) {
+    const raw = settings?.rosterSettings;
+    const rawCounts = raw?.lineupSlotCounts;
+    if (!rawCounts || typeof rawCounts !== "object") return null;
+    const lineupSlotCounts = Object.fromEntries(
+      Object.entries(rawCounts)
+        .map(([slotId, rawCount]) => [String(slotId), numeric(rawCount) || 0])
+        .filter(([, count]) => count >= 0)
+    );
+    const count = (slotId) => lineupSlotCounts[String(slotId)] || 0;
+    const positionRequirements = {
+      C: count(0),
+      "1B": count(1),
+      "2B": count(2),
+      "3B": count(3),
+      SS: count(4),
+      OF: count(5) + count(8) + count(9) + count(10),
+      SP: count(14),
+      RP: count(15),
+    };
+    Object.keys(positionRequirements).forEach((position) => {
+      if (positionRequirements[position] <= 0) {
+        delete positionRequirements[position];
+      }
+    });
+    const inactiveSlots = new Set(["16", "17", "18"]);
+    const lineupSize = Object.entries(lineupSlotCounts)
+      .filter(([slotId]) => !inactiveSlots.has(slotId))
+      .reduce((total, [, slotCount]) => total + slotCount, 0);
+
+    return {
+      lineupSlotCounts,
+      positionRequirements,
+      lineupSize,
+      benchSlots: count(16),
+      injuredReserveSlots: count(17),
+      utilitySlots: count(12),
+      genericPitcherSlots: count(13),
+      middleInfieldSlots: count(6),
+      cornerInfieldSlots: count(7),
+    };
+  }
+
   function buildLeagueUrl({ leagueId, season }) {
     if (!/^\d+$/.test(String(leagueId || ""))) {
       throw new Error("League ID must contain numbers only.");
@@ -301,7 +358,13 @@
     const url = new URL(
       `${ESPN_BASE}/seasons/${season}/segments/0/leagues/${leagueId}`
     );
-    ["mTeam", "mRoster", "mSettings", "mStandings"].forEach((view) => {
+    [
+      "mTeam",
+      "mRoster",
+      "mSettings",
+      "mStandings",
+      "kona_player_info",
+    ].forEach((view) => {
       url.searchParams.append("view", view);
     });
     return url;
@@ -636,6 +699,9 @@
       99
     );
     const rawStatus = String(raw.injuryStatus || "ACTIVE").replaceAll("_", " ");
+    const lineupSlotId = numeric(entry.lineupSlotId);
+    const lineupSlot =
+      lineupSlotId === null ? null : LINEUP_POSITION_BY_ID[lineupSlotId] || null;
     const preferredStats =
       Object.keys(statMaps.projection).length > 0
         ? statMaps.projection
@@ -666,6 +732,14 @@
       mlbTeam: PRO_TEAM_BY_ID[raw.proTeamId] || "FA",
       positions: positions.length > 0 ? positions : [type === "pitcher" ? "SP" : "UTIL"],
       ownerTeamId,
+      availability:
+        ownerTeamId === null || ownerTeamId === undefined
+          ? String(poolEntry.status || "FREEAGENT").toLowerCase()
+          : "rostered",
+      lineupSlot,
+      lineupSlotId,
+      isBench: lineupSlot === "BE",
+      isInjuredReserve: lineupSlot === "IL",
       type,
       marketValue: value,
       trend: clamp(Math.round(trend * 10) / 10, -12, 12),
@@ -757,19 +831,56 @@
         }
       });
     });
+    const rosteredIds = new Set(
+      rosterEntries.map(({ entry }) =>
+        String(entry.playerPoolEntry.player.id)
+      )
+    );
+    const availableEntries = (Array.isArray(payload.players)
+      ? payload.players
+      : []
+    )
+      .map((poolEntry) => {
+        if (poolEntry?.playerPoolEntry?.player) return poolEntry;
+        if (poolEntry?.player) {
+          return {
+            playerPoolEntry: poolEntry,
+          };
+        }
+        return null;
+      })
+      .filter(
+        (entry) =>
+          entry?.playerPoolEntry?.player &&
+          !rosteredIds.has(String(entry.playerPoolEntry.player.id))
+      )
+      .slice(0, AVAILABLE_PLAYER_LIMIT);
     const categorySources = chooseCategorySources(
-      rosterEntries.map(({ entry }) => entry),
+      [
+        ...rosterEntries.map(({ entry }) => entry),
+        ...availableEntries,
+      ],
       categories
     );
-    const players = rosterEntries.map(({ entry, ownerTeamId }) =>
+    const rosteredPlayers = rosterEntries.map(({ entry, ownerTeamId }) =>
       parsePlayer(entry, ownerTeamId, categories, categorySources)
     );
+    const availablePlayers = availableEntries
+      .map((entry) =>
+        parsePlayer(entry, null, categories, categorySources)
+      )
+      .sort(
+        (left, right) =>
+          right.marketValue - left.marketValue ||
+          left.name.localeCompare(right.name)
+      );
+    const players = [...rosteredPlayers, ...availablePlayers];
 
-    if (players.length === 0) {
+    if (rosteredPlayers.length === 0) {
       throw new Error("ESPN returned the league, but no roster entries were available.");
     }
     const modeledCategories = categories.filter((category) =>
-      players.some((player) =>
+      rosteredPlayers.some((player) =>
         Number.isFinite(player.categoryValues?.[category.id])
       )
     );
@@ -826,6 +937,8 @@
           ...categories,
           ...unsupportedCategories,
         ]),
+        scoringType,
+        rosterSettings: rosterSettingsFor(payload.settings),
         sourceLabel: "ESPN league",
         updatedAt: importedAt,
       },
@@ -837,7 +950,8 @@
         schemaVersion: 1,
         generatedAt: importedAt,
         categorySources,
-        matchedPlayers: players.length,
+        matchedPlayers: rosteredPlayers.length,
+        availablePlayers: availablePlayers.length,
       },
       sources: [
         {
@@ -981,7 +1095,10 @@
 
     try {
       const response = await fetch(url, {
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          "X-Fantasy-Filter": ESPN_PLAYER_FILTER,
+        },
         signal: controller.signal,
       });
       if (response.status === 401 || response.status === 403) {

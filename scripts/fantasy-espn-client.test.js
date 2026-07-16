@@ -9,7 +9,8 @@ const {
 
 const url = buildLeagueUrl({ leagueId: "123456", season: "2026" });
 assert.equal(url.pathname.endsWith("/leagues/123456"), true);
-assert.equal(url.searchParams.getAll("view").length, 4);
+assert.equal(url.searchParams.getAll("view").length, 5);
+assert.ok(url.searchParams.getAll("view").includes("kona_player_info"));
 assert.throws(
   () => buildLeagueUrl({ leagueId: "abc", season: "2026" }),
   /numbers only/
@@ -66,6 +67,22 @@ const fixture = {
         (statId) => ({ statId })
       ),
     },
+    rosterSettings: {
+      lineupSlotCounts: {
+        0: 2,
+        1: 1,
+        2: 1,
+        3: 1,
+        4: 1,
+        5: 5,
+        12: 1,
+        13: 2,
+        14: 4,
+        15: 3,
+        16: 5,
+        17: 2,
+      },
+    },
   },
   teams: [
     {
@@ -78,6 +95,7 @@ const fixture = {
       roster: {
         entries: [
           {
+            lineupSlotId: 5,
             playerPoolEntry: {
               player: {
                 id: 101,
@@ -121,6 +139,7 @@ const fixture = {
       roster: {
         entries: [
           {
+            lineupSlotId: 14,
             playerPoolEntry: {
               player: {
                 id: 202,
@@ -154,6 +173,38 @@ const fixture = {
       },
     },
   ],
+  players: [
+    {
+      id: 303,
+      status: "FREEAGENT",
+      player: {
+        id: 303,
+        fullName: "Available Hitter",
+        proTeamId: 15,
+        defaultPositionId: 9,
+        eligibleSlots: [5, 11],
+        injuryStatus: "ACTIVE",
+        ownership: { percentOwned: 44, percentChange: 2.3 },
+        draftRanksByRankType: {
+          STANDARD: { overallRank: 145 },
+        },
+        stats: [
+          {
+            statSourceId: 1,
+            statSplitTypeId: 0,
+            stats: {
+              0: 510,
+              2: 0.268,
+              5: 19,
+              20: 72,
+              21: 68,
+              23: 12,
+            },
+          },
+        ],
+      },
+    },
+  ],
 };
 
 const league = parseLeague(fixture, {
@@ -165,10 +216,11 @@ assert.equal(league.mode, "espn");
 assert.equal(league.activeTeamId, "1");
 assert.equal(league.teamSelectionRequired, false);
 assert.equal(league.teams.length, 2);
-assert.equal(league.players.length, 2);
+assert.equal(league.players.length, 3);
 
 const hitter = league.players.find((player) => player.id === "101");
 const pitcher = league.players.find((player) => player.id === "202");
+const availableHitter = league.players.find((player) => player.id === "303");
 assert.equal(hitter.type, "hitter");
 assert.equal(pitcher.type, "pitcher");
 assert.deepEqual(hitter.positions, ["OF", "DH"]);
@@ -177,6 +229,11 @@ assert.equal(hitter.mlbTeam, "NYY");
 assert.equal(pitcher.mlbTeam, "WSH");
 assert.equal(hitter.externalIds.espn, "101");
 assert.equal(pitcher.externalIds.espn, "202");
+assert.equal(hitter.lineupSlot, "OF");
+assert.equal(pitcher.lineupSlot, "SP");
+assert.equal(availableHitter.ownerTeamId, null);
+assert.equal(availableHitter.availability, "freeagent");
+assert.equal(availableHitter.type, "hitter");
 assert.equal(hitter.trend, 0);
 assert.equal(hitter.rateWeight, 545);
 assert.equal(pitcher.rateWeight, 510);
@@ -197,6 +254,12 @@ assert.equal(hitter.provenance.espn.playerId, "101");
 assert.equal(league.model.version, "2.0 evidence model");
 assert.equal(league.sourceSnapshot.schemaVersion, 1);
 assert.equal(league.sourceSnapshot.categorySources.homeRuns, "projection");
+assert.equal(league.sourceSnapshot.matchedPlayers, 2);
+assert.equal(league.sourceSnapshot.availablePlayers, 1);
+assert.equal(league.league.scoringType, "ROTO");
+assert.equal(league.league.rosterSettings.positionRequirements.C, 2);
+assert.equal(league.league.rosterSettings.positionRequirements.OF, 5);
+assert.equal(league.league.rosterSettings.benchSlots, 5);
 
 const dualRoleFixture = JSON.parse(JSON.stringify(fixture));
 const dualRolePlayer =
