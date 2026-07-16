@@ -557,20 +557,42 @@
     };
   }
 
+  function baseBundleWeight(index) {
+    if (index === 0) return 1;
+    if (index === 1) return 0.62;
+    if (index === 2) return 0.38;
+    return 0.24 * 0.65 ** (index - 3);
+  }
+
+  function packageWeight(index, value, topValue) {
+    const base = baseBundleWeight(index);
+    if (index === 0 || index > 2 || topValue <= 0) return base;
+
+    const absoluteQuality = clamp((value - 70) / 25, 0, 1);
+    const relativeQuality = clamp(
+      (value / topValue - 0.7) / 0.3,
+      0,
+      1
+    );
+    const eliteSimilarity = Math.sqrt(
+      absoluteQuality * relativeQuality
+    );
+    const eliteCeiling = index === 1 ? 0.95 : 0.72;
+    return base + (eliteCeiling - base) * eliteSimilarity;
+  }
+
   function bundleValue(players, valueForPlayer) {
-    const weightForIndex = (index) => {
-      if (index === 0) return 1;
-      if (index === 1) return 0.62;
-      if (index === 2) return 0.38;
-      return 0.24 * 0.65 ** (index - 3);
-    };
+    const values = [...players]
+      .map((player) => valueForPlayer(player))
+      .filter(Number.isFinite)
+      .sort((left, right) => right - left);
+    const topValue = values[0] || 0;
     return round(
       sum(
-        [...players]
-          .map((player) => valueForPlayer(player))
-          .filter(Number.isFinite)
-          .sort((left, right) => right - left)
-          .map((value, index) => value * weightForIndex(index))
+        values.map(
+          (value, index) =>
+            value * packageWeight(index, value, topValue)
+        )
       ),
       1
     );

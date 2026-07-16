@@ -878,4 +878,93 @@ const nineForOne = evaluateTrade({
 assert.equal(nineForOne.valid, false);
 assert.match(nineForOne.reason, /up to 8 players/);
 
+const elitePackageTeams = [
+  { id: "ohtani-team", name: "Ohtani team" },
+  { id: "elite-depth", name: "Elite depth" },
+];
+const elitePackagePlayers = [
+  {
+    id: "ohtani",
+    name: "Shohei Ohtani",
+    ownerTeamId: "ohtani-team",
+    type: "hitter",
+    positions: ["UTIL"],
+    marketValue: 99,
+    status: "Healthy",
+    scores: { runs: 99 },
+  },
+  {
+    id: "ohtani-bench",
+    name: "Ohtani team bench",
+    ownerTeamId: "ohtani-team",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 35,
+    status: "Healthy",
+    scores: { runs: 35 },
+  },
+  {
+    id: "elite-one",
+    name: "Elite one",
+    ownerTeamId: "elite-depth",
+    type: "hitter",
+    positions: ["OF"],
+    marketValue: 90,
+    status: "Healthy",
+    scores: { runs: 90 },
+  },
+  {
+    id: "elite-two",
+    name: "Elite two",
+    ownerTeamId: "elite-depth",
+    type: "hitter",
+    positions: ["SS"],
+    marketValue: 90,
+    status: "Healthy",
+    scores: { runs: 90 },
+  },
+];
+const oneEliteForOhtani = evaluateTrade({
+  teamId: "ohtani-team",
+  partnerTeamId: "elite-depth",
+  sendingIds: ["ohtani"],
+  receivingIds: ["elite-one"],
+  players: elitePackagePlayers,
+  teams: elitePackageTeams,
+  categories: packageCategories,
+});
+const twoEliteForOhtani = evaluateTrade({
+  teamId: "ohtani-team",
+  partnerTeamId: "elite-depth",
+  sendingIds: ["ohtani"],
+  receivingIds: ["elite-one", "elite-two"],
+  players: elitePackagePlayers,
+  teams: elitePackageTeams,
+  categories: packageCategories,
+});
+const reorderedEliteForOhtani = evaluateTrade({
+  teamId: "ohtani-team",
+  partnerTeamId: "elite-depth",
+  sendingIds: ["ohtani"],
+  receivingIds: ["elite-two", "elite-one"],
+  players: elitePackagePlayers,
+  teams: elitePackageTeams,
+  categories: packageCategories,
+});
+assert.ok(
+  twoEliteForOhtani.valueIn - oneEliteForOhtani.valueIn > 75
+);
+assert.ok(
+  twoEliteForOhtani.teamValueDelta >
+    oneEliteForOhtani.teamValueDelta
+);
+assert.equal(
+  reorderedEliteForOhtani.valueIn,
+  twoEliteForOhtani.valueIn
+);
+assert.equal(
+  reorderedEliteForOhtani.score,
+  twoEliteForOhtani.score
+);
+
 console.log("Fantasy trade engine tests passed.");
