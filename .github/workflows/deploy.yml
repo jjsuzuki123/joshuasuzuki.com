@@ -26,7 +26,7 @@ jobs:
       FANTASY_BOOTSTRAP_STACK: rosterlab-fantasy-import-bootstrap
       SAM_ARTIFACT_BUCKET: rosterlab-deploy-artifacts-545095759709-us-east-1
       SOURCE_ENDPOINT: ${{ vars.ROSTERLAB_SOURCE_ENDPOINT }}
-      ENABLE_FANTASY_INSIGHTS: ${{ vars.ROSTERLAB_FIRECRAWL_ENABLED || 'false' }}
+      ENABLE_FANTASY_INSIGHTS: ${{ vars.ROSTERLAB_FIRECRAWL_ENABLED || 'true' }}
 
     steps:
       - name: Checkout
