@@ -52,9 +52,22 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude "_deploy/*" \
   --exclude "scripts/*" \
   --exclude "permissions-policy.json" \
+  --exclude "permissions-policy-expanded.json" \
   --exclude "trust-policy.json" \
   --profile "${AWS_PROFILE}" \
   --region "${AWS_REGION}"
+
+# `aws s3 sync --delete` skips excluded keys for deletion too, so excluding the
+# IAM policy files does not remove copies a prior deploy may have published.
+# Delete them explicitly so they can never remain publicly reachable.
+for infra_object in \
+  "permissions-policy.json" \
+  "permissions-policy-expanded.json" \
+  "trust-policy.json"; do
+  aws s3 rm "s3://${S3_BUCKET}/${infra_object}" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" >/dev/null 2>&1 || true
+done
 
 aws s3 cp "${FANTASY_CONFIG_FILE}" "s3://${S3_BUCKET}/fantasy/config.js" \
   --cache-control "no-cache, no-store, must-revalidate" \

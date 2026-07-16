@@ -132,7 +132,20 @@ jobs:
             --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
+            --exclude "permissions-policy-expanded.json" \
             --exclude "trust-policy.json"
+
+      - name: Purge infra policy files from the public bucket
+        run: |
+          # `aws s3 sync --delete` skips excluded keys for deletion too, so
+          # excluding the IAM policy files does not remove copies a prior
+          # deploy may have published. Delete them explicitly.
+          for infra_object in \
+            "permissions-policy.json" \
+            "permissions-policy-expanded.json" \
+            "trust-policy.json"; do
+            aws s3 rm "s3://${S3_BUCKET}/${infra_object}" >/dev/null 2>&1 || true
+          done
 
       - name: Publish RosterLab route and config
         run: |
