@@ -25,6 +25,7 @@
     .filter((endpoint, index, values) => endpoint && values.indexOf(endpoint) === index);
   const ACTIVE_ACCESS = new Set(["licensed", "official", "user-provided"]);
   const MAX_PLAYERS = 5000;
+  const MAX_RESEARCH_PLAYERS = 12;
   const MAX_RESPONSE_BYTES = 2_000_000;
   const MAX_TEXT = 500;
   const DAY_IN_MILLISECONDS = 86_400_000;
@@ -706,7 +707,26 @@
     };
   }
 
-  function authorizedResearchPlayers(league) {
+  function playerResearchPriority(player, league) {
+    const activeRoster =
+      player.ownerTeamId !== null &&
+      player.ownerTeamId !== undefined &&
+      String(player.ownerTeamId) === String(league.activeTeamId);
+    const status = cleanText(player.status).toLowerCase();
+    const needsUpdate =
+      player.isInjuredReserve === true ||
+      (status &&
+        !["active", "healthy", "available", "probable"].includes(status));
+    return (
+      Number(needsUpdate) * 10_000 +
+      Number(activeRoster) * 1_000 +
+      Number(player.ownerTeamId !== null && player.ownerTeamId !== undefined) *
+        100 +
+      (Number(player.marketValue) || Number(player.ownership) || 0)
+    );
+  }
+
+  function authorizedResearchPlayers(league, requestedPlayerIds = []) {
     const token = String(league.researchToken || "");
     let authorized = null;
     try {
@@ -729,22 +749,40 @@
     } catch (_error) {
       authorized = null;
     }
-    return [...league.players]
-      .filter((player) => {
-        if (!authorized) return true;
-        const espnId = String(player.externalIds?.espn || player.id);
-        const team = cleanText(player.mlbTeam).toUpperCase();
-        return authorized.has(`${espnId}:${team}`);
-      })
+    const eligible = [...league.players].filter((player) => {
+      if (!authorized) return true;
+      const espnId = String(player.externalIds?.espn || player.id);
+      const team = cleanText(player.mlbTeam).toUpperCase();
+      return authorized.has(`${espnId}:${team}`);
+    });
+    const aliases = new Map();
+    eligible.forEach((player) => {
+      aliases.set(String(player.id), player);
+      if (player.externalIds?.espn) {
+        aliases.set(String(player.externalIds.espn), player);
+      }
+    });
+    const selected = [];
+    const selectedIds = new Set();
+    const add = (player) => {
+      if (!player || selected.length >= MAX_RESEARCH_PLAYERS) return;
+      const id = String(player.id);
+      if (selectedIds.has(id)) return;
+      selected.push(player);
+      selectedIds.add(id);
+    };
+    (Array.isArray(requestedPlayerIds) ? requestedPlayerIds : [])
+      .slice(0, 100)
+      .forEach((id) => add(aliases.get(String(id))));
+    [...eligible]
       .sort(
         (left, right) =>
-          Number(String(right.ownerTeamId) === String(league.activeTeamId)) -
-            Number(String(left.ownerTeamId) === String(league.activeTeamId)) ||
-          Number(right.ownerTeamId !== null && right.ownerTeamId !== undefined) -
-            Number(left.ownerTeamId !== null && left.ownerTeamId !== undefined) ||
-          (Number(right.marketValue) || 0) - (Number(left.marketValue) || 0)
+          playerResearchPriority(right, league) -
+            playerResearchPriority(left, league) ||
+          String(left.id).localeCompare(String(right.id))
       )
-      .slice(0, 500);
+      .forEach(add);
+    return selected;
   }
 
   function requestBody(league, options = {}) {
@@ -753,7 +791,7 @@
         ? Boolean(RESEARCH_ENDPOINT)
         : options.research === true;
     const requestPlayers = research
-      ? authorizedResearchPlayers(league)
+      ? authorizedResearchPlayers(league, options.researchPlayerIds)
       : league.players;
     return {
       schemaVersion: 1,
@@ -804,6 +842,7 @@
     league,
     signal,
     timeout = 10000,
+    researchPlayerIds = [],
   }) {
     if (!endpoint) {
       throw new SourceDataError(
@@ -825,7 +864,10 @@
     try {
       const isResearchEndpoint =
         Boolean(RESEARCH_ENDPOINT) && endpoint === RESEARCH_ENDPOINT;
-      const payload = requestBody(league, { research: isResearchEndpoint });
+      const payload = requestBody(league, {
+        research: isResearchEndpoint,
+        researchPlayerIds,
+      });
       if (!isResearchEndpoint) delete payload.researchToken;
       const response = await fetch(endpoint, {
         method: "POST",
@@ -970,6 +1012,7 @@
     signal,
     timeout = 10000,
     researchOnly = false,
+    researchPlayerIds = [],
   }) {
     if (SOURCE_ENDPOINTS.length === 0) {
       throw new SourceDataError(
@@ -983,7 +1026,13 @@
         : SOURCE_ENDPOINTS;
     const results = await Promise.allSettled(
       requestedEndpoints.map((endpoint) =>
-        fetchEndpointSnapshot({ endpoint, league, signal, timeout })
+        fetchEndpointSnapshot({
+          endpoint,
+          league,
+          signal,
+          timeout,
+          researchPlayerIds,
+        })
       )
     );
     const snapshots = results
@@ -1010,12 +1059,20 @@
     });
   }
 
-  async function enrichLeague({ league, signal, timeout, now, researchOnly }) {
+  async function enrichLeague({
+    league,
+    signal,
+    timeout,
+    now,
+    researchOnly,
+    researchPlayerIds,
+  }) {
     const snapshot = await fetchSnapshot({
       league,
       signal,
       timeout,
       researchOnly,
+      researchPlayerIds,
     });
     return applySnapshot(league, snapshot, { now });
   }

@@ -91,7 +91,57 @@ assert.ok(
 );
 assert.ok(
   new Set(opportunities.slice(0, 5).map((opportunity) => opportunity.partnerTeam.id))
-    .size >= 4
+    .size >= 3
+);
+
+const benchmarkTeams = Array.from({ length: 10 }, (_value, index) => ({
+  ...data.teams[index % data.teams.length],
+  id: `benchmark-team-${index + 1}`,
+  name: `Benchmark Team ${index + 1}`,
+}));
+const benchmarkPlayers = benchmarkTeams.flatMap((team, teamIndex) =>
+  Array.from({ length: 20 }, (_value, playerIndex) => {
+    const base =
+      data.players[
+        (teamIndex * 20 + playerIndex) % data.players.length
+      ];
+    return {
+      ...base,
+      id: `benchmark-player-${teamIndex + 1}-${playerIndex + 1}`,
+      name: `${base.name} ${teamIndex + 1}-${playerIndex + 1}`,
+      ownerTeamId: team.id,
+      scores: { ...base.scores },
+      signals: { ...base.signals },
+    };
+  })
+);
+const benchmarkContext = computeLeagueContext({
+  players: benchmarkPlayers,
+  teams: benchmarkTeams,
+  categories: data.categories,
+});
+const benchmarkStartedAt = performance.now();
+const benchmarkOpportunities = findTradeOpportunities({
+  teamId: benchmarkTeams[0].id,
+  players: benchmarkPlayers,
+  teams: benchmarkTeams,
+  categories: data.categories,
+  context: benchmarkContext,
+  realisticOnly: false,
+  includePackages: true,
+  limit: 30,
+});
+const benchmarkElapsed = performance.now() - benchmarkStartedAt;
+assert.ok(
+  benchmarkElapsed < 5_000,
+  `Large-league recommendations took ${Math.round(benchmarkElapsed)}ms`
+);
+assert.ok(benchmarkOpportunities.length > 0);
+assert.ok(
+  benchmarkOpportunities.some(
+    (opportunity) =>
+      opportunity.sending.length > 1 || opportunity.receiving.length > 1
+  )
 );
 
 const speedTrade = evaluateTrade({

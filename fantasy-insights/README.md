@@ -3,7 +3,9 @@
 This service turns recent, cited baseball reporting into RosterLab's existing
 schema-v1 evidence format. It is deliberately asynchronous:
 
-1. The browser requests evidence for the imported ESPN player IDs.
+1. The browser requests evidence for at most 12 relevant players. It prioritizes
+   active injuries, watchlist players, open trade scenarios, and current trade
+   targets.
 2. The API returns current DynamoDB records immediately. Only a short-lived
    token signed by the ESPN import relay can queue missing or expiring players.
 3. At most two workers search allowlisted domains through Firecrawl.
@@ -42,9 +44,10 @@ search plus up to five basic Markdown scrapes. DynamoDB atomically enforces
 proxy and disable document parsers so the seven-credit reservation is bounded.
 Worker concurrency is capped at two, in-flight leases last five minutes, and a
 player is not eligible for another refresh for six hours. Results with evidence
-are cached for three days; empty results are cached for six hours. Set a
+are cached for three days, so the saved player note is reused instead of
+starting another search. Empty results are cached for six hours. Set a
 provider-side Firecrawl project limit as a second billing boundary. Each signed
-import authorization can queue at most 50 players and expires after two hours.
+import authorization can queue at most 12 players and expires after two hours.
 
 Adjust these CloudFormation parameters in `template.yaml` to match the
 Firecrawl plan:

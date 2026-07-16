@@ -458,7 +458,7 @@ function createResearchToken({
   const payload = {
     version: 1,
     jti: crypto.randomUUID(),
-    maxPlayers: 50,
+    maxPlayers: 12,
     leagueId: String(leagueId),
     season: Number(season),
     issuedAt: Math.floor(now.getTime() / 1000),

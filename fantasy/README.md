@@ -94,6 +94,9 @@ authenticated pages, or paywalled pages. A single media report is displayed
 with its source link and supporting excerpt. Firecrawl-discovered web text is
 always context-only and cannot alter player value; imported ESPN roster status
 or an explicitly licensed structured feed must supply model-changing state.
+Each refresh checks at most 12 relevant players. Active injuries, watchlist
+players, open trade scenarios, and current trade targets come first. Cached
+notes remain available for three days without another Firecrawl search.
 
 ## Model
 
@@ -148,10 +151,10 @@ Set `SOURCE_ENDPOINT` during deployment to write the primary endpoint into
 `config.js`; `SECONDARY_SOURCE_ENDPOINT` preserves a licensed feed alongside
 Firecrawl. RosterLab sends league/category metadata and player IDs, names,
 MLB teams, roster ownership, availability, and value priority to that HTTPS
-endpoint, with no ESPN session values. Relay imports also attach a short-lived
-signed authorization that permits research only for players returned by ESPN,
-but only when the operator supplies the private research access code created by
-the AWS bootstrap stack.
+endpoint for at most 12 relevant players, with no ESPN session values. Relay
+imports also attach a short-lived signed authorization that permits research
+only for players returned by ESPN, but only when the operator supplies the
+private research access code created by the AWS bootstrap stack.
 The response uses schema version
 1:
 
@@ -213,9 +216,9 @@ display-only flag, together with `publisher`, `evidenceQuote`, `reportType`,
 `corroborated`, and `publicationVerified`.
 
 The included `fantasy-insights/` service fulfills this contract with a
-cache-first API, DynamoDB, SQS, and up to two Firecrawl workers. The
-signed import request can queue uncached players for at most two workers; the
-browser polls quietly while cited results arrive. See
+cache-first API, DynamoDB, SQS, and up to two Firecrawl workers. One signed
+import can queue at most 12 uncached players. The browser polls quietly while
+cited results arrive. See
 `fantasy-insights/README.md` for the source policy, daily
 credit cap, AWS secret setup, and deployment switch.
 
