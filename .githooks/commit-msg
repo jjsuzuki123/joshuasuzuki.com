@@ -15,9 +15,13 @@ names_raw="${CLOUD_AGENT_INJECTED_SECRET_NAMES:-}"
 
 IFS=',' read -ra SECRET_NAMES <<< "$names_raw"
 
+# awk's ENVIRON works for any name (spaces, leading dashes) on both GNU and
+# BSD/macOS, unlike `printenv --` which BSD printenv treats as a literal name.
+# The trailing sentinel preserves any trailing newlines that command
+# substitution strips.
 get_secret_value() {
     local raw
-    raw="$( { printenv -- "$1" || true; }; printf 'x')"
+    raw="$( { awk -v n="$1" 'BEGIN { if (n in ENVIRON) printf "%s", ENVIRON[n] }'; }; printf 'x')"
     printf '%s' "${raw%x}"
 }
 
