@@ -8,6 +8,7 @@
   --bg-1: #ede9e0;
   --panel: rgba(255, 255, 255, 0.7);
   --panel-hover: rgba(255, 255, 255, 0.95);
+  --panel-strong: rgba(255, 255, 255, 0.9);
   --border: rgba(20, 17, 12, 0.1);
   --border-strong: rgba(20, 17, 12, 0.22);
   --text: #18150f;
@@ -16,10 +17,62 @@
   --text-faint: #9b9586;
   --ink: #14110c;
   --white: #14110c; /* "white" token repurposed as primary ink for headings */
+
+  /* Theme-aware surfaces & accents (overridden in dark mode below) */
+  --header-bg: rgba(243, 240, 233, 0.7);
+  --glow: rgba(255, 255, 255, 0.6);
+  --selection-bg: rgba(20, 17, 12, 0.14);
+  --accent: #14110c;
+  --accent-hover: #2a261d;
+  --accent-text: #f3f0e9;
+  --chip-bg: rgba(20, 17, 12, 0.05);
+  --input-bg: rgba(255, 255, 255, 0.8);
+  --input-bg-focus: #ffffff;
+  --focus-ring: rgba(20, 17, 12, 0.08);
+  --dot: #b6b0a3;
+
   --radius: 14px;
   --radius-sm: 10px;
   --maxw: 1080px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: light;
+}
+
+/* =========================
+   Dark theme
+   Applied via [data-theme="dark"] on <html>. The theme is set as early as
+   possible by /theme-init.js to avoid a flash of the wrong theme.
+========================= */
+
+[data-theme="dark"] {
+  --bg: #14120e;
+  --bg-1: #1b1813;
+  --panel: rgba(255, 255, 255, 0.04);
+  --panel-hover: rgba(255, 255, 255, 0.08);
+  --panel-strong: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.26);
+  --text: #f1ede4;
+  --text-soft: #d9d4c8;
+  --text-muted: #a8a294;
+  --text-faint: #7c7666;
+  --ink: #f1ede4;
+  --white: #f5f1e8;
+
+  --header-bg: rgba(20, 18, 14, 0.72);
+  --glow: rgba(255, 255, 255, 0.05);
+  --selection-bg: rgba(255, 255, 255, 0.18);
+  --accent: #f1ede4;
+  --accent-hover: #ffffff;
+  --accent-text: #14110c;
+  --chip-bg: rgba(255, 255, 255, 0.07);
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --input-bg-focus: rgba(255, 255, 255, 0.09);
+  --focus-ring: rgba(255, 255, 255, 0.14);
+  --dot: #6f6a5d;
+
+  color-scheme: dark;
 }
 
 /* =========================
@@ -47,6 +100,7 @@ body {
   line-height: 1.6;
   letter-spacing: -0.006em;
   overflow-x: hidden;
+  transition: background-color 240ms var(--ease), color 240ms var(--ease);
 }
 
 /* Subtle warm top glow only — keep it quiet */
@@ -54,7 +108,7 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background: radial-gradient(60% 45% at 50% -10%, rgba(255, 255, 255, 0.6), transparent 70%);
+  background: radial-gradient(60% 45% at 50% -10%, var(--glow), transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -78,8 +132,8 @@ img {
 }
 
 ::selection {
-  background: rgba(20, 17, 12, 0.14);
-  color: var(--ink);
+  background: var(--selection-bg);
+  color: var(--text);
 }
 
 /* =========================
@@ -88,7 +142,7 @@ img {
 
 header {
   border-bottom: 1px solid var(--border);
-  background: rgba(243, 240, 233, 0.7);
+  background: var(--header-bg);
   backdrop-filter: saturate(140%) blur(14px);
   -webkit-backdrop-filter: saturate(140%) blur(14px);
   position: sticky;
@@ -157,6 +211,57 @@ nav a {
 nav a:hover {
   color: var(--white);
   background: var(--panel-hover);
+}
+
+/* Theme toggle (light/dark) */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-left: 0.35rem;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 160ms var(--ease), background 160ms var(--ease),
+    border-color 160ms var(--ease);
+}
+
+.theme-toggle:hover {
+  color: var(--white);
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-toggle .theme-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Show the icon of the theme you'll switch to. */
+.theme-icon-sun {
+  display: none;
+}
+
+.theme-icon-moon {
+  display: block;
+}
+
+[data-theme="dark"] .theme-icon-sun {
+  display: block;
+}
+
+[data-theme="dark"] .theme-icon-moon {
+  display: none;
 }
 
 /* =========================
@@ -279,13 +384,13 @@ main {
 }
 
 .btn-primary {
-  background: var(--ink);
-  color: #f3f0e9;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  background: #2a261d;
+  background: var(--accent-hover);
 }
 
 .btn-ghost {
@@ -365,7 +470,7 @@ main {
   top: 1.15rem;
   width: 9px;
   height: 9px;
-  background: #b6b0a3;
+  background: var(--dot);
   border-radius: 50%;
   box-shadow: 0 0 0 4px var(--bg);
   transition: box-shadow 200ms var(--ease), background 200ms var(--ease);
@@ -405,15 +510,15 @@ main {
   letter-spacing: 0.08em;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  background: rgba(20, 17, 12, 0.05);
+  background: var(--chip-bg);
   border: 1px solid var(--border);
   color: var(--text-soft);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .timeline-item[data-type="work-cursor"] .timeline-tag {
-  color: #f3f0e9;
-  background: var(--ink);
+  color: var(--accent-text);
+  background: var(--accent);
   border-color: transparent;
 }
 
@@ -449,7 +554,7 @@ main {
 }
 
 .timeline-item.is-active .timeline-dot {
-  background: var(--ink);
+  background: var(--accent);
   box-shadow: 0 0 0 4px var(--bg), 0 0 10px 1px rgba(20, 17, 12, 0.18);
 }
 
@@ -458,12 +563,12 @@ main {
   width: 10px;
   height: 10px;
   left: -1.58rem;
-  background: var(--ink);
+  background: var(--accent);
 }
 
 .timeline-item[data-type="work-cursor"] .timeline-card {
   border-color: var(--border-strong);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--panel-strong);
 }
 
 .timeline-item[data-type="work-cursor"] .timeline-tenure-label {
@@ -513,7 +618,7 @@ main {
 }
 
 .card-link:focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
@@ -584,7 +689,7 @@ main {
   padding: 0.7rem 0.8rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--input-bg);
   color: var(--text);
   font-size: 0.92rem;
   font-family: inherit;
@@ -619,9 +724,9 @@ main {
   margin-top: 0.4rem;
   padding: 0.75rem 0.9rem;
   border-radius: 999px;
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: #f3f0e9;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -641,9 +746,9 @@ main {
 .contact-form input:focus,
 .contact-form textarea:focus {
   outline: none;
-  border-color: var(--ink);
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(20, 17, 12, 0.08);
+  border-color: var(--accent);
+  background: var(--input-bg-focus);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .contact-status {
