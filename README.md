@@ -16,3 +16,8 @@ HTML, CSS, and JavaScript.
 - `/fantasy/`: RosterLab fantasy baseball trade analysis
 - `/fantasy/football/`: Redraft football trade calculator
 - `/sunset/`: Afterglow sunset quality forecast
+
+## Git hooks
+Secret-scanning pre-commit and commit-msg hooks live in `.githooks/`. Enable
+them with `git config core.hooksPath .githooks`. See `.githooks/README.md` for
+details.
