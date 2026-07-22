@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Secret-scanning pre-commit hook.
+#
+# Blocks a commit when a staged change would ADD the value of a configured
+# secret to a tracked file. Secret names are supplied (comma-separated) via
+# CLOUD_AGENT_INJECTED_SECRET_NAMES and each name's value is read from the
+# environment.
+#
+# Why this hook exists / the bug it fixes:
+#   Secret names are human-readable and may contain spaces or other characters
+#   that are NOT valid shell variable identifiers (e.g. "API Key"). Looking a
+#   value up with bash indirect expansion (`${!name}`) fails on such a name
+#   with "invalid variable name" and, under `set -e`, aborts the whole hook
+#   before it scans anything -- forcing contributors to bypass it with
+#   `git commit --no-verify`. We iterate the names as an array and read each
+#   value via awk's ENVIRON, which works for ANY name (spaces, leading
+#   hyphens, ...) and never aborts the hook.
+set -euo pipefail
+
+names_raw="${CLOUD_AGENT_INJECTED_SECRET_NAMES:-}"
+[ -n "$names_raw" ] || exit 0
+
+# Split names on commas only, so names containing spaces stay intact.
+IFS=',' read -ra SECRET_NAMES <<< "$names_raw"
+
+# Staged, non-deleted files (null-delimited so paths with spaces survive).
+# Read with a `while read` loop instead of `mapfile`/`readarray`, which is a
+# Bash 4+ builtin missing from the Bash 3.2 that ships with macOS.
+STAGED_FILES=()
+while IFS= read -r -d '' file; do
+    STAGED_FILES+=("$file")
+done < <(git diff --cached --name-only -z --diff-filter=d)
+[ "${#STAGED_FILES[@]}" -gt 0 ] || exit 0
+
+# Read a secret's value by name without indirect expansion. awk's ENVIRON does
+# an exact lookup that tolerates any name (spaces, leading hyphens, ...) on both
+# GNU and BSD userland -- unlike `printenv -- "$1"`, whose `--` is a GNU-only
+# end-of-options marker that BSD/macOS printenv would treat as a literal name,
+# silently returning empty and letting real secrets slip through. The trailing
+# sentinel preserves any trailing newlines that command substitution strips; a
+# missing name yields an empty string, so the hook never aborts under `set -e`.
+get_secret_value() {
+    local raw
+    raw="$( awk -v n="$1" 'BEGIN { printf "%s", ENVIRON[n] }'; printf 'x')"
+    printf '%s' "${raw%x}"
+}
+
+found=0
+findings=""
+for name in "${SECRET_NAMES[@]}"; do
+    value="$(get_secret_value "$name")"
+    # Ignore empty or trivially short values to avoid noisy false positives.
+    [ "${#value}" -ge 8 ] || continue
+
+    for file in "${STAGED_FILES[@]}"; do
+        [ -f "$file" ] || continue
+        # Inspect only ADDED lines in the staged diff, honoring an allowlist
+        # pragma for intentional fixtures.
+        if git diff --cached -U0 -- "$file" \
+            | grep '^+' | grep -v '^+++ ' \
+            | grep -v 'pragma: allowlist secret' \
+            | grep -qaFi -e "$value"; then
+            found=1
+            findings+=$'\n'"  Secret: ${name}    File: ${file}"
+        fi
+    done
+done
+
+if [ "$found" -eq 1 ]; then
+    {
+        echo ""
+        echo "🔐 COMMIT BLOCKED: secret value detected in staged changes:"
+        echo "$findings"
+        echo ""
+        echo "Remove the secret value (use env vars / secret storage instead)."
+        echo "If a match is an intentional fixture, add 'pragma: allowlist secret'"
+        echo "to that line, then re-stage and commit."
+    } >&2
+    exit 1
+fi
+
+exit 0
