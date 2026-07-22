@@ -13,7 +13,8 @@
 #   with "invalid variable name" and, under `set -e`, aborts the whole hook
 #   before it scans anything -- forcing contributors to bypass it with
 #   `git commit --no-verify`. We iterate the names as an array and read each
-#   value with `printenv`, which works for ANY name and never aborts the hook.
+#   value via awk's ENVIRON, which works for ANY name (spaces, leading
+#   hyphens, ...) and never aborts the hook.
 set -euo pipefail
 
 names_raw="${CLOUD_AGENT_INJECTED_SECRET_NAMES:-}"
@@ -23,15 +24,24 @@ names_raw="${CLOUD_AGENT_INJECTED_SECRET_NAMES:-}"
 IFS=',' read -ra SECRET_NAMES <<< "$names_raw"
 
 # Staged, non-deleted files (null-delimited so paths with spaces survive).
-mapfile -d '' -t STAGED_FILES < <(git diff --cached --name-only -z --diff-filter=d)
+# Read with a `while read` loop instead of `mapfile`/`readarray`, which is a
+# Bash 4+ builtin missing from the Bash 3.2 that ships with macOS.
+STAGED_FILES=()
+while IFS= read -r -d '' file; do
+    STAGED_FILES+=("$file")
+done < <(git diff --cached --name-only -z --diff-filter=d)
 [ "${#STAGED_FILES[@]}" -gt 0 ] || exit 0
 
-# Read a secret's value by name without indirect expansion. The trailing
-# sentinel preserves any trailing newlines that command substitution strips,
-# and the `|| true` keeps a missing name from aborting the hook under `set -e`.
+# Read a secret's value by name without indirect expansion. awk's ENVIRON does
+# an exact lookup that tolerates any name (spaces, leading hyphens, ...) on both
+# GNU and BSD userland -- unlike `printenv -- "$1"`, whose `--` is a GNU-only
+# end-of-options marker that BSD/macOS printenv would treat as a literal name,
+# silently returning empty and letting real secrets slip through. The trailing
+# sentinel preserves any trailing newlines that command substitution strips; a
+# missing name yields an empty string, so the hook never aborts under `set -e`.
 get_secret_value() {
     local raw
-    raw="$( { printenv -- "$1" || true; }; printf 'x')"
+    raw="$( awk -v n="$1" 'BEGIN { printf "%s", ENVIRON[n] }'; printf 'x')"
     printf '%s' "${raw%x}"
 }
 

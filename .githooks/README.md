@@ -36,8 +36,24 @@ hook aborted **before scanning anything** — so every commit failed and people
 resorted to `git commit --no-verify`, defeating the scanner entirely.
 
 The fix: iterate the names as an array (quoted, so spaces are preserved) and
-read each value with `printenv` instead of `${!name}`. `printenv` accepts any
-name, including ones with spaces, and never aborts the hook.
+read each value via awk's `ENVIRON` array instead of `${!name}`. The lookup
+accepts any name, including ones with spaces or leading hyphens, and never
+aborts the hook.
+
+## Portability
+
+The hooks are written to run on both Linux (Bash 4/5, GNU coreutils) and macOS
+(Bash 3.2, BSD userland) with no extra dependencies:
+
+- Staged file lists are read with a `while IFS= read -r -d '' … done` loop
+  rather than `mapfile`/`readarray`, which is a Bash 4+ builtin absent from the
+  Bash 3.2 that ships with macOS.
+- Secret values are resolved with `awk 'BEGIN { printf "%s", ENVIRON[n] }'`
+  rather than `printenv -- "$NAME"`. GNU `printenv` treats `--` as an
+  end-of-options marker, but BSD/macOS `printenv` has no such support and would
+  look up a variable literally named `--`, returning empty and letting real
+  secrets slip through. awk's `ENVIRON` does an exact, name-safe lookup on both
+  platforms.
 
 ## Intentional secrets in fixtures
 

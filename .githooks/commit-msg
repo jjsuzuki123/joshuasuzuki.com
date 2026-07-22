@@ -3,8 +3,9 @@
 #
 # Blocks a commit whose message contains the value of a configured secret.
 # See .githooks/pre-commit for the details of the `${!name}` bug this avoids:
-# secret names may contain spaces (e.g. "API Key") and are looked up with
-# `printenv` rather than indirect expansion so the hook never aborts.
+# secret names may contain spaces (e.g. "API Key") and are looked up via awk's
+# ENVIRON rather than indirect expansion so the hook never aborts. awk also
+# avoids `printenv -- "$1"`, whose GNU-only `--` breaks BSD/macOS printenv.
 set -euo pipefail
 
 msg_file="${1:-}"
@@ -17,7 +18,7 @@ IFS=',' read -ra SECRET_NAMES <<< "$names_raw"
 
 get_secret_value() {
     local raw
-    raw="$( { printenv -- "$1" || true; }; printf 'x')"
+    raw="$( awk -v n="$1" 'BEGIN { printf "%s", ENVIRON[n] }'; printf 'x')"
     printf '%s' "${raw%x}"
 }
 
