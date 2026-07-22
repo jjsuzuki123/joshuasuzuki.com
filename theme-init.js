@@ -17,6 +17,10 @@
       ? window.matchMedia("(prefers-color-scheme: dark)")
       : null;
 
+  // Set when the user toggles the theme, so an explicit choice is honored even
+  // if the localStorage write fails (private mode, quota, storage blocked).
+  var userChoseTheme = false;
+
   function storedTheme() {
     try {
       var value = localStorage.getItem(STORAGE_KEY);
@@ -42,18 +46,40 @@
     return root.getAttribute("data-theme") === "dark" ? "dark" : "light";
   }
 
-  function updateToggles(theme) {
+  function updateToggle(toggle, theme) {
     var isDark = theme === "dark";
     var label = isDark ? "Switch to light mode" : "Switch to dark mode";
+    toggle.setAttribute("aria-pressed", String(isDark));
+    toggle.setAttribute("aria-label", label);
+    toggle.setAttribute("title", label);
+  }
+
+  function updateToggles(theme) {
     var toggles = document.querySelectorAll("[data-theme-toggle]");
     for (var i = 0; i < toggles.length; i++) {
-      toggles[i].setAttribute("aria-pressed", String(isDark));
-      toggles[i].setAttribute("aria-label", label);
-      toggles[i].setAttribute("title", label);
+      updateToggle(toggles[i], theme);
     }
   }
 
+  // The theme is applied to <html> in <head> before the toggle exists, so its
+  // static markup can misreport the theme to assistive tech until init() runs.
+  // Watch for the toggle being parsed and sync it as soon as it appears.
+  if (typeof MutationObserver === "function" && document.readyState === "loading") {
+    var earlyObserver = new MutationObserver(function () {
+      var toggles = document.querySelectorAll("[data-theme-toggle]");
+      if (!toggles.length) return;
+      for (var i = 0; i < toggles.length; i++) {
+        updateToggle(toggles[i], currentTheme());
+      }
+    });
+    earlyObserver.observe(root, { childList: true, subtree: true });
+    document.addEventListener("DOMContentLoaded", function () {
+      earlyObserver.disconnect();
+    });
+  }
+
   function setTheme(theme) {
+    userChoseTheme = true;
     applyTheme(theme);
     try {
       localStorage.setItem(STORAGE_KEY, theme);
@@ -73,10 +99,11 @@
       });
     }
 
-    // Follow OS changes until the user makes an explicit choice.
+    // Follow OS changes until the user makes an explicit choice (stored, or
+    // in-memory when the storage write failed).
     if (mql) {
       var onSystemChange = function (event) {
-        if (storedTheme()) return;
+        if (storedTheme() || userChoseTheme) return;
         applyTheme(event.matches ? "dark" : "light");
         updateToggles(currentTheme());
       };
@@ -86,6 +113,16 @@
         mql.addListener(onSystemChange);
       }
     }
+
+    // When restored from the back/forward cache, the theme applied in <head>
+    // never re-runs, so a choice made on another page (e.g. resume) can be
+    // stale. Re-read the current choice on pageshow and re-apply it.
+    window.addEventListener("pageshow", function () {
+      var theme =
+        storedTheme() || (userChoseTheme ? currentTheme() : systemTheme());
+      applyTheme(theme);
+      updateToggles(theme);
+    });
   }
 
   if (document.readyState === "loading") {
