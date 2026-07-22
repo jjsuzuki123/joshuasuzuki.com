@@ -22,6 +22,7 @@
   --header-bg: rgba(243, 240, 233, 0.7);
   --glow: rgba(255, 255, 255, 0.6);
   --selection-bg: rgba(20, 17, 12, 0.14);
+  --timeline-active-glow: rgba(20, 17, 12, 0.18);
   --accent: #14110c;
   --accent-hover: #2a261d;
   --accent-text: #f3f0e9;
@@ -63,6 +64,7 @@
   --header-bg: rgba(20, 18, 14, 0.72);
   --glow: rgba(255, 255, 255, 0.05);
   --selection-bg: rgba(255, 255, 255, 0.18);
+  --timeline-active-glow: rgba(241, 237, 228, 0.4);
   --accent: #f1ede4;
   --accent-hover: #ffffff;
   --accent-text: #14110c;
@@ -555,7 +557,7 @@ main {
 
 .timeline-item.is-active .timeline-dot {
   background: var(--accent);
-  box-shadow: 0 0 0 4px var(--bg), 0 0 10px 1px rgba(20, 17, 12, 0.18);
+  box-shadow: 0 0 0 4px var(--bg), 0 0 10px 1px var(--timeline-active-glow);
 }
 
 /* Cursor-specific timeline accents */
