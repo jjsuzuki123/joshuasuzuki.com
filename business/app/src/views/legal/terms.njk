@@ -1,0 +1,34 @@
+{% extends "layout.njk" %}
+{% block content %}
+<div class="card" style="max-width:760px;margin:0 auto">
+  <h1>Terms of Service</h1>
+  <p class="muted">Working draft — to be finalized before public launch (see LAUNCH.md). Not yet reviewed by a lawyer; the operator accepts these on their own behalf.</p>
+
+  <h3>The service</h3>
+  <p>{{ brand }} runs automated accessibility checks against websites you tell it to scan and
+  produces reports based on those checks. You may only scan websites you own or are authorized
+  to test by their owner. We may suspend accounts that scan sites without authorization or
+  attempt to abuse the crawler.</p>
+
+  <h3>No compliance guarantee, no legal advice</h3>
+  <p>Reports reflect automated checks only, which detect a subset of accessibility issues.
+  {{ brand }} does not certify compliance with the ADA, the European Accessibility Act, WCAG,
+  or any other standard or law, and nothing in the service is legal advice.</p>
+
+  <h3>Billing and refunds</h3>
+  <p>Subscriptions renew monthly until canceled, which you can do anytime from the billing
+  portal. If the service didn't work for you, email {{ supportEmail }} within 30 days of a
+  charge and we'll refund it.</p>
+
+  <h3>Your data</h3>
+  <p>You keep ownership of your data. Delete a site or your account and the associated data is
+  removed immediately. See the <a href="/legal/privacy">Privacy Policy</a>.</p>
+
+  <h3>Liability</h3>
+  <p>The service is provided as-is. To the maximum extent permitted by law, our total
+  liability is capped at the amount you paid in the 3 months before the claim.</p>
+
+  <h3>Contact</h3>
+  <p><a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a></p>
+</div>
+{% endblock %}

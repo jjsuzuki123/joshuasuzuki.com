@@ -1,0 +1,8 @@
+{% extends "layout.njk" %}
+{% block content %}
+<div class="empty-state">
+  <h1>That form expired</h1>
+  <p>For security, forms stop working after a while or when cookies change. Go back, refresh the page, and try again — your data is safe.</p>
+  <p><a class="btn btn-secondary" href="{% if user %}/dashboard{% else %}/{% endif %}">Go home</a></p>
+</div>
+{% endblock %}

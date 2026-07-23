@@ -1,0 +1,8 @@
+{% extends "layout.njk" %}
+{% block content %}
+<div class="empty-state">
+  <h1>Page not found</h1>
+  <p>That page doesn't exist (or a share link was revoked).</p>
+  <p><a class="btn btn-secondary" href="{% if user %}/dashboard{% else %}/{% endif %}">Go home</a></p>
+</div>
+{% endblock %}

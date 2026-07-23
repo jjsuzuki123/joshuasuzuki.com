@@ -1,0 +1,75 @@
+{% extends "layout.njk" %}
+{% block content %}
+<h1>Billing</h1>
+
+{% if checkoutStatus == 'success' %}
+  <div class="flash flash-success" role="status">Payment received — thank you! Your plan activates within a few seconds of Stripe's confirmation. Refresh if you don't see it yet.</div>
+{% elif checkoutStatus == 'canceled' %}
+  <div class="flash flash-error" role="status">Checkout was canceled. No charge was made.</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Current plan</h2>
+  <p>
+    <strong>{{ entitlement.limits.label }}</strong>
+    {% if entitlement.reason == 'trialing' %} — {{ entitlement.trialDaysLeft }} day{% if entitlement.trialDaysLeft != 1 %}s{% endif %} left in your trial
+    {% elif entitlement.reason == 'subscribed' %} — active
+    {% elif entitlement.reason == 'past_due_grace' %} — payment problem, in grace period
+    {% elif entitlement.reason == 'trial_expired' %} — trial ended
+    {% else %} — inactive{% endif %}
+  </p>
+  <p class="muted">{{ entitlement.limits.maxSites }} sites · {{ entitlement.limits.maxPagesPerScan }} pages per scan · scheduled monitoring included</p>
+  {% if user.stripe_customer_id and billingEnabled %}
+    <form method="post" action="/billing/portal">
+      <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+      <button class="btn btn-secondary" type="submit">Manage billing (card, invoices, cancel)</button>
+    </form>
+  {% endif %}
+</div>
+
+{% if not billingEnabled %}
+  <div class="card">
+    <p><strong>Billing is disabled on this installation</strong> (development mode). All accounts run with trial limits and no expiry enforcement beyond the trial window.</p>
+  </div>
+{% elif entitlement.planId == 'trial' or not entitlement.active %}
+  <h2>Choose a plan</h2>
+  <div class="grid-3">
+    <div class="card pricing-card">
+      <h3>Solo</h3>
+      <p class="pricing-price">$29<small> / month</small></p>
+      <ul class="pricing-features">
+        <li>10 sites</li>
+        <li>25 pages per scan</li>
+        <li>Weekly / monthly monitoring</li>
+        <li>White-label PDF reports</li>
+      </ul>
+      <form method="post" action="/billing/checkout">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        <input type="hidden" name="plan" value="solo">
+        <button class="btn btn-primary" type="submit">Subscribe to Solo</button>
+      </form>
+    </div>
+    <div class="card pricing-card">
+      <h3>Studio</h3>
+      <p class="pricing-price">$59<small> / month</small></p>
+      <ul class="pricing-features">
+        <li>30 sites</li>
+        <li>100 pages per scan</li>
+        <li>Weekly / monthly monitoring</li>
+        <li>White-label PDF reports</li>
+      </ul>
+      <form method="post" action="/billing/checkout">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        <input type="hidden" name="plan" value="studio">
+        <button class="btn btn-primary" type="submit">Subscribe to Studio</button>
+      </form>
+    </div>
+    <div class="card pricing-card">
+      <h3>Fair-refund promise</h3>
+      <p class="muted" style="text-align:left">If {{ brand }} doesn't work out, email
+      <a href="mailto:{{ supportEmail }}">{{ supportEmail }}</a> within 30 days of any charge
+      and we refund it — no forms, no interrogation. Cancel anytime from the billing portal.</p>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

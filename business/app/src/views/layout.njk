@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if title %}{{ title }} · {% endif %}{{ brand }}</title>
+  <link rel="stylesheet" href="/public/styles.css">
+  <link rel="icon" href="/public/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="{% if user %}/dashboard{% else %}/{% endif %}">
+        <span class="brand-mark" aria-hidden="true">▲</span> {{ brand }}
+      </a>
+      <nav class="topnav">
+        {% if user %}
+          <a href="/dashboard" {% if currentPath == '/dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+          <a href="/settings" {% if currentPath == '/settings' %}aria-current="page"{% endif %}>Settings</a>
+          <a href="/billing" {% if currentPath == '/billing' %}aria-current="page"{% endif %}>Billing</a>
+          <form method="post" action="/logout" class="inline-form">
+            <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+            <button type="submit" class="linklike">Log out</button>
+          </form>
+        {% else %}
+          <a href="/#pricing">Pricing</a>
+          <a href="/#faq">FAQ</a>
+          <a href="/login">Log in</a>
+          <a class="btn btn-primary btn-sm" href="/signup">Start free trial</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  {% if user and entitlement %}
+    {% if not entitlement.active %}
+      <div class="banner banner-warn container-wide" role="status">
+        {% if entitlement.reason == 'trial_expired' %}
+          Your free trial has ended. Your sites and reports are saved — <a href="/billing">choose a plan</a> to keep scanning.
+        {% else %}
+          Your subscription is inactive. <a href="/billing">Update billing</a> to keep scanning; your data is saved.
+        {% endif %}
+      </div>
+    {% elif entitlement.reason == 'trialing' %}
+      <div class="banner banner-info container-wide" role="status">
+        Free trial — {{ entitlement.trialDaysLeft }} day{% if entitlement.trialDaysLeft != 1 %}s{% endif %} left.
+        {% if billingEnabled %}<a href="/billing">Pick a plan</a> whenever you're ready.{% endif %}
+      </div>
+    {% elif entitlement.reason == 'past_due_grace' %}
+      <div class="banner banner-warn container-wide" role="status">
+        Your last payment didn't go through. <a href="/billing">Update your card</a> — scanning pauses soon otherwise.
+      </div>
+    {% endif %}
+    {% if not billingEnabled %}
+      <div class="banner banner-dev container-wide" role="status">Development mode — billing is disabled on this installation.</div>
+    {% endif %}
+  {% endif %}
+
+  <main class="container main">
+    {% if flash %}
+      <div class="flash flash-{{ flash.kind }}" role="status">{{ flash.message }}</div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>© {{ brand }}</span>
+      <nav>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="mailto:{{ supportEmail }}">Support</a>
+      </nav>
+    </div>
+  </footer>
+  <script src="/public/app.js" defer></script>
+</body>
+</html>

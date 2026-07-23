@@ -1,0 +1,161 @@
+{% extends "layout.njk" %}
+{% block content %}
+{% if deleted %}
+  <div class="flash flash-success" role="status">Your account and all its data were deleted. Thanks for trying {{ brand }}.</div>
+{% endif %}
+
+<section class="hero">
+  <h1>Accessibility reports your clients can actually read — with your logo on them.</h1>
+  <p class="lede">
+    {{ brand }} scans the websites you build and maintain for WCAG accessibility issues,
+    watches them for regressions, and turns the findings into a plain-English, client-ready
+    report. Built for freelance web designers, developers, and small agencies.
+  </p>
+  <div class="hero-ctas">
+    <a class="btn btn-primary" href="/signup">Start your free 7-day trial</a>
+    <a class="btn btn-secondary" href="#how">See how it works</a>
+  </div>
+  <p class="trust-line">No credit card required for the trial. Cancel anytime, refund-first policy.</p>
+</section>
+
+<section id="why">
+  <h2 class="section-title">Your clients are asking about accessibility. Now you have an answer.</h2>
+  <div class="grid-3">
+    <div class="card">
+      <h3>The pressure is real</h3>
+      <p>The European Accessibility Act has been enforceable since June 2025, and US ADA web
+      lawsuits continue year after year. When a client asks "are we exposed?", "let me check"
+      isn't a great answer.</p>
+    </div>
+    <div class="card">
+      <h3>The report is the product</h3>
+      <p>Every scan produces a prioritized, plain-English report with your agency's name,
+      logo, and colors — ready to send as-is, or to anchor a paid audit and remediation
+      project.</p>
+    </div>
+    <div class="card">
+      <h3>Monitoring, not homework</h3>
+      <p>Sites regress: a new plugin, a new banner, a rushed edit. {{ brand }} rescans on a
+      weekly or monthly schedule and emails you when new issues appear — before the client
+      notices.</p>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <h2 class="section-title">How it works</h2>
+  <div class="grid-3">
+    <div class="card"><h3>1 · Add a site</h3><p>Paste the URL. {{ brand }} discovers pages via the sitemap and internal links, then checks each one against WCAG 2.1 A/AA rules using the industry-standard axe-core engine — the same checks used by professional auditors' tooling.</p></div>
+    <div class="card"><h3>2 · Get the report</h3><p>Issues arrive grouped by severity with what's wrong, why it matters, and how to fix it — written for humans, not lawyers. Export a branded PDF or share a private link.</p></div>
+    <div class="card"><h3>3 · Stay clean</h3><p>Turn on weekly monitoring. Each scan is compared with the last one, so you see exactly what's new, what's fixed, and what's still open.</p></div>
+  </div>
+
+  <div class="honesty">
+    <strong>An honest note about automated scanning.</strong> Automated checks reliably find
+    roughly a third of WCAG issues — the mechanical ones like missing alt text, broken labels,
+    and low contrast. No tool can certify a site as "compliant," and anyone who says otherwise
+    is selling something. {{ brand }} finds the issues a machine can find, tracks them over
+    time, and tells you plainly where human review is still needed. Your reports say the same,
+    which is exactly why clients trust them.
+  </div>
+</section>
+
+<section id="pricing">
+  <h2 class="section-title">Simple, flat pricing</h2>
+  <div class="grid-3">
+    <div class="card pricing-card">
+      <h3>Free trial</h3>
+      <p class="pricing-price">$0<small> / 7 days</small></p>
+      <ul class="pricing-features">
+        <li>Everything in Solo</li>
+        <li>No credit card required</li>
+        <li>Your data is kept if you upgrade later</li>
+      </ul>
+      <a class="btn btn-primary" href="/signup">Start free</a>
+    </div>
+    <div class="card pricing-card">
+      <h3>Solo</h3>
+      <p class="pricing-price">$29<small> / month</small></p>
+      <ul class="pricing-features">
+        <li>10 sites</li>
+        <li>25 pages per scan</li>
+        <li>Weekly or monthly monitoring</li>
+        <li>White-label PDF reports</li>
+        <li>Share links for clients</li>
+      </ul>
+      <a class="btn btn-secondary" href="/signup">Start with a free trial</a>
+    </div>
+    <div class="card pricing-card">
+      <h3>Studio</h3>
+      <p class="pricing-price">$59<small> / month</small></p>
+      <ul class="pricing-features">
+        <li>30 sites</li>
+        <li>100 pages per scan</li>
+        <li>Weekly or monthly monitoring</li>
+        <li>White-label PDF reports</li>
+        <li>Share links for clients</li>
+      </ul>
+      <a class="btn btn-secondary" href="/signup">Start with a free trial</a>
+    </div>
+  </div>
+  <p class="muted" style="text-align:center">Flat price. No per-page metering surprises, no per-seat fees, no annual contract. Cancel in two clicks.</p>
+</section>
+
+<section id="faq">
+  <h2 class="section-title">Questions, answered plainly</h2>
+  <div class="faq-item">
+    <h3>Will this make my client's site "ADA compliant" or "EAA compliant"?</h3>
+    <p>No tool can promise that, including this one. Compliance is a legal judgment about the
+    whole experience; automated checks cover the detectable subset of WCAG (roughly a third of
+    issues). {{ brand }} finds those, documents them, and monitors regressions — genuinely
+    useful evidence of effort, not a certificate. For high-risk clients, pair it with a manual
+    audit by an accessibility specialist.</p>
+  </div>
+  <div class="faq-item">
+    <h3>How is this different from the accessibility overlay widgets?</h3>
+    <p>Overlays inject a script that tries to patch symptoms in the visitor's browser; they've
+    been widely criticized by accessibility experts, and the FTC fined one major vendor $1M for
+    deceptive compliance claims. {{ brand }} takes the opposite approach: it tells you what to
+    fix in the actual site, so the fix is real and permanent.</p>
+  </div>
+  <div class="faq-item">
+    <h3>What exactly does a scan check?</h3>
+    <p>Each page is loaded in a real browser and checked against the WCAG 2.1 A/AA rule set of
+    axe-core, the open-source engine used by most professional accessibility tooling —
+    contrast, alt text, form labels, landmarks, ARIA validity, keyboard traps detectable in
+    markup, and more.</p>
+  </div>
+  <div class="faq-item">
+    <h3>Can it scan pages behind a login?</h3>
+    <p>Not yet. {{ brand }} scans publicly reachable pages. Login-protected scanning is on the
+    roadmap; tell us if you need it and we'll prioritize accordingly.</p>
+  </div>
+  <div class="faq-item">
+    <h3>Why did my scan find fewer pages than my site has?</h3>
+    <p>Scans are capped by plan (25 pages on Solo, 100 on Studio) and discover pages from your
+    sitemap and internal links. If key pages are missing, check they're linked or in your
+    sitemap.xml. Caps keep scans fast and pricing flat.</p>
+  </div>
+  <div class="faq-item">
+    <h3>What happens when my site is behind bot protection?</h3>
+    <p>Some firewalls block automated visitors. The report will say so honestly, page by page,
+    instead of inventing results. Since you build the site, allowlisting our user agent
+    (<code>SiteRampBot</code>) usually solves it in minutes.</p>
+  </div>
+  <div class="faq-item">
+    <h3>What's your refund policy?</h3>
+    <p>If {{ brand }} didn't work for you, email us within 30 days of any charge and we refund
+    it. No forms, no interrogation.</p>
+  </div>
+  <div class="faq-item">
+    <h3>Do you store my clients' data?</h3>
+    <p>Only what a scan produces: page URLs, detected issues, and HTML snippets of the flagged
+    elements from public pages. No visitor data, no analytics beacons, nothing injected into
+    the sites. Delete a site (or your account) and its data is gone immediately.</p>
+  </div>
+</section>
+
+<section style="text-align:center; margin-top:3rem">
+  <a class="btn btn-primary" href="/signup">Start your free 7-day trial</a>
+</section>
+{% endblock %}

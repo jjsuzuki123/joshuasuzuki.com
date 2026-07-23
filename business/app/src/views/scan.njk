@@ -1,0 +1,130 @@
+{% extends "layout.njk" %}
+{% from "partials/issue-groups.njk" import issueGroups %}
+{% block content %}
+<p><a href="/sites/{{ site.id }}">← {{ site.name }}</a></p>
+
+{% if scan.status == 'failed' %}
+  <div class="card">
+    <h1>This scan couldn't complete</h1>
+    <div class="form-error" role="alert">{{ scan.error_message }}</div>
+    {% if vm.failedPages.length > 0 %}
+      <h3>Per-page details</h3>
+      <table class="table">
+        <thead><tr><th>Page</th><th>What happened</th></tr></thead>
+        <tbody>
+          {% for page in vm.failedPages %}
+            <tr><td>{{ page.url | pathOf }}</td><td>{{ page.reason }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+    <p style="margin-top:1rem">
+      <strong>Common causes and fixes:</strong> bot protection (allowlist the user agent
+      <code>SiteRampBot</code> in your firewall), the site being temporarily down, or a
+      login wall. Then run the scan again from the site page.
+    </p>
+  </div>
+{% else %}
+  <div class="report-header">
+    <div>
+      <h1>{{ site.name }} — accessibility report</h1>
+      <p class="muted">Scanned {{ scan.finished_at | datetime }} · {{ vm.summary.pagesOk }} page{% if vm.summary.pagesOk != 1 %}s{% endif %} checked{% if vm.summary.pagesFailed > 0 %} · {{ vm.summary.pagesFailed }} couldn't load{% endif %}</p>
+    </div>
+    <div class="report-actions">
+      <a class="btn btn-primary" href="/scans/{{ scan.id }}/pdf">Download branded PDF</a>
+      <form method="post" action="/scans/{{ scan.id }}/share" class="inline-form">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        <button class="btn btn-secondary" type="submit">Create share link</button>
+      </form>
+    </div>
+  </div>
+
+  {% if shareToken %}
+    <div class="card">
+      <h3>Share link created</h3>
+      <div class="share-box">
+        <input type="text" id="share-url" readonly value="{{ baseUrl }}/r/{{ shareToken }}">
+        <button class="btn btn-secondary btn-sm" type="button" data-copy-target="#share-url">Copy</button>
+      </div>
+      <p class="field-help">Anyone with this link can view the report (it's unlisted and not indexed).
+      Save it now — for security we only show it once. You can revoke all links below.</p>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="summary-grid">
+      <div class="summary-stat"><span class="num grade-{{ vm.summary.grade }}">{{ vm.summary.grade }}</span><span class="lbl">Grade</span></div>
+      <div class="summary-stat"><span class="num">{{ vm.summary.score }}</span><span class="lbl">Score / 100</span></div>
+      <div class="summary-stat"><span class="num">{{ vm.summary.counts.critical }}</span><span class="lbl">Critical</span></div>
+      <div class="summary-stat"><span class="num">{{ vm.summary.counts.serious }}</span><span class="lbl">Serious</span></div>
+      <div class="summary-stat"><span class="num">{{ vm.summary.counts.moderate }}</span><span class="lbl">Moderate</span></div>
+      <div class="summary-stat"><span class="num">{{ vm.summary.counts.minor }}</span><span class="lbl">Minor</span></div>
+    </div>
+    <p>{{ vm.summary.verdictLine }}</p>
+    {% if vm.summary.newIssueCount > 0 or vm.summary.resolvedIssueCount > 0 %}
+      <p class="muted">Since the previous scan: <strong>{{ vm.summary.newIssueCount }} new</strong>, <strong>{{ vm.summary.resolvedIssueCount }} resolved</strong>.</p>
+    {% endif %}
+  </div>
+
+  {% if vm.topFixes.length > 0 %}
+    <div class="card">
+      <h2 style="margin-top:0">Start here — highest-impact fixes</h2>
+      <ol>
+        {% for fix in vm.topFixes %}
+          <li><strong>{{ fix.title }}</strong> <span class="badge badge-{{ fix.impact }}">{{ fix.impact }}</span><br>
+            <small class="muted">{{ fix.totalCount }} instance{% if fix.totalCount != 1 %}s{% endif %} across {{ fix.pages.length }} page{% if fix.pages.length != 1 %}s{% endif %}</small></li>
+        {% endfor %}
+      </ol>
+    </div>
+  {% endif %}
+
+  {% if vm.summary.totalIssues == 0 %}
+    <div class="card"><p><strong>No issues detected by automated checks.</strong> Nice. Remember automated
+    coverage is partial — a manual review with a screen reader is still worthwhile for key flows.</p></div>
+  {% else %}
+    {{ issueGroups(vm, showSnippets=true) }}
+  {% endif %}
+
+  {% if vm.failedPages.length > 0 %}
+    <div class="card">
+      <h3>Pages that couldn't be checked</h3>
+      <table class="table">
+        <thead><tr><th>Page</th><th>What happened</th></tr></thead>
+        <tbody>
+          {% for page in vm.failedPages %}
+            <tr><td>{{ page.url | pathOf }}</td><td>{{ page.reason }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <h3>All pages checked</h3>
+    <table class="table">
+      <thead><tr><th>Page</th><th>Score</th><th>Issues</th></tr></thead>
+      <tbody>
+        {% for page in vm.okPages %}
+          <tr><td>{{ page.url | pathOf }}</td><td>{{ page.score }}</td><td>{{ page.issueCount }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Sharing</h3>
+    <p class="muted">Active share links: {{ shareCount }}.</p>
+    {% if shareCount > 0 %}
+      <form method="post" action="/scans/{{ scan.id }}/share/revoke" data-confirm="Revoke every share link for this report?">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        <button class="btn btn-danger btn-sm" type="submit">Revoke all share links</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <p class="muted" style="font-size:.85rem">
+    Automated checks (axe-core, WCAG 2.1 A/AA) find roughly a third of accessibility issues —
+    the mechanically detectable ones. This report is not legal advice and does not certify compliance.
+  </p>
+{% endif %}
+{% endblock %}

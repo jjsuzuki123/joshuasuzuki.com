@@ -1,0 +1,8 @@
+{% extends "layout.njk" %}
+{% block content %}
+<div class="empty-state">
+  <h1>{{ title or "Something went wrong" }}</h1>
+  <p>{{ message or "Something went wrong on our side. Please try again." }}</p>
+  <p><a class="btn btn-secondary" href="{% if user %}/dashboard{% else %}/{% endif %}">Go home</a></p>
+</div>
+{% endblock %}
