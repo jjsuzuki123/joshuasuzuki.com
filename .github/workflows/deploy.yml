@@ -24,9 +24,12 @@ jobs:
       FANTASY_IMPORT_STACK: rosterlab-fantasy-import-production
       FANTASY_INSIGHTS_STACK: rosterlab-fantasy-insights-production
       FANTASY_BOOTSTRAP_STACK: rosterlab-fantasy-import-bootstrap
+      AISPEND_STACK: aispend-production
+      AISPEND_BOOTSTRAP_STACK: aispend-bootstrap
       SAM_ARTIFACT_BUCKET: rosterlab-deploy-artifacts-545095759709-us-east-1
       SOURCE_ENDPOINT: ${{ vars.ROSTERLAB_SOURCE_ENDPOINT }}
       ENABLE_FANTASY_INSIGHTS: ${{ vars.ROSTERLAB_FIRECRAWL_ENABLED || 'true' }}
+      ENABLE_AISPEND: ${{ vars.AISPEND_ENABLED || 'true' }}
 
     steps:
       - name: Checkout
@@ -80,6 +83,44 @@ jobs:
             echo "Firecrawl research is enabled but its bootstrap role or API-key secret is not ready; continuing without it."
           fi
 
+      - name: Check aispend bootstrap
+        id: aispend
+        run: |
+          set -euo pipefail
+          if [[ "${ENABLE_AISPEND}" != "true" ]]; then
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          API_ROLE="$(aws cloudformation describe-stacks \
+            --stack-name "${AISPEND_BOOTSTRAP_STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiRuntimeRoleArn'].OutputValue | [0]" \
+            --output text 2>/dev/null || true)"
+          WORKER_ROLE="$(aws cloudformation describe-stacks \
+            --stack-name "${AISPEND_BOOTSTRAP_STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='WorkerRuntimeRoleArn'].OutputValue | [0]" \
+            --output text 2>/dev/null || true)"
+          if [[ "${API_ROLE}" == arn:aws:iam::*:role/* ]] &&
+              [[ "${WORKER_ROLE}" == arn:aws:iam::*:role/* ]]; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            echo "Spendscope is enabled but its bootstrap roles are not ready; continuing without it."
+          fi
+
+      - name: Validate Spendscope
+        run: |
+          set -euo pipefail
+          node --check aispend/app.js
+          node --check aispend/config.js
+          node --check aispend/score-engine.js
+          node --check aispend-backend/service/core.js
+          node --check aispend-backend/service/github.js
+          node --check aispend-backend/service/api.js
+          node --check aispend-backend/service/worker.js
+          node --check scripts/write-aispend-config.js
+          node scripts/aispend-score-engine.test.js
+          node scripts/aispend-service.test.js
+
       - name: Validate RosterLab
         run: |
           set -euo pipefail
@@ -114,6 +155,11 @@ jobs:
           sam validate --lint --template-file fantasy-backend/bootstrap-template.yaml
           sam validate --lint --template-file fantasy-backend/template.yaml
           sam validate --lint --template-file fantasy-insights/template.yaml
+
+      - name: Validate aispend infrastructure
+        run: |
+          sam validate --lint --template-file aispend-backend/bootstrap-template.yaml
+          sam validate --lint --template-file aispend-backend/template.yaml
 
       - name: Build and package fantasy import relay
         if: steps.fantasy-backend.outputs.ready == 'true'
@@ -163,6 +209,33 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
+      - name: Build aispend enrichment service
+        run: |
+          set -euo pipefail
+          sam build \
+            --template-file aispend-backend/template.yaml \
+            --build-dir .aws-sam/aispend-build
+
+      - name: Package aispend enrichment service
+        if: steps.fantasy-backend.outputs.ready == 'true' && steps.aispend.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          sam package \
+            --template-file .aws-sam/aispend-build/template.yaml \
+            --s3-bucket "${SAM_ARTIFACT_BUCKET}" \
+            --s3-prefix "aispend" \
+            --output-template-file aispend-backend/packaged.yaml
+
+      - name: Deploy aispend enrichment service
+        if: steps.fantasy-backend.outputs.ready == 'true' && steps.aispend.outputs.ready == 'true'
+        run: |
+          sam deploy \
+            --template-file aispend-backend/packaged.yaml \
+            --stack-name "${AISPEND_STACK}" \
+            --parameter-overrides Environment=production \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
       - name: Configure fantasy data endpoints
         run: |
           set -euo pipefail
@@ -190,6 +263,21 @@ jobs:
             RESEARCH_ENDPOINT="${RESEARCH_ENDPOINT}" \
             node scripts/write-fantasy-config.js
 
+      - name: Configure aispend endpoint
+        run: |
+          set -euo pipefail
+          AISPEND_ENDPOINT=""
+          if [[ "${{ steps.aispend.outputs.ready }}" == "true" ]]; then
+            AISPEND_ENDPOINT="$(aws cloudformation describe-stacks \
+              --stack-name "${AISPEND_STACK}" \
+              --query "Stacks[0].Outputs[?OutputKey=='CompanyEndpoint'].OutputValue | [0]" \
+              --output text 2>/dev/null || true)"
+            if [[ "${AISPEND_ENDPOINT}" != https://* ]]; then
+              AISPEND_ENDPOINT=""
+            fi
+          fi
+          AISPEND_ENDPOINT="${AISPEND_ENDPOINT}" node scripts/write-aispend-config.js
+
       - name: Sync to S3
         run: |
           aws s3 sync . s3://${S3_BUCKET} \
@@ -208,6 +296,7 @@ jobs:
             --exclude "extensions/*" \
             --exclude "fantasy-backend/*" \
             --exclude "fantasy-insights/*" \
+            --exclude "aispend-backend/*" \
             --exclude "_deploy/*" \
             --exclude "scripts/*" \
             --exclude "permissions-policy.json" \
@@ -266,6 +355,7 @@ jobs:
           set_cache "resume/index.html"
           set_cache "admin/index.html"
           set_cache "sunset/index.html"
+          set_cache "aispend/index.html"
           set_cache "fantasy/index.html"
           set_cache "fantasy/football/index.html"
           set_cache "fantasy/connector/index.html"
@@ -274,6 +364,10 @@ jobs:
       - name: Disable caching for runtime configuration
         run: |
           aws s3 cp "s3://${S3_BUCKET}/fantasy/config.js" "s3://${S3_BUCKET}/fantasy/config.js" \
+            --metadata-directive REPLACE \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "application/javascript; charset=utf-8"
+          aws s3 cp "s3://${S3_BUCKET}/aispend/config.js" "s3://${S3_BUCKET}/aispend/config.js" \
             --metadata-directive REPLACE \
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "application/javascript; charset=utf-8"
@@ -302,6 +396,14 @@ jobs:
               --bucket "${S3_BUCKET}" \
               --key "${key}" \
               --body "fantasy/football/index.html" \
+              --cache-control "no-cache, no-store, must-revalidate" \
+              --content-type "text/html; charset=utf-8" >/dev/null
+          done
+          for key in "aispend" "aispend/"; do
+            aws s3api put-object \
+              --bucket "${S3_BUCKET}" \
+              --key "${key}" \
+              --body "aispend/index.html" \
               --cache-control "no-cache, no-store, must-revalidate" \
               --content-type "text/html; charset=utf-8" >/dev/null
           done

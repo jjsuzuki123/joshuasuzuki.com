@@ -1,0 +1,13 @@
+{
+  "name": "spendscope-aispend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cache-backed public-signal enrichment service for Spendscope",
+  "main": "api.js",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1088.0",
+    "@aws-sdk/client-secrets-manager": "3.1088.0",
+    "@aws-sdk/client-sqs": "3.1088.0"
+  }
+}

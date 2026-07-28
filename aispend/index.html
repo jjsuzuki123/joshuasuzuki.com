@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src https://*.execute-api.us-east-1.amazonaws.com"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Spendscope estimates a company's AI coding tool spend — Claude Code, Cursor, OpenAI Codex, GitHub Copilot, Devin — from public adoption signals."
+    />
+    <meta name="theme-color" content="#0b1016" />
+    <title>Spendscope | AI coding tool spend intelligence</title>
+
+    <link rel="stylesheet" href="/aispend/styles.css?v=1" />
+  </head>
+
+  <body>
+    <a class="skip-link" href="#report">Skip to report</a>
+
+    <div class="page-glow page-glow-one" aria-hidden="true"></div>
+    <div class="page-glow page-glow-two" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="/aispend/index.html" aria-label="Spendscope home">
+        <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <circle cx="18" cy="18" r="14"></circle>
+          <circle cx="18" cy="18" r="8"></circle>
+          <circle cx="18" cy="18" r="2.4"></circle>
+          <path d="M18 18 30 8"></path>
+        </svg>
+        <span>Spendscope</span>
+      </a>
+
+      <nav aria-label="Main navigation">
+        <a href="#report">Report</a>
+        <a href="#method">Method</a>
+        <a class="site-link" href="/">joshuasuzuki.com</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span aria-hidden="true"></span> Public-signal enrichment</p>
+          <h1 id="hero-title">How much does a company spend on <em>AI coding tools?</em></h1>
+          <p class="hero-intro">
+            Enter a company domain. Spendscope resolves its public GitHub footprint,
+            collects adoption evidence for Claude Code, Cursor, OpenAI Codex, GitHub
+            Copilot, and Devin, stores the readings, and models a monthly spend range.
+          </p>
+        </div>
+
+        <div class="search-panel">
+          <form id="lookup-form" class="lookup-form" role="search">
+            <label class="sr-only" for="domain-input">Company domain</label>
+            <div class="search-field">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="m16 16 4 4"></path>
+              </svg>
+              <input
+                id="domain-input"
+                name="domain"
+                type="text"
+                inputmode="url"
+                placeholder="Company domain, like vercel.com"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                enterkeyhint="search"
+                maxlength="253"
+                required
+              />
+            </div>
+            <button class="search-button" type="submit">
+              <span>Scan spend</span>
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 10h12M11 5l5 5-5 5"></path>
+              </svg>
+            </button>
+          </form>
+          <p class="search-hint">
+            First scan of a domain queues an enrichment pass (~30–60s). Readings are
+            cached, so repeat lookups are instant.
+          </p>
+        </div>
+      </section>
+
+      <section id="report" class="report" aria-live="polite">
+        <div id="status-banner" class="status-banner" hidden></div>
+        <div id="report-body" class="report-body" hidden></div>
+        <div id="empty-state" class="empty-state">
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="24" r="18"></circle>
+            <circle cx="24" cy="24" r="10"></circle>
+            <path d="M24 24 37 13"></path>
+            <circle cx="24" cy="24" r="2.5"></circle>
+          </svg>
+          <p>Scan a company domain to build its AI spend profile.</p>
+          <p class="empty-examples">
+            Try an engineering-heavy company with a public GitHub organization.
+          </p>
+        </div>
+      </section>
+
+      <section id="method" class="method" aria-labelledby="method-title">
+        <h2 id="method-title">How the estimate is modeled</h2>
+        <div class="method-grid">
+          <article>
+            <h3>1 · Resolve</h3>
+            <p>
+              The domain is matched to its public GitHub organization(s) by verified
+              website and email, then sized by public repositories and members.
+            </p>
+          </article>
+          <article>
+            <h3>2 · Enrich</h3>
+            <p>
+              A worker collects deterministic readings: CLAUDE.md and .cursor rules
+              files, commits co-authored by Claude or Cursor agents, pull requests
+              opened by Devin, Copilot, and Codex bots, plus cited web mentions.
+              Every reading is stored with its source.
+            </p>
+          </article>
+          <article>
+            <h3>3 · Score</h3>
+            <p>
+              ACES v1 turns readings into a per-vendor adoption score with a
+              saturating noisy-OR, estimates seats from developer headcount, and
+              prices them with blended list prices into a low / mid / high range.
+            </p>
+          </article>
+        </div>
+        <p class="method-note">
+          Estimates are modeled from public signals — never billing data. Private
+          repositories are invisible, so real usage is usually higher than what
+          public evidence shows.
+        </p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Spendscope · ACES v1 model · Built by <a href="/">Josh Suzuki</a></p>
+    </footer>
+
+    <script src="/aispend/config.js"></script>
+    <script src="/aispend/score-engine.js"></script>
+    <script src="/aispend/app.js"></script>
+  </body>
+</html>

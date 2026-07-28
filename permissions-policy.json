@@ -5,7 +5,10 @@
       "Sid": "RosterLabDescribeBootstrap",
       "Effect": "Allow",
       "Action": ["cloudformation:DescribeStacks"],
-      "Resource": "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-bootstrap/*"
+      "Resource": [
+        "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-bootstrap/*",
+        "arn:aws:cloudformation:us-east-1:545095759709:stack/aispend-bootstrap/*"
+      ]
     },
     {
       "Sid": "S3SyncToBucket",
@@ -29,7 +32,10 @@
       "Sid": "RosterLabArtifactObjects",
       "Effect": "Allow",
       "Action": ["s3:DeleteObject","s3:GetObject","s3:PutObject"],
-      "Resource": "arn:aws:s3:::rosterlab-deploy-artifacts-545095759709-us-east-1/rosterlab/*"
+      "Resource": [
+        "arn:aws:s3:::rosterlab-deploy-artifacts-545095759709-us-east-1/rosterlab/*",
+        "arn:aws:s3:::rosterlab-deploy-artifacts-545095759709-us-east-1/aispend/*"
+      ]
     },
     {
       "Sid": "CloudFrontInvalidate",
@@ -54,7 +60,8 @@
       ],
       "Resource": [
         "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-import-*/*",
-        "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-insights-*/*"
+        "arn:aws:cloudformation:us-east-1:545095759709:stack/rosterlab-fantasy-insights-*/*",
+        "arn:aws:cloudformation:us-east-1:545095759709:stack/aispend-*/*"
       ]
     },
     {
@@ -89,7 +96,8 @@
       ],
       "Resource": [
         "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-espn-import-*",
-        "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-fantasy-insights-*"
+        "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-fantasy-insights-*",
+        "arn:aws:lambda:us-east-1:545095759709:function:aispend-*"
       ]
     },
     {
@@ -103,7 +111,10 @@
       "Resource": "*",
       "Condition": {
         "ArnLike": {
-          "lambda:FunctionArn": "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-fantasy-insights-*"
+          "lambda:FunctionArn": [
+            "arn:aws:lambda:us-east-1:545095759709:function:rosterlab-fantasy-insights-*",
+            "arn:aws:lambda:us-east-1:545095759709:function:aispend-*"
+          ]
         }
       }
     },
@@ -141,7 +152,9 @@
       "Resource": [
         "arn:aws:iam::545095759709:role/rosterlab-espn-import-production",
         "arn:aws:iam::545095759709:role/rosterlab-fantasy-insights-production-api",
-        "arn:aws:iam::545095759709:role/rosterlab-fantasy-insights-production-worker"
+        "arn:aws:iam::545095759709:role/rosterlab-fantasy-insights-production-worker",
+        "arn:aws:iam::545095759709:role/aispend-production-api",
+        "arn:aws:iam::545095759709:role/aispend-production-worker"
       ],
       "Condition": {
         "StringEquals": {
@@ -153,7 +166,11 @@
       "Sid": "RosterLabDescribeFirecrawlSecret",
       "Effect": "Allow",
       "Action": ["secretsmanager:DescribeSecret"],
-      "Resource": "arn:aws:secretsmanager:us-east-1:545095759709:secret:rosterlab/firecrawl/production-*"
+      "Resource": [
+        "arn:aws:secretsmanager:us-east-1:545095759709:secret:rosterlab/firecrawl/production-*",
+        "arn:aws:secretsmanager:us-east-1:545095759709:secret:aispend/github/production-*",
+        "arn:aws:secretsmanager:us-east-1:545095759709:secret:aispend/firecrawl/production-*"
+      ]
     },
     {
       "Sid": "RosterLabLogGroupDeployment",
@@ -171,7 +188,9 @@
         "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/rosterlab-espn-import-*",
         "arn:aws:logs:us-east-1:545095759709:log-group:/aws/apigateway/rosterlab-espn-import-*",
         "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/rosterlab-fantasy-insights-*",
-        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/apigateway/rosterlab-fantasy-insights-*"
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/apigateway/rosterlab-fantasy-insights-*",
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/lambda/aispend-*",
+        "arn:aws:logs:us-east-1:545095759709:log-group:/aws/apigateway/aispend-*"
       ]
     },
     {
@@ -190,7 +209,10 @@
         "dynamodb:UpdateTable",
         "dynamodb:UpdateTimeToLive"
       ],
-      "Resource": "arn:aws:dynamodb:us-east-1:545095759709:table/rosterlab-fantasy-insights-*"
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:545095759709:table/rosterlab-fantasy-insights-*",
+        "arn:aws:dynamodb:us-east-1:545095759709:table/aispend-*"
+      ]
     },
     {
       "Sid": "RosterLabInsightsQueueDeployment",
@@ -205,7 +227,10 @@
         "sqs:TagQueue",
         "sqs:UntagQueue"
       ],
-      "Resource": "arn:aws:sqs:us-east-1:545095759709:rosterlab-fantasy-insights-*"
+      "Resource": [
+        "arn:aws:sqs:us-east-1:545095759709:rosterlab-fantasy-insights-*",
+        "arn:aws:sqs:us-east-1:545095759709:aispend-*"
+      ]
     },
     {
       "Sid": "RosterLabDescribeLogGroups",
@@ -237,7 +262,10 @@
         "cloudwatch:TagResource",
         "cloudwatch:UntagResource"
       ],
-      "Resource": "arn:aws:cloudwatch:us-east-1:545095759709:alarm:rosterlab-*"
+      "Resource": [
+        "arn:aws:cloudwatch:us-east-1:545095759709:alarm:rosterlab-*",
+        "arn:aws:cloudwatch:us-east-1:545095759709:alarm:aispend-*"
+      ]
     }
   ]
 }

@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: One-time administrator bootstrap for Spendscope backend deployments
+
+Parameters:
+  ApiRoleName:
+    Type: String
+    Default: aispend-production-api
+  WorkerRoleName:
+    Type: String
+    Default: aispend-production-worker
+  CompanyTableName:
+    Type: String
+    Default: aispend-production
+  EnrichQueueName:
+    Type: String
+    Default: aispend-production
+  GithubSecretName:
+    Type: String
+    Default: aispend/github/production
+  FirecrawlSecretName:
+    Type: String
+    Default: aispend/firecrawl/production
+
+Resources:
+  GithubTokenSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Ref GithubSecretName
+      Description: >-
+        Read-only GitHub token for Spendscope public-signal enrichment
+        (fine-grained PAT with public repository read access only)
+
+  FirecrawlApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Ref FirecrawlSecretName
+      Description: Optional Firecrawl API key for Spendscope web-mention research
+
+  ApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref ApiRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ServeSpendscopeLookups
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${CompanyTableName}-api:*
+              - Sid: UseCompanyTable
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CompanyTableName}
+              - Sid: QueueEnrichment
+                Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !Sub arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${EnrichQueueName}
+
+  WorkerFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref WorkerRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: EnrichSpendscopeCompanies
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${CompanyTableName}-worker:*
+              - Sid: UpdateCompanyTable
+                Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CompanyTableName}
+              - Sid: ConsumeEnrichQueue
+                Effect: Allow
+                Action:
+                  - sqs:ChangeMessageVisibility
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ReceiveMessage
+                Resource:
+                  - !Sub arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${EnrichQueueName}
+              - Sid: ReadEnrichmentSecrets
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref GithubTokenSecret
+                  - !Ref FirecrawlApiKeySecret
+
+Outputs:
+  ApiRuntimeRoleArn:
+    Value: !GetAtt ApiFunctionRole.Arn
+  WorkerRuntimeRoleArn:
+    Value: !GetAtt WorkerFunctionRole.Arn
+  GithubSecretName:
+    Value: !Ref GithubSecretName
+  GithubSecretArn:
+    Value: !Ref GithubTokenSecret
+  FirecrawlSecretName:
+    Value: !Ref FirecrawlSecretName
+  FirecrawlSecretArn:
+    Value: !Ref FirecrawlApiKeySecret
