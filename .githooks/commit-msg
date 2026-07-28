@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Secret-scanning commit-msg hook.
+#
+# Blocks a commit whose message contains the value of a configured secret.
+# See .githooks/pre-commit for the details of the `${!name}` bug this avoids:
+# secret names may contain spaces (e.g. "API Key") and are looked up via awk's
+# ENVIRON rather than indirect expansion so the hook never aborts. awk also
+# avoids `printenv -- "$1"`, whose GNU-only `--` breaks BSD/macOS printenv.
+set -euo pipefail
+
+msg_file="${1:-}"
+[ -n "$msg_file" ] && [ -f "$msg_file" ] || exit 0
+
+names_raw="${CLOUD_AGENT_INJECTED_SECRET_NAMES:-}"
+[ -n "$names_raw" ] || exit 0
+
+IFS=',' read -ra SECRET_NAMES <<< "$names_raw"
+
+get_secret_value() {
+    local raw
+    raw="$( awk -v n="$1" 'BEGIN { printf "%s", ENVIRON[n] }'; printf 'x')"
+    printf '%s' "${raw%x}"
+}
+
+found=0
+findings=""
+for name in "${SECRET_NAMES[@]}"; do
+    value="$(get_secret_value "$name")"
+    [ "${#value}" -ge 8 ] || continue
+    if grep -qaFi -e "$value" "$msg_file"; then
+        found=1
+        findings+=$'\n'"  Secret: ${name}"
+    fi
+done
+
+if [ "$found" -eq 1 ]; then
+    {
+        echo ""
+        echo "🔐 COMMIT BLOCKED: secret value detected in commit message:"
+        echo "$findings"
+        echo ""
+        echo "Rewrite the message without the secret value and retry."
+    } >&2
+    exit 1
+fi
+
+exit 0

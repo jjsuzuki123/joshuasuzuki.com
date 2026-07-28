@@ -6,3 +6,4 @@ node_modules/
 .aws-sam/
 fantasy-backend/packaged.yaml
 fantasy-insights/packaged.yaml
+*.canvas.data.json

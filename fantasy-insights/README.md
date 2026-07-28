@@ -93,8 +93,9 @@ field whenever importing a league. The code is sent only to the stateless import
 relay, is never sent to ESPN or Firecrawl, and is cleared from the form after
 the request. Treat it like a password and rotate the secret if it is exposed.
 
-Apply the updated `permissions-policy.json` to the
-`GitHubActionsDeployPersonalSite` role. The production workflow enables
+Update the IAM permissions policy on the `GitHubActionsDeployPersonalSite`
+role to cover the research resources. The policy is managed directly in IAM
+and intentionally not stored in this public repository. The production workflow enables
 Firecrawl when the bootstrap roles and current API-key secret are ready. To
 explicitly disable research, add this GitHub Actions repository variable:
 
