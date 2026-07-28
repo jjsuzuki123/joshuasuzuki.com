@@ -50,8 +50,9 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-Then apply the repository's updated `permissions-policy.json` to
-`GitHubActionsDeployPersonalSite`.
+Then update the IAM permissions policy on `GitHubActionsDeployPersonalSite` to
+cover the new stacks. The policy is managed directly in IAM and intentionally
+not stored in this public repository.
 
 ```sh
 sam build --template-file fantasy-backend/template.yaml
