@@ -458,10 +458,12 @@ async function handler(event) {
     const message = parseMessage(record);
     if (!message) continue;
     try {
+      const now =
+        typeof dependencies.now === "function" ? dependencies.now() : new Date();
       await researchPlayer(
         message.player,
         dependencies,
-        new Date(),
+        now,
         message.queueToken
       );
     } catch (_error) {

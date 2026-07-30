@@ -36,10 +36,7 @@ There is no `cookies`, `scripting`, history, or all-sites permission.
 From the repository root:
 
 ```sh
-npm test --prefix extensions/rosterlab-espn
-npm run check --prefix extensions/rosterlab-espn
-node scripts/fantasy-espn-client.test.js
-node scripts/fantasy-espn-connector.test.js
+./scripts/verify.sh
 scripts/package-rosterlab-extension.sh
 ```
 

@@ -649,6 +649,7 @@ async function run() {
   let savedResearch = null;
   let searchArguments = null;
   insightsWorker.setDependenciesForTest({
+    now: () => now,
     async acquireLease() {
       return true;
     },

@@ -113,9 +113,7 @@ secondary endpoint and both snapshots are merged by ESPN player ID.
 No Firecrawl key or live network request is needed:
 
 ```sh
-node scripts/fantasy-insights.test.js
-node scripts/fantasy-source-client.test.js
-node scripts/fantasy-trade-engine.test.js
+./scripts/verify.sh
 ```
 
 The tests use fixed article fixtures and mocked AWS/Firecrawl boundaries.

@@ -222,17 +222,11 @@ cited results arrive. See
 `fantasy-insights/README.md` for the source policy, daily
 credit cap, AWS secret setup, and deployment switch.
 
-Run the RosterLab tests from the repository root:
+Run verification from the repository root (RosterLab, sunset, admin syntax,
+and the ESPN connector):
 
 ```sh
-node scripts/fantasy-trade-engine.test.js
-node scripts/fantasy-espn-client.test.js
-node scripts/fantasy-espn-connector.test.js
-node scripts/fantasy-source-client.test.js
-node scripts/fantasy-insights.test.js
-node scripts/fantasy-private-import.test.js
-node scripts/fantasy-relay-client.test.js
-node --test scripts/fantasy-football-trade.test.js
-npm test --prefix extensions/rosterlab-espn
-npm run check --prefix extensions/rosterlab-espn
+./scripts/verify.sh
+# or
+npm test
 ```
