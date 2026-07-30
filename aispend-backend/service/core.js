@@ -388,6 +388,8 @@ function buildCompanyPayload({
       login: cleanText(org?.login, 60),
       name: cleanText(org?.name, 120),
       url: sanitizeCitationUrl(org?.url),
+      blog: cleanText(org?.blog, 200),
+      isVerified: org?.isVerified === true,
       publicRepos: Math.max(0, Math.round(Number(org?.publicRepos) || 0)),
       publicMembers: Math.max(0, Math.round(Number(org?.publicMembers) || 0)),
       followers: Math.max(0, Math.round(Number(org?.followers) || 0)),
@@ -408,6 +410,7 @@ function buildCompanyPayload({
         ? {
             engineers: Math.max(0, Math.round(Number(scale.engineers) || 0)) || null,
             employees: Math.max(0, Math.round(Number(scale.employees) || 0)) || null,
+            tier: cleanText(scale.tier, 40) || null,
             source: cleanText(scale.source || "directory", 40) || "directory",
           }
         : null,

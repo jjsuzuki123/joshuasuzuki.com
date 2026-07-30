@@ -768,7 +768,7 @@
       el("div", { class: "summary" }, [
         el("div", { class: "panel" }, [scoreDial(report.overall.score)]),
         el("div", { class: "panel" }, [
-          el("p", { class: "section-title", text: "Modeled annual ACV" }),
+          el("p", { class: "section-title", text: "Modeled annual AI spend" }),
           el("div", { class: "company-line" }, [
             el("strong", { text: (report.company && report.company.name) || report.domain }),
             el("span", { class: "dom", text: report.domain }),
@@ -805,6 +805,16 @@
             el("label", { for: "headcount-input", text: "Override" }),
             headcountInput,
           ]),
+          report.techForwardness
+            ? el("p", {
+                class: "hint",
+                text: `Tech-forwardness ${(report.techForwardness.value * 100).toFixed(0)}/100 · ${report.techForwardness.label}${
+                  report.economics
+                    ? ` · ~$${report.economics.perEngineerMonthly.toLocaleString("en-US")}/eng/mo blended`
+                    : ""
+                }`,
+              })
+            : null,
           el("div", { class: "chips" }, coverageChips(report.coverage || {})),
           el("p", {
             class: "hint",
@@ -885,13 +895,13 @@
       el("article", {}, [
         el("h3", { text: "3. Score locally" }),
         el("p", {
-          text: "ACES v2 maps public signals to an adoption tier, sizes the eng org, then prices enterprise ACV — not SMB seats from file counts.",
+          text: "ACES v3 is an expected-spend model: firmographic priors (org size, tech-forwardness, era adoption, blended $/engineer incl. tokens) set the baseline; public evidence tunes it up or down. Like Intricately, it always produces a dollar read.",
         }),
       ]),
       el("article", {}, [
-        el("h3", { text: "Honest floor" }),
+        el("h3", { text: "Honest bands" }),
         el("p", {
-          text: "Public signals only. Private repos, negotiated contracts, and API overage are invisible — treat this as directional.",
+          text: "It's a model, not invoices — wrong sometimes by design. Absence of public markers only mildly lowers the estimate (private repos are invisible); bands widen instead.",
         }),
       ]),
     ]);

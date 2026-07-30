@@ -221,6 +221,13 @@ assert.ok(suggestCompanies("stri").some((entry) => entry.domain === "stripe.com"
 assert.deepEqual(lookupCompanyScale("stripe.com"), {
   employees: 8500,
   engineers: 3200,
+  tier: "tech-forward",
+  source: "directory",
+});
+assert.deepEqual(lookupCompanyScale("wealthfront.com"), {
+  employees: 400,
+  engineers: 195,
+  tier: "tech-forward",
   source: "directory",
 });
 assert.equal(lookupCompanyScale("unknown-xyz.example"), null);
@@ -323,6 +330,7 @@ const scaledPayload = buildCompanyPayload({
 assert.deepEqual(scaledPayload.company.scale, {
   engineers: 3200,
   employees: 8500,
+  tier: "tech-forward",
   source: "directory",
 });
 assert.equal(payload.readings.length, 3); // invalid vendor reading dropped

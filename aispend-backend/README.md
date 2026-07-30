@@ -16,8 +16,10 @@ It is deliberately asynchronous:
 3. One worker collects public adoption signals (GitHub + optional Firecrawl
    tool/job mentions and headcount snippets) and stores the readings.
 4. The browser polls until readings land, then scores them locally with
-   ACES v2 (`aispend/score-engine.js`): org scale × adoption tier ×
-   enterprise ACV (not SMB seats from public file counts).
+   ACES v3 (`aispend/score-engine.js`): an Intricately-style expected-spend
+   model — firmographic priors (org scale, tech-forwardness tier, era
+   adoption, blended $/engineer) tuned by public evidence, so every sized
+   company gets a dollar estimate.
 
 Secrets exist only in AWS Secrets Manager. They are never written to the
 static site, the queue, DynamoDB, logs, or the repository.
