@@ -322,19 +322,15 @@ function normalizeHeadcountResults({ response, now = new Date() }) {
     const blob = `${row?.title || ""} ${row?.description || row?.snippet || ""}`;
     const extracted = extractHeadcountFromText(blob);
     if (!extracted || !url) continue;
-    const engineersApprox =
-      extracted.kind === "employees"
-        ? Math.round(extracted.value * 0.25)
-        : extracted.value;
+    const isEmployees = extracted.kind === "employees";
     readings.push({
       id: `web.headcount.${extracted.kind}`,
       vendor: "company",
-      metric:
-        extracted.kind === "employees"
-          ? "Reported employees (web)"
-          : "Reported engineers (web)",
-      value: engineersApprox,
-      unit: "engineers",
+      metric: isEmployees
+        ? "Reported employees (web)"
+        : "Reported engineers (web)",
+      value: extracted.value,
+      unit: isEmployees ? "employees" : "engineers",
       source: "web",
       url,
       detail: cleanText(blob, 240),
@@ -377,6 +373,7 @@ function buildCompanyPayload({
   webReadings,
   coverage,
   now,
+  scale,
 }) {
   const readings = [
     ...(Array.isArray(github?.readings) ? github.readings : []),
@@ -407,6 +404,13 @@ function buildCompanyPayload({
         orgs[0]?.login ||
         domain.split(".")[0],
       githubOrgs: orgs,
+      scale: scale && typeof scale === "object"
+        ? {
+            engineers: Math.max(0, Math.round(Number(scale.engineers) || 0)) || null,
+            employees: Math.max(0, Math.round(Number(scale.employees) || 0)) || null,
+            source: cleanText(scale.source || "directory", 40) || "directory",
+          }
+        : null,
     },
     coverage: {
       githubOrgResolved: coverage?.githubOrgResolved === true,

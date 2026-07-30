@@ -164,6 +164,7 @@
         name: entry.name || entry.domain,
         domain: entry.domain,
         mid: report?.totalMonthly?.mid || null,
+        annualMid: report?.totalAnnual?.mid || null,
         score: report?.overall?.score ?? null,
         at: Date.now(),
       },
@@ -535,9 +536,11 @@
                     el("span", { text: item.name || item.domain }),
                     el("span", {
                       class: "meta",
-                      text: item.mid
-                        ? `${formatUsd(item.mid)}/mo · ${item.domain}`
-                        : item.domain,
+                      text: item.annualMid
+                        ? `${formatUsd(item.annualMid)}/yr · ${item.domain}`
+                        : item.mid
+                          ? `${formatUsd(item.mid)}/mo · ${item.domain}`
+                          : item.domain,
                     }),
                   ]
                 )
@@ -630,7 +633,7 @@
               style: `background:${VENDOR_COLORS[item.id] || "#64748b"}`,
             }),
             document.createTextNode(
-              `${item.name} ${item.pct}% · ${formatUsd(item.monthly.mid)}/mo`
+              `${item.name} ${item.pct}% · ${formatUsd(item.annual?.mid || item.monthly.mid * 12)}/yr`
             ),
           ])
         )
@@ -645,7 +648,11 @@
       el("div", { class: "vendor-head" }, [
         el("div", {}, [
           el("strong", { text: vendor.name }),
-          el("small", { text: vendor.company }),
+          el("small", {
+            text: vendor.adoptionTierLabel
+              ? `${vendor.company} · ${vendor.adoptionTierLabel}`
+              : vendor.company,
+          }),
         ]),
         el("span", {
           class: `vscore${zero ? " zero" : ""}`,
@@ -661,14 +668,21 @@
         el("div", { class: "vmoney" }, [
           el("span", {
             class: "mid",
-            text: vendor.monthly.mid > 0 ? `${formatUsd(vendor.monthly.mid)}/mo` : "$0/mo",
+            text:
+              vendor.annual?.mid > 0
+                ? `${formatUsd(vendor.annual.mid)}/yr`
+                : vendor.monthly.mid > 0
+                  ? `${formatUsd(vendor.monthly.mid)}/mo`
+                  : "$0/yr",
           }),
           el("span", {
             class: "lohi",
             text:
-              vendor.monthly.mid > 0
-                ? `${formatUsd(vendor.monthly.low)} – ${formatUsd(vendor.monthly.high)}`
-                : "no priced signals",
+              vendor.annual?.mid > 0
+                ? `${formatUsd(vendor.monthly.mid)}/mo · ${formatUsd(vendor.annual.low)} – ${formatUsd(vendor.annual.high)}/yr`
+                : vendor.monthly.mid > 0
+                  ? `${formatUsd(vendor.monthly.low)} – ${formatUsd(vendor.monthly.high)}`
+                  : "no priced signals",
           }),
         ])
       );
@@ -754,23 +768,23 @@
       el("div", { class: "summary" }, [
         el("div", { class: "panel" }, [scoreDial(report.overall.score)]),
         el("div", { class: "panel" }, [
-          el("p", { class: "section-title", text: "Modeled monthly spend" }),
+          el("p", { class: "section-title", text: "Modeled annual ACV" }),
           el("div", { class: "company-line" }, [
             el("strong", { text: (report.company && report.company.name) || report.domain }),
             el("span", { class: "dom", text: report.domain }),
           ]),
           el("div", {
             class: "money",
-            text: report.totalMonthly
-              ? `${formatUsd(report.totalMonthly.mid)}/mo`
-              : "$0/mo",
+            text: report.totalAnnual
+              ? `${formatUsd(report.totalAnnual.mid)}/yr`
+              : "$0/yr",
           }),
           el("p", {
             class: "range",
-            text: report.totalMonthly
-              ? `${formatUsd(report.totalMonthly.low)} – ${formatUsd(
-                  report.totalMonthly.high
-                )} · ${formatUsd((report.totalMonthly.mid || 0) * 12)}/yr mid`
+            text: report.totalAnnual
+              ? `${formatUsd(report.totalAnnual.low)} – ${formatUsd(
+                  report.totalAnnual.high
+                )}/yr · ${formatUsd(report.totalMonthly.mid)}/mo mid`
               : "No spend-relevant public signals yet",
           }),
           mixBar(report),
@@ -871,7 +885,7 @@
       el("article", {}, [
         el("h3", { text: "3. Score locally" }),
         el("p", {
-          text: "ACES v1 uses noisy-OR adoption × blended list prices. Headcount overrides re-score instantly in the browser.",
+          text: "ACES v2 maps public signals to an adoption tier, sizes the eng org, then prices enterprise ACV — not SMB seats from file counts.",
         }),
       ]),
       el("article", {}, [

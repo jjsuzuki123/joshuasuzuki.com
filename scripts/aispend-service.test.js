@@ -19,6 +19,7 @@ const {
   sanitizeCitationUrl,
 } = require("../aispend-backend/service/core.js");
 const {
+  lookupCompanyScale,
   resolveCompanyQuery,
   suggestCompanies,
 } = require("../aispend-backend/service/directory.js");
@@ -168,6 +169,24 @@ assert.deepEqual(extractHeadcountFromText("2,400 employees worldwide"), {
   value: 2400,
   kind: "employees",
 });
+const employeeReadings = normalizeHeadcountResults({
+  response: {
+    success: true,
+    data: {
+      web: [
+        {
+          url: "https://acme.com/about",
+          title: "About Acme",
+          description: "2,400 employees worldwide building payments",
+        },
+      ],
+    },
+  },
+  now: NOW,
+});
+assert.equal(employeeReadings[0].id, "web.headcount.employees");
+assert.equal(employeeReadings[0].unit, "employees");
+assert.equal(employeeReadings[0].value, 2400);
 assert.equal(extractHeadcountFromText("no numbers here"), null);
 const headcountReadings = normalizeHeadcountResults({
   response: {
@@ -199,6 +218,12 @@ assert.equal(resolveCompanyQuery("Stripe").domain, "stripe.com");
 assert.equal(resolveCompanyQuery("stripe.com").source, "domain");
 assert.equal(resolveCompanyQuery("DefinitelyNotARealCoXYZ").source, "unresolved");
 assert.ok(suggestCompanies("stri").some((entry) => entry.domain === "stripe.com"));
+assert.deepEqual(lookupCompanyScale("stripe.com"), {
+  employees: 8500,
+  engineers: 3200,
+  source: "directory",
+});
+assert.equal(lookupCompanyScale("unknown-xyz.example"), null);
 assert.deepEqual(parseLookupRequest({ schemaVersion: 1, query: "Vercel" }).domain, "vercel.com");
 assert.equal(parseLookupRequest({ schemaVersion: 1, query: "nope-unknown-zz" }).unresolved, true);
 assert.ok(parseSuggestRequest({ query: "notion" }).suggestions.length > 0);
@@ -284,7 +309,22 @@ const payload = buildCompanyPayload({
 });
 assert.equal(payload.schemaVersion, 1);
 assert.equal(payload.company.name, "Acme Inc");
+assert.equal(payload.company.scale, null);
 assert.equal(payload.company.githubOrgs.length, 1);
+const scaledPayload = buildCompanyPayload({
+  domain: "stripe.com",
+  companyName: "Stripe",
+  github: githubFixture,
+  webReadings: [],
+  coverage: { ...githubFixture.coverage, webResearch: "disabled", notes: [] },
+  now: NOW,
+  scale: lookupCompanyScale("stripe.com"),
+});
+assert.deepEqual(scaledPayload.company.scale, {
+  engineers: 3200,
+  employees: 8500,
+  source: "directory",
+});
 assert.equal(payload.readings.length, 3); // invalid vendor reading dropped
 assert.equal(payload.coverage.webResearch, "ok");
 assert.deepEqual(parseCachedPayload(JSON.stringify(payload)), payload);
@@ -295,12 +335,14 @@ assert.equal(parseCachedPayload("not json"), null);
 const { scoreCompany } = require("../aispend/score-engine.js");
 const crossCheck = scoreCompany(payload, { now: NOW });
 assert.equal(crossCheck.domain, "acme.com");
-assert.equal(crossCheck.headcount.estimate, 120);
+assert.ok(crossCheck.headcount.estimate >= 400);
 assert.ok(
   crossCheck.vendors.find((vendor) => vendor.id === "claude-code").adoptionScore > 0
 );
 assert.ok(crossCheck.totalMonthly.mid > 0);
 assert.equal(crossCheck.confidence, 0.9);
+assert.equal(scoreCompany(scaledPayload, { now: NOW }).headcount.estimate, 3200);
+assert.equal(scoreCompany(scaledPayload, { now: NOW }).headcount.basis, "directory-scale");
 
 /* ---------- github collector ---------- */
 

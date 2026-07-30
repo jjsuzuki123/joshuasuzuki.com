@@ -9,6 +9,7 @@ const {
   normalizeWebResults,
   parseQueueMessage,
 } = require("./core.js");
+const { lookupCompanyScale } = require("./directory.js");
 const { collectGithubSignals } = require("./github.js");
 
 const FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search";
@@ -400,6 +401,7 @@ async function enrichCompany(
         notes: github.notes,
       },
       now,
+      scale: lookupCompanyScale(company.domain),
     });
     const hasSignal =
       payload.coverage.githubOrgResolved ||

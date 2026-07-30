@@ -215,6 +215,64 @@ function uniqueCompanies() {
 
 const DIRECTORY = uniqueCompanies();
 
+const SCALE_BY_DOMAIN = {
+  "stripe.com": { employees: 8500, engineers: 3200 },
+  "vercel.com": { employees: 700, engineers: 380 },
+  "linear.app": { employees: 100, engineers: 60 },
+  "notion.so": { employees: 800, engineers: 280 },
+  "figma.com": { employees: 1600, engineers: 600 },
+  "github.com": { employees: 4000, engineers: 1800 },
+  "gitlab.com": { employees: 2200, engineers: 900 },
+  "datadoghq.com": { employees: 6500, engineers: 2400 },
+  "snowflake.com": { employees: 7500, engineers: 2800 },
+  "databricks.com": { employees: 6000, engineers: 2600 },
+  "cloudflare.com": { employees: 4000, engineers: 1600 },
+  "twilio.com": { employees: 5500, engineers: 1800 },
+  "shopify.com": { employees: 11000, engineers: 3500 },
+  "coinbase.com": { employees: 4000, engineers: 1500 },
+  "openai.com": { employees: 3500, engineers: 1600 },
+  "anthropic.com": { employees: 2000, engineers: 900 },
+  "cursor.com": { employees: 200, engineers: 140 },
+  "anysphere.com": { employees: 200, engineers: 140 },
+  "google.com": { employees: 180000, engineers: 50000 },
+  "microsoft.com": { employees: 220000, engineers: 60000 },
+  "amazon.com": { employees: 1500000, engineers: 80000 },
+  "apple.com": { employees: 160000, engineers: 40000 },
+  "meta.com": { employees: 70000, engineers: 28000 },
+  "netflix.com": { employees: 13000, engineers: 3500 },
+  "uber.com": { employees: 30000, engineers: 8000 },
+  "airbnb.com": { employees: 7000, engineers: 2200 },
+  "spotify.com": { employees: 10000, engineers: 2800 },
+  "salesforce.com": { employees: 70000, engineers: 15000 },
+  "adobe.com": { employees: 30000, engineers: 8000 },
+  "nvidia.com": { employees: 30000, engineers: 12000 },
+  "plaid.com": { employees: 1500, engineers: 600 },
+  "brex.com": { employees: 1200, engineers: 450 },
+  "ramp.com": { employees: 1000, engineers: 400 },
+  "rippling.com": { employees: 2500, engineers: 800 },
+  "atlassian.com": { employees: 12000, engineers: 4000 },
+  "okta.com": { employees: 5500, engineers: 1800 },
+  "crowdstrike.com": { employees: 8000, engineers: 2500 },
+  "discord.com": { employees: 800, engineers: 400 },
+  "slack.com": { employees: 2500, engineers: 900 },
+  "dropbox.com": { employees: 2500, engineers: 900 },
+  "reddit.com": { employees: 2500, engineers: 900 },
+  "pinterest.com": { employees: 4000, engineers: 1400 },
+  "mongodb.com": { employees: 5000, engineers: 1800 },
+  "hashicorp.com": { employees: 2000, engineers: 800 },
+  "elastic.co": { employees: 3000, engineers: 1100 },
+  "doordash.com": { employees: 19000, engineers: 4500 },
+  "lyft.com": { employees: 4500, engineers: 1400 },
+  "paypal.com": { employees: 27000, engineers: 6000 },
+};
+
+function lookupCompanyScale(domain) {
+  const normalized = normalizeCompanyDomain(domain) || String(domain || "").toLowerCase();
+  const scale = SCALE_BY_DOMAIN[normalized];
+  if (!scale) return null;
+  return { ...scale, source: "directory" };
+}
+
 function normalizeQuery(value) {
   return cleanText(value, 200)
     .toLowerCase()
@@ -319,6 +377,8 @@ function resolveCompanyQuery(rawQuery) {
 
 module.exports = {
   DIRECTORY,
+  SCALE_BY_DOMAIN,
+  lookupCompanyScale,
   normalizeQuery,
   resolveCompanyQuery,
   slugifyCompanyName,

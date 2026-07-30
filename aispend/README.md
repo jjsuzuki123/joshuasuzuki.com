@@ -3,7 +3,7 @@
 Unlisted AI coding-tool spend intelligence in the spirit of Intricately.
 Enter a **company name** (or domain); the backend enriches public GitHub and
 web signals once, stores the readings in DynamoDB, and the browser scores
-them locally with ACES v1.
+them locally with ACES v2.
 
 The app lives at `/aispend/` with `noindex`, is not linked from the homepage,
 and can sit behind a shared access code (`AISPEND_ACCESS_CODE`). A vanity
@@ -12,22 +12,31 @@ distribution later — CORS already allows it.
 
 ## Model
 
-**ACES v1 — AI Coding Expenditure Signal** (`score-engine.js`)
+**ACES v2 — AI Coding Expenditure Signal** (`score-engine.js`)
 
-Per vendor, each stored reading feeds a saturating component, combined with
-a noisy-OR so corroborating evidence compounds. Spend is seats × blended
-list price (Devin is per concurrent agent). Headcount prefers web-reported
-engineer counts, then public GitHub members ×3, then repo count, and can be
-overridden in the UI without another API call.
+Public GitHub/web hits are an iceberg tip, not a seat census. v1's
+file-count × SMB list-price math produced nonsense like “$8k/mo at Stripe”
+while a single Cursor enterprise contract can be ~$2.5M/yr.
+
+v2:
+
+1. **Size the org** — curated directory scale, web employee/engineer
+   mentions, then aggressive GitHub expansion (public membership is a thin
+   slice at bigcos).
+2. **Tier adoption** from public signals (trace → company-wide). Markers and
+   job posts mean private-repo usage is assumed.
+3. **Price enterprise ACV** = eng × tier penetration × effective $/seat,
+   with annual contract floors for large orgs (Cursor calibrated to a
+   $2.5M Stripe-scale deal).
 
 The report includes an analyst **brief**: headline, thesis, vendor mix, and
-top evidence drivers.
+top evidence drivers. Headcount can be overridden in the UI.
 
 ## Honest limitations
 
-- Modeled from public signals — never billing data.
-- Public GitHub only: private-repo usage is invisible and usually larger.
-- Prices are blended list prices; negotiated contracts differ.
+- Modeled estimate — not invoices or leaked contracts.
+- Private-repo + API spend is inferred once a tool looks like an org standard.
+- Directory scale and ACV floors are coarse; override headcount when you know better.
 
 ## Local demo
 
