@@ -189,7 +189,7 @@
     "launchdarkly.com": { employees: 700, engineers: 280, tier: "dev-tools" },
     "statsig.com": { employees: 150, engineers: 80, tier: "dev-tools" },
     "retool.com": { employees: 400, engineers: 180, tier: "dev-tools" },
-    "supabase.com": { employees: 120, engineers: 70, tier: "dev-tools" },
+    "supabase.com": { employees: 400, engineers: 160, tier: "dev-tools" },
     "planetscale.com": { employees: 100, engineers: 55, tier: "dev-tools" },
     "neon.tech": { employees: 80, engineers: 45, tier: "dev-tools" },
     "temporal.io": { employees: 150, engineers: 80, tier: "dev-tools" },

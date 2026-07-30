@@ -264,6 +264,7 @@ const SCALE_BY_DOMAIN = {
   "reddit.com": { employees: 2500, engineers: 900, tier: "tech-forward" },
   "pinterest.com": { employees: 4000, engineers: 1400, tier: "tech-forward" },
   "mongodb.com": { employees: 5000, engineers: 1800, tier: "dev-tools" },
+  "supabase.com": { employees: 400, engineers: 160, tier: "dev-tools" },
   "hashicorp.com": { employees: 2000, engineers: 800, tier: "dev-tools" },
   "elastic.co": { employees: 3000, engineers: 1100, tier: "dev-tools" },
   "doordash.com": { employees: 19000, engineers: 4500, tier: "tech-forward" },
