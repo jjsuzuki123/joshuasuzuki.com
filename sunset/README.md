@@ -82,5 +82,7 @@ batched request. A 20-minute local cache (`afterglow:forecast:v3.1`) renders
 immediately on repeat visits.
 
 ```sh
+./scripts/verify.sh
+# or just the sunset suite:
 node scripts/sunset-score-engine.test.js
 ```

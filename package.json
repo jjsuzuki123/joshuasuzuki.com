@@ -1,0 +1,12 @@
+{
+  "name": "joshuasuzuki.com",
+  "private": true,
+  "description": "Personal site and RosterLab monorepo root scripts",
+  "scripts": {
+    "test": "bash scripts/verify.sh",
+    "verify": "bash scripts/verify.sh"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
