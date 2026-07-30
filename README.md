@@ -31,7 +31,16 @@ npm test
 
 GitHub Actions runs the same script on every pull request
 (`.github/workflows/ci.yml`). Production deploy is separate
-(`.github/workflows/deploy.yml`).
+(`.github/workflows/deploy.yml`) and only assumes the AWS role after
+verify + `sam validate` succeed.
+
+If deploy fails with `AssumeRoleWithWebIdentity`, apply
+`trust-policy.json` to IAM role `GitHubActionsDeployPersonalSite`. The
+`sub` claim must be `repo:joshsuzuki-ae/joshuasuzuki.com:ref:refs/heads/main`.
+
+Mark **CI / verify** as a required status check on `main` (Settings →
+Branches). The GitHub API from this environment cannot set branch
+protection.
 
 ## Architecture
 - Static site hosted on S3
