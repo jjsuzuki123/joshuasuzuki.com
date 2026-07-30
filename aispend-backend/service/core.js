@@ -107,8 +107,47 @@ function parseCompanyRequest(body) {
   if (!domain) return null;
   return {
     domain,
+    companyName: cleanText(body?.companyName, 120) || null,
     cacheKey: companyCacheKey(domain),
     refresh: body?.refresh === true,
+  };
+}
+
+function parseLookupRequest(body) {
+  if (Number(body?.schemaVersion) !== SCHEMA_VERSION) return null;
+  const { resolveCompanyQuery } = require("./directory.js");
+  const raw = body?.query || body?.domain || body?.company || "";
+  const resolved = resolveCompanyQuery(raw);
+  if (!resolved) return null;
+  if (!resolved.domain) {
+    return {
+      unresolved: true,
+      query: resolved.query,
+      companyName: resolved.companyName,
+      suggestions: resolved.suggestions || [],
+      refresh: body?.refresh === true,
+    };
+  }
+  return {
+    unresolved: false,
+    query: resolved.query,
+    domain: resolved.domain,
+    companyName:
+      cleanText(body?.companyName, 120) || resolved.companyName || null,
+    source: resolved.source,
+    suggestions: resolved.suggestions || [],
+    cacheKey: companyCacheKey(resolved.domain),
+    refresh: body?.refresh === true,
+  };
+}
+
+function parseSuggestRequest(body) {
+  const query = cleanText(body?.query || body?.q || "", 200);
+  if (!query) return null;
+  const { suggestCompanies } = require("./directory.js");
+  return {
+    query,
+    suggestions: suggestCompanies(query, 8),
   };
 }
 
@@ -129,7 +168,11 @@ function parseQueueMessage(record) {
     return null;
   }
   return {
-    company: { domain, cacheKey: companyCacheKey(domain) },
+    company: {
+      domain,
+      cacheKey: companyCacheKey(domain),
+      name: cleanText(body?.company?.name || body?.company?.companyName, 120),
+    },
     queueToken: String(body.queueToken),
   };
 }
@@ -191,11 +234,41 @@ function buildWebSearchRequest({ domain, companyName }) {
   return {
     query:
       `("${domain}"${quotedCompany}) ` +
-      '("Claude Code" OR "Anthropic" OR "Cursor AI" OR "GitHub Copilot" OR "Devin AI" OR "OpenAI Codex")',
+      '("Claude Code" OR "Anthropic" OR "Cursor AI" OR "GitHub Copilot" OR "Devin AI" OR "OpenAI Codex" OR "we\'re hiring")',
     limit: 5,
     tbs: "qdr:y",
     sources: [{ type: "web" }],
   };
+}
+
+function buildHeadcountSearchRequest({ domain, companyName }) {
+  const name = cleanText(companyName, 80).replace(/["\\]/g, "");
+  const subject = name && name.toLowerCase() !== domain ? `"${name}"` : `"${domain}"`;
+  return {
+    query: `${subject} (engineers OR "engineering team" OR "software engineers" OR employees) (hiring OR about OR careers)`,
+    limit: 5,
+    tbs: "qdr:y",
+    sources: [{ type: "web" }],
+  };
+}
+
+function extractHeadcountFromText(text) {
+  const haystack = cleanText(text, 2000);
+  if (!haystack) return null;
+  const patterns = [
+    { re: /(\d[\d,]{1,6})\+?\s*(?:software\s+)?engineers\b/i, kind: "engineers" },
+    { re: /(\d[\d,]{1,6})\+?\s*developers\b/i, kind: "developers" },
+    { re: /(\d[\d,]{1,6})\+?\s*engineering\s+(?:team|org|organization)\b/i, kind: "engineers" },
+    { re: /(\d[\d,]{1,6})\+?\s*employees\b/i, kind: "employees" },
+  ];
+  for (const pattern of patterns) {
+    const match = haystack.match(pattern.re);
+    if (!match) continue;
+    const value = Number(String(match[1]).replace(/,/g, ""));
+    if (!Number.isFinite(value) || value < 5 || value > 2_000_000) continue;
+    return { value, kind: pattern.kind };
+  }
+  return null;
 }
 
 function normalizeWebResults({ response, now = new Date() }) {
@@ -212,15 +285,19 @@ function normalizeWebResults({ response, now = new Date() }) {
     if (!url || seen.has(url)) continue;
     const title = cleanText(row?.title, 200);
     const description = cleanText(row?.description || row?.snippet, 400);
-    const vendors = classifyVendorMentions(`${title} ${description}`);
+    const blob = `${title} ${description}`;
+    const vendors = classifyVendorMentions(blob);
     if (vendors.length === 0) continue;
     seen.add(url);
+    const isJob = /\b(hiring|job|career|opening|role|we're hiring|join our)\b/i.test(blob);
     for (const vendor of vendors) {
       if (readings.length >= MAX_WEB_READINGS) break;
       readings.push({
-        id: `web.mention.${vendor}.${readings.length}`,
+        id: isJob
+          ? `web.jobs.${vendor}.${readings.length}`
+          : `web.mention.${vendor}.${readings.length}`,
         vendor,
-        metric: "Public web mention",
+        metric: isJob ? "Hiring / careers mention" : "Public web mention",
         value: 1,
         unit: "mention",
         source: "web",
@@ -229,6 +306,41 @@ function normalizeWebResults({ response, now = new Date() }) {
         observedAt: now.toISOString(),
       });
     }
+  }
+  return readings;
+}
+
+function normalizeHeadcountResults({ response, now = new Date() }) {
+  const rows = Array.isArray(response?.data?.web)
+    ? response.data.web
+    : Array.isArray(response?.data)
+      ? response.data
+      : [];
+  const readings = [];
+  for (const row of rows) {
+    const url = sanitizeCitationUrl(row?.url);
+    const blob = `${row?.title || ""} ${row?.description || row?.snippet || ""}`;
+    const extracted = extractHeadcountFromText(blob);
+    if (!extracted || !url) continue;
+    const engineersApprox =
+      extracted.kind === "employees"
+        ? Math.round(extracted.value * 0.25)
+        : extracted.value;
+    readings.push({
+      id: `web.headcount.${extracted.kind}`,
+      vendor: "company",
+      metric:
+        extracted.kind === "employees"
+          ? "Reported employees (web)"
+          : "Reported engineers (web)",
+      value: engineersApprox,
+      unit: "engineers",
+      source: "web",
+      url,
+      detail: cleanText(blob, 240),
+      observedAt: now.toISOString(),
+    });
+    break;
   }
   return readings;
 }
@@ -258,7 +370,14 @@ function normalizeReading(reading) {
   };
 }
 
-function buildCompanyPayload({ domain, github, webReadings, coverage, now }) {
+function buildCompanyPayload({
+  domain,
+  companyName,
+  github,
+  webReadings,
+  coverage,
+  now,
+}) {
   const readings = [
     ...(Array.isArray(github?.readings) ? github.readings : []),
     ...(Array.isArray(webReadings) ? webReadings : []),
@@ -282,7 +401,11 @@ function buildCompanyPayload({ domain, github, webReadings, coverage, now }) {
     domain,
     company: {
       domain,
-      name: orgs[0]?.name || orgs[0]?.login || domain.split(".")[0],
+      name:
+        cleanText(companyName, 120) ||
+        orgs[0]?.name ||
+        orgs[0]?.login ||
+        domain.split(".")[0],
       githubOrgs: orgs,
     },
     coverage: {
@@ -324,16 +447,21 @@ module.exports = {
   SCHEMA_VERSION,
   VENDORS,
   buildCompanyPayload,
+  buildHeadcountSearchRequest,
   buildWebSearchRequest,
   clamp,
   classifyVendorMentions,
   cleanText,
   companyCacheKey,
+  extractHeadcountFromText,
   normalizeCompanyDomain,
+  normalizeHeadcountResults,
   normalizeReading,
   normalizeWebResults,
   parseCachedPayload,
   parseCompanyRequest,
+  parseLookupRequest,
   parseQueueMessage,
+  parseSuggestRequest,
   sanitizeCitationUrl,
 };

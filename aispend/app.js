@@ -4,42 +4,61 @@
   const config = globalThis.SpendscopeConfig || {};
   const scoring = globalThis.SpendscopeScoring;
   const endpoint = String(config.apiEndpoint || "").trim();
+  const suggestEndpoint =
+    String(config.suggestEndpoint || "").trim() ||
+    endpoint.replace(/\/company\/?$/, "/suggest");
 
-  const POLL_INTERVAL_MS = 6000;
-  const MAX_POLLS = 20;
+  const POLL_INTERVAL_MS = 5500;
+  const MAX_POLLS = 22;
   const LOCAL_CACHE_TTL_MS = 10 * 60 * 1000;
   const SCHEMA_VERSION = 1;
+  const ACCESS_KEY = "aispend:access";
+  const RECENTS_KEY = "aispend:recents";
+  const VENDOR_COLORS = {
+    "claude-code": "#e8b86d",
+    cursor: "#34d399",
+    openai: "#7dd3fc",
+    "github-copilot": "#a78bfa",
+    devin: "#f472b6",
+  };
 
-  const form = document.getElementById("lookup-form");
-  const domainInput = document.getElementById("domain-input");
-  const submitButton = form ? form.querySelector(".search-button") : null;
-  const statusBanner = document.getElementById("status-banner");
-  const reportBody = document.getElementById("report-body");
-  const emptyState = document.getElementById("empty-state");
-
+  const root = document.getElementById("app");
   const state = {
+    view: "home",
+    query: "",
+    accessCode: readAccessCode(),
+    gateError: "",
+    suggestions: [],
+    suggestOpen: false,
+    activeSuggest: -1,
+    recents: readRecents(),
     domain: null,
+    companyName: null,
     snapshot: null,
     meta: null,
+    report: null,
     headcountOverride: null,
+    status: null,
     pollTimer: null,
     pollsLeft: 0,
     requestSeq: 0,
+    scanStep: 0,
+    scanLabel: "",
   };
 
-  /* ---------- Utilities ---------- */
+  /* ---------- DOM helpers ---------- */
 
   function el(tag, attrs, children) {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(attrs || {})) {
-      if (value === null || value === undefined) continue;
-      if (key === "text") {
-        node.textContent = String(value);
-      } else if (key === "class") {
-        node.className = String(value);
-      } else {
-        node.setAttribute(key, String(value));
-      }
+      if (value === null || value === undefined || value === false) continue;
+      if (key === "text") node.textContent = String(value);
+      else if (key === "class") node.className = String(value);
+      else if (key === "html") node.innerHTML = String(value);
+      else if (key.startsWith("on") && typeof value === "function") {
+        node.addEventListener(key.slice(2).toLowerCase(), value);
+      } else if (value === true) node.setAttribute(key, "");
+      else node.setAttribute(key, String(value));
     }
     for (const child of children || []) {
       if (child) node.appendChild(child);
@@ -58,27 +77,10 @@
     return node;
   }
 
-  function normalizeDomainInput(value) {
-    let raw = String(value || "").trim().toLowerCase();
-    if (!raw) return null;
-    if (/^[a-z][a-z0-9+.-]*:\/\//.test(raw)) {
-      try {
-        raw = new URL(raw).hostname;
-      } catch (_error) {
-        return null;
-      }
-    }
-    raw = raw.split("/")[0].split("?")[0].split("#")[0].replace(/^www\./, "");
-    if (
-      raw.length > 253 ||
-      !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(raw)
-    ) {
-      return null;
-    }
-    return raw;
-  }
-
   function formatUsd(value) {
+    if (scoring && typeof scoring.formatUsd === "function") {
+      return scoring.formatUsd(value);
+    }
     if (!Number.isFinite(value)) return "—";
     if (value >= 1_000_000) {
       return `$${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
@@ -108,10 +110,71 @@
       : null;
   }
 
-  /* ---------- Local cache ---------- */
+  function looksLikeDomain(value) {
+    const raw = String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .split("/")[0];
+    return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(
+      raw
+    );
+  }
+
+  /* ---------- persistence ---------- */
+
+  function readAccessCode() {
+    try {
+      return sessionStorage.getItem(ACCESS_KEY) || "";
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function writeAccessCode(value) {
+    try {
+      if (value) sessionStorage.setItem(ACCESS_KEY, value);
+      else sessionStorage.removeItem(ACCESS_KEY);
+    } catch (_error) {
+      // sessionStorage may be unavailable.
+    }
+  }
+
+  function readRecents() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed.slice(0, 8) : [];
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  function writeRecents(list) {
+    try {
+      localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 8)));
+    } catch (_error) {
+      // best-effort
+    }
+  }
+
+  function rememberRecent(entry, report) {
+    const next = [
+      {
+        name: entry.name || entry.domain,
+        domain: entry.domain,
+        mid: report?.totalMonthly?.mid || null,
+        score: report?.overall?.score ?? null,
+        at: Date.now(),
+      },
+      ...state.recents.filter((item) => item.domain !== entry.domain),
+    ].slice(0, 8);
+    state.recents = next;
+    writeRecents(next);
+  }
 
   function cacheKey(domain) {
-    return `aispend:lookup:v1:${domain}`;
+    return `aispend:lookup:v2:${domain}`;
   }
 
   function readLocalCache(domain) {
@@ -139,166 +202,471 @@
         JSON.stringify({ snapshot, meta, storedAt: Date.now() })
       );
     } catch (_error) {
-      // Storage may be unavailable; caching is best-effort.
-    }
-  }
-
-  /* ---------- Status banner ---------- */
-
-  function clearStatus() {
-    statusBanner.hidden = true;
-    statusBanner.replaceChildren();
-  }
-
-  function setStatus(kind, message, options) {
-    statusBanner.hidden = false;
-    statusBanner.dataset.kind = kind;
-    statusBanner.replaceChildren();
-    if (options && options.spinner) {
-      statusBanner.appendChild(el("span", { class: "spinner", "aria-hidden": "true" }));
-    }
-    statusBanner.appendChild(el("span", { text: message }));
-    if (options && options.action) {
-      const button = el("button", {
-        class: "text-button",
-        type: "button",
-        text: options.action.label,
-      });
-      button.addEventListener("click", options.action.onClick);
-      statusBanner.appendChild(el("span", { class: "status-actions" }, [button]));
+      // best-effort
     }
   }
 
   /* ---------- API ---------- */
 
-  async function apiLookup(domain, refresh) {
-    if (!endpoint) {
+  function authHeaders() {
+    const headers = { "Content-Type": "application/json" };
+    if (state.accessCode) headers["X-Spendscope-Key"] = state.accessCode;
+    return headers;
+  }
+
+  async function api(url, body) {
+    if (!url) {
       const error = new Error(
         "The Spendscope backend endpoint is not configured for this deployment."
       );
       error.code = "NOT_CONFIGURED";
       throw error;
     }
-    const response = await fetch(endpoint, {
+    const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        schemaVersion: SCHEMA_VERSION,
-        domain,
-        refresh: refresh === true,
-      }),
+      headers: authHeaders(),
+      body: JSON.stringify(body),
     });
-    let body = null;
+    let parsed = null;
     try {
-      body = await response.json();
+      parsed = await response.json();
     } catch (_error) {
-      body = null;
+      parsed = null;
+    }
+    if (response.status === 401 || (parsed && parsed.code === "ACCESS_REQUIRED")) {
+      const error = new Error("A valid access code is required.");
+      error.code = "ACCESS_REQUIRED";
+      throw error;
     }
     if (!response.ok) {
       const error = new Error(
-        (body && body.error) || `Lookup failed with status ${response.status}.`
+        (parsed && parsed.error) || `Request failed with status ${response.status}.`
       );
-      error.code = (body && body.code) || `HTTP_${response.status}`;
+      error.code = (parsed && parsed.code) || `HTTP_${response.status}`;
       throw error;
     }
-    return body;
+    return parsed;
   }
 
-  /* ---------- Rendering ---------- */
+  async function apiLookup(query, options) {
+    return api(endpoint, {
+      schemaVersion: SCHEMA_VERSION,
+      query,
+      companyName: options.companyName || undefined,
+      refresh: options.refresh === true,
+    });
+  }
 
-  function scoreDial(score) {
-    const radius = 66;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference * (1 - Math.max(0, Math.min(100, score)) / 100);
-    const svg = svgEl("svg", { viewBox: "0 0 150 150", role: "img", "aria-label": `AI adoption score ${score} out of 100` }, [
-      svgEl("circle", { class: "dial-track", cx: 75, cy: 75, r: radius }),
-      svgEl("circle", {
-        class: "dial-value",
-        cx: 75,
-        cy: 75,
-        r: radius,
-        "stroke-dasharray": circumference.toFixed(2),
-        "stroke-dashoffset": offset.toFixed(2),
-      }),
-    ]);
-    return el("div", { class: "score-dial" }, [
-      svg,
-      el("div", { class: "dial-number" }, [
-        el("strong", { text: String(score) }),
-        el("span", { text: "ACES score" }),
+  async function apiSuggest(query) {
+    if (!suggestEndpoint) return { suggestions: [] };
+    return api(suggestEndpoint, { query });
+  }
+
+  /* ---------- routing ---------- */
+
+  function syncUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("domain");
+    url.searchParams.delete("q");
+    url.searchParams.delete("company");
+    if (state.view === "method") {
+      url.searchParams.set("view", "method");
+    } else {
+      url.searchParams.delete("view");
+      if (state.domain) url.searchParams.set("q", state.domain);
+      else if (state.query) url.searchParams.set("q", state.query);
+    }
+    window.history.replaceState(null, "", url.toString());
+  }
+
+  function needsGate() {
+    return config.gated === true && !state.accessCode;
+  }
+
+  /* ---------- render shell ---------- */
+
+  function brandMark() {
+    return svgEl(
+      "svg",
+      { class: "brand-mark", viewBox: "0 0 24 24", "aria-hidden": "true" },
+      [
+        svgEl("path", { d: "M4 16V8l8-4 8 4v8l-8 4-8-4z" }),
+        svgEl("path", { d: "M12 8v8M8 10.5l8 3M16 10.5l-8 3" }),
+      ]
+    );
+  }
+
+  function renderTopbar() {
+    return el("header", { class: "topbar" }, [
+      el(
+        "a",
+        {
+          class: "brand",
+          href: "#",
+          onClick: (event) => {
+            event.preventDefault();
+            state.view = needsGate() ? "gate" : "home";
+            state.status = null;
+            stopPolling();
+            syncUrl();
+            render();
+          },
+        },
+        [
+          brandMark(),
+          el("span", {}, [
+            el("span", { text: "Spendscope" }),
+            el("small", { text: "Unlisted · AI spend intelligence" }),
+          ]),
+        ]
+      ),
+      el("nav", {}, [
+        el("span", { class: "unlisted", text: "noindex" }),
+        el("button", {
+          class: "ghost",
+          type: "button",
+          text: "Method",
+          onClick: () => {
+            state.view = "method";
+            syncUrl();
+            render();
+          },
+        }),
+        state.accessCode
+          ? el("button", {
+              class: "ghost",
+              type: "button",
+              text: "Lock",
+              onClick: () => {
+                state.accessCode = "";
+                writeAccessCode("");
+                state.view = config.gated === true ? "gate" : "home";
+                stopPolling();
+                render();
+              },
+            })
+          : null,
       ]),
     ]);
   }
 
-  function coverageChips(coverage) {
-    const chips = [
-      ["GitHub org", coverage.githubOrgResolved ? "true" : "false"],
-      ["Code search", coverage.codeSearch ? "true" : "false"],
-      ["Commit trails", coverage.commitSearch ? "true" : "false"],
-      ["Agent PRs", coverage.prSearch ? "true" : "false"],
-      [
-        "Web research",
-        coverage.webResearch === "ok"
-          ? "true"
-          : coverage.webResearch === "disabled"
-            ? "false"
-            : "warn",
-      ],
-    ];
-    return el(
-      "div",
-      { class: "chip-row" },
-      chips.map(([label, on]) => el("span", { class: "chip", "data-on": on, text: label }))
-    );
-  }
-
-  function moneyBlock(title, monthly, subtitle) {
-    const children = [el("h3", { text: title })];
-    if (monthly && monthly.mid > 0) {
-      children.push(el("p", { class: "big-money", text: `${formatUsd(monthly.mid)}/mo` }));
-      children.push(
-        el("p", {
-          class: "money-range",
-          text: `${formatUsd(monthly.low)} – ${formatUsd(monthly.high)} · ${formatUsd(monthly.mid * 12)}/yr mid`,
+  function statusNode() {
+    if (!state.status) return null;
+    const node = el("div", { class: `status ${state.status.kind || ""}` }, [
+      state.status.spinner
+        ? el("span", { class: "spinner", "aria-hidden": "true" })
+        : null,
+      el("span", { text: state.status.message }),
+    ]);
+    if (state.status.action) {
+      node.appendChild(
+        el("button", {
+          class: "ghost",
+          type: "button",
+          text: state.status.action.label,
+          onClick: state.status.action.onClick,
         })
       );
-    } else {
-      children.push(el("p", { class: "big-money", text: "$0/mo" }));
-      children.push(el("p", { class: "money-range", text: "No spend-relevant public signals yet" }));
     }
-    if (subtitle) children.push(el("p", { class: "subtle", text: subtitle }));
-    return children;
+    return node;
+  }
+
+  /* ---------- views ---------- */
+
+  function renderGate() {
+    return el("section", { class: "gate" }, [
+      el("p", { class: "kicker", text: "Unlisted" }),
+      el("h1", {}, [
+        document.createTextNode("Spendscope "),
+        el("em", { text: "access" }),
+      ]),
+      el("p", {
+        class: "lede",
+        text: "This product is not linked from the public site. Enter the shared access code to run company AI-spend reads.",
+      }),
+      el(
+        "form",
+        {
+          class: "panel search-wrap",
+          onSubmit: async (event) => {
+            event.preventDefault();
+            const input = event.target.querySelector("input");
+            const code = String(input.value || "").trim();
+            if (!code) {
+              state.gateError = "Enter the access code.";
+              render();
+              return;
+            }
+            state.accessCode = code;
+            writeAccessCode(code);
+            state.gateError = "";
+            try {
+              await apiSuggest("stripe");
+              state.view = "home";
+              render();
+            } catch (error) {
+              if (error.code === "ACCESS_REQUIRED") {
+                state.accessCode = "";
+                writeAccessCode("");
+                state.gateError = "That code was not accepted.";
+              } else if (error.code === "NOT_CONFIGURED") {
+                state.view = "home";
+              } else {
+                state.view = "home";
+              }
+              render();
+            }
+          },
+        },
+        [
+          el("input", {
+            type: "password",
+            name: "access",
+            autocomplete: "current-password",
+            placeholder: "Access code",
+            "aria-label": "Access code",
+          }),
+          el("button", { class: "primary", type: "submit", text: "Unlock" }),
+          state.gateError
+            ? el("p", { class: "hint", text: state.gateError })
+            : el("p", {
+                class: "hint",
+                text: "Ask Josh for the code. Nothing here is indexed.",
+              }),
+        ]
+      ),
+    ]);
+  }
+
+  function renderHome() {
+    return el("section", { class: "home" }, [
+      el("p", { class: "kicker", text: "AI coding spend" }),
+      el("h1", {}, [
+        document.createTextNode("How much does "),
+        el("em", { text: "this company" }),
+        document.createTextNode(" spend on Claude, Cursor, and the rest?"),
+      ]),
+      el("p", {
+        class: "lede",
+        text: "Type a company name. Spendscope resolves the domain, enriches public GitHub and web signals if needed, and returns a modeled Intricately-style read — stored so the next lookup is instant.",
+      }),
+      statusNode(),
+      el("div", { class: "panel search-wrap" }, [
+        el(
+          "form",
+          {
+            class: "search-row",
+            autocomplete: "off",
+            onSubmit: (event) => {
+              event.preventDefault();
+              const value = String(
+                event.target.querySelector("input").value || ""
+              ).trim();
+              startLookup(value);
+            },
+          },
+          [
+            el("input", {
+              id: "company-input",
+              type: "search",
+              name: "company",
+              placeholder: "Stripe, Vercel, Notion… or stripe.com",
+              value: state.query,
+              "aria-autocomplete": "list",
+              "aria-controls": "suggest-list",
+              onInput: (event) => onQueryInput(event.target.value),
+              onKeydown: onQueryKeydown,
+            }),
+            el("button", { class: "primary", type: "submit", text: "Scan" }),
+          ]
+        ),
+        state.suggestOpen && state.suggestions.length
+          ? el(
+              "ul",
+              { class: "suggest", id: "suggest-list", role: "listbox" },
+              state.suggestions.map((item, index) =>
+                el("li", { role: "presentation" }, [
+                  el(
+                    "button",
+                    {
+                      type: "button",
+                      role: "option",
+                      "aria-selected": index === state.activeSuggest,
+                      onClick: () => startLookup(item.domain, item),
+                    },
+                    [
+                      el("span", { text: item.name }),
+                      el("span", { class: "dom", text: item.domain }),
+                    ]
+                  ),
+                ])
+              )
+            )
+          : null,
+        el("p", {
+          class: "hint",
+          text: "Public signals only. Private-repo usage is invisible and usually larger.",
+        }),
+        el("div", { class: "examples" }, [
+          ...["Stripe", "Vercel", "Linear", "Datadog", "Notion"].map((name) =>
+            el("button", {
+              class: "chip-btn",
+              type: "button",
+              text: name,
+              onClick: () => startLookup(name),
+            })
+          ),
+        ]),
+      ]),
+      state.recents.length
+        ? el("div", { class: "recents" }, [
+            el("h2", { text: "Recent reads" }),
+            el(
+              "div",
+              { class: "recent-list" },
+              state.recents.map((item) =>
+                el(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => startLookup(item.domain, item),
+                  },
+                  [
+                    el("span", { text: item.name || item.domain }),
+                    el("span", {
+                      class: "meta",
+                      text: item.mid
+                        ? `${formatUsd(item.mid)}/mo · ${item.domain}`
+                        : item.domain,
+                    }),
+                  ]
+                )
+              )
+            ),
+          ])
+        : null,
+    ]);
+  }
+
+  function renderScan() {
+    const steps = [
+      "Resolve company + domain",
+      "Match public GitHub org",
+      "Mine repo markers & agent trails",
+      "Search jobs + engineering web",
+      "Score ACES + write the brief",
+    ];
+    return el("section", { class: "scan" }, [
+      el("p", { class: "kicker", text: state.companyName || state.domain || "Scanning" }),
+      el("h1", {}, [
+        document.createTextNode("Collecting public signals for "),
+        el("em", { text: state.companyName || state.domain || "this company" }),
+      ]),
+      el("p", {
+        class: "lede",
+        text: state.scanLabel || "First scan takes about a minute. Repeat lookups hit the cache.",
+      }),
+      el(
+        "ol",
+        {},
+        steps.map((label, index) =>
+          el("li", {
+            "data-state":
+              index < state.scanStep ? "done" : index === state.scanStep ? "active" : "todo",
+            text: label,
+          })
+        )
+      ),
+      statusNode(),
+    ]);
+  }
+
+  function scoreDial(score) {
+    const radius = 58;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference * (1 - Math.max(0, Math.min(100, score)) / 100);
+    return el("div", { class: "dial-wrap" }, [
+      el("div", { class: "dial" }, [
+        svgEl("svg", { viewBox: "0 0 140 140", "aria-hidden": "true" }, [
+          svgEl("circle", { class: "track", cx: "70", cy: "70", r: String(radius) }),
+          svgEl("circle", {
+            class: "value",
+            cx: "70",
+            cy: "70",
+            r: String(radius),
+            "stroke-dasharray": circumference.toFixed(2),
+            "stroke-dashoffset": offset.toFixed(2),
+          }),
+        ]),
+        el("div", { class: "num" }, [
+          el("strong", { text: String(score) }),
+          el("span", { text: "ACES" }),
+        ]),
+      ]),
+      el("div", { class: "tier", text: state.report.overall.tier }),
+    ]);
+  }
+
+  function mixBar(report) {
+    const mix = report.brief?.mix || [];
+    if (!mix.length || !report.totalMonthly?.mid) return null;
+    return el("div", {}, [
+      el(
+        "div",
+        { class: "mix", "aria-hidden": "true" },
+        mix.map((item) => {
+          const span = el("span");
+          span.style.width = `${Math.max(item.pct, 2)}%`;
+          span.style.background = VENDOR_COLORS[item.id] || "#64748b";
+          return span;
+        })
+      ),
+      el(
+        "div",
+        { class: "mix-legend" },
+        mix.map((item) =>
+          el("span", {}, [
+            el("i", {
+              style: `background:${VENDOR_COLORS[item.id] || "#64748b"}`,
+            }),
+            document.createTextNode(
+              `${item.name} ${item.pct}% · ${formatUsd(item.monthly.mid)}/mo`
+            ),
+          ])
+        )
+      ),
+    ]);
   }
 
   function vendorCard(vendor) {
     const zero = vendor.adoptionScore === 0;
-    const card = el("article", { class: "panel vendor-card" });
+    const card = el("article", { class: "panel vendor" });
     card.appendChild(
       el("div", { class: "vendor-head" }, [
-        el("div", { class: "vendor-name" }, [
+        el("div", {}, [
           el("strong", { text: vendor.name }),
-          el("span", { text: vendor.company }),
+          el("small", { text: vendor.company }),
         ]),
         el("span", {
-          class: "vendor-score",
-          "data-zero": zero ? "true" : "false",
+          class: `vscore${zero ? " zero" : ""}`,
           text: zero ? "—" : String(vendor.adoptionScore),
         }),
       ])
     );
     const fill = el("span");
     fill.style.width = `${vendor.adoptionScore}%`;
-    card.appendChild(el("div", { class: "adoption-bar", "aria-hidden": "true" }, [fill]));
-
+    card.appendChild(el("div", { class: "bar", "aria-hidden": "true" }, [fill]));
     if (vendor.monthly) {
-      const mid = vendor.monthly.mid;
       card.appendChild(
-        el("div", { class: "vendor-money" }, [
-          el("span", { class: "mid", text: mid > 0 ? `${formatUsd(mid)}/mo` : "$0/mo" }),
+        el("div", { class: "vmoney" }, [
           el("span", {
-            class: "range",
+            class: "mid",
+            text: vendor.monthly.mid > 0 ? `${formatUsd(vendor.monthly.mid)}/mo` : "$0/mo",
+          }),
+          el("span", {
+            class: "lohi",
             text:
-              mid > 0
+              vendor.monthly.mid > 0
                 ? `${formatUsd(vendor.monthly.low)} – ${formatUsd(vendor.monthly.high)}`
                 : "no priced signals",
           }),
@@ -313,73 +681,50 @@
         : vendor.seats !== null
           ? `${formatNumber(vendor.seats)} est. seats · ${vendor.pricingBasis}`
           : vendor.pricingBasis;
-    card.appendChild(el("p", { class: "vendor-meta", text: sizing }));
+    card.appendChild(el("p", { class: "vmeta", text: sizing }));
     for (const note of vendor.notes || []) {
-      card.appendChild(el("p", { class: "vendor-note", text: note }));
+      card.appendChild(el("p", { class: "vnote", text: note }));
     }
-
     const withValues = (vendor.evidence || []).filter((item) => item.value > 0);
-    const zeros = (vendor.evidence || []).filter((item) => !(item.value > 0));
-    if (vendor.evidence && vendor.evidence.length > 0) {
-      const list = el(
-        "ul",
-        {},
-        [...withValues, ...zeros].slice(0, 8).map((item) => {
-          const url = safeHttpsUrl(item.url);
-          const label = item.metric || item.detail || item.id;
-          const labelNode = url
-            ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: label })
-            : el("span", { text: label });
-          return el("li", { "data-zero": item.value > 0 ? "false" : "true" }, [
-            labelNode,
-            el("span", { class: "evidence-value", text: formatNumber(item.value) }),
-          ]);
-        })
-      );
+    if (vendor.evidence && vendor.evidence.length) {
       card.appendChild(
-        el("details", { class: "evidence" }, [
-          el("summary", { text: `Evidence (${withValues.length} active signals)` }),
-          list,
+        el("details", { class: "ev" }, [
+          el("summary", { text: `Evidence (${withValues.length} active)` }),
+          el(
+            "ul",
+            {},
+            vendor.evidence.slice(0, 8).map((item) => {
+              const url = safeHttpsUrl(item.url);
+              const label = item.metric || item.detail || item.id;
+              return el("li", {}, [
+                url
+                  ? el("a", {
+                      href: url,
+                      target: "_blank",
+                      rel: "noopener noreferrer",
+                      text: label,
+                    })
+                  : el("span", { text: label }),
+                el("span", { class: "val", text: formatNumber(item.value) }),
+              ]);
+            })
+          ),
         ])
       );
     }
     return card;
   }
 
-  function render() {
-    if (!state.snapshot || !scoring) return;
-    const report = scoring.scoreCompany(state.snapshot, {
-      headcountOverride: state.headcountOverride,
-    });
-
-    emptyState.hidden = true;
-    reportBody.hidden = false;
-    reportBody.replaceChildren();
-
+  function renderReport() {
+    const report = state.report;
+    if (!report) return el("section", { class: "stage" });
     const orgs = (report.company && report.company.githubOrgs) || [];
     const orgText =
       orgs.length > 0
         ? `GitHub: ${orgs.map((org) => `@${org.login}`).join(", ")} · ${formatNumber(
             orgs.reduce((sum, org) => sum + (org.publicRepos || 0), 0)
           )} public repos`
-        : "No public GitHub organization matched this domain.";
-
-    const companyPanel = el("div", { class: "panel" }, [
-      el("h2", { text: "Estimated AI coding spend" }),
-      el("div", { class: "company-line" }, [
-        el("strong", { text: (report.company && report.company.name) || report.domain }),
-        el("span", { class: "domain", text: report.domain }),
-      ]),
-      ...moneyBlock(
-        "",
-        report.totalMonthly,
-        report.totalMonthly && !report.totalMonthly.complete
-          ? "Partial total — some vendors need a headcount to price."
-          : null
-      ).slice(1),
-      el("p", { class: "subtle", text: orgText }),
-    ]);
-
+        : "No public GitHub organization matched this company.";
     const headcountInput = el("input", {
       id: "headcount-input",
       type: "number",
@@ -387,81 +732,248 @@
       max: "500000",
       step: "1",
       value: state.headcountOverride || "",
-      placeholder: report.headcount.estimate ? String(report.headcount.estimate) : "e.g. 120",
+      placeholder: report.headcount.estimate
+        ? String(report.headcount.estimate)
+        : "e.g. 120",
     });
     headcountInput.addEventListener("input", () => {
       const value = Number(headcountInput.value);
-      state.headcountOverride = Number.isFinite(value) && value > 0 ? value : null;
-      const active = document.activeElement === headcountInput;
-      const cursorValue = headcountInput.value;
+      state.headcountOverride =
+        Number.isFinite(value) && value > 0 ? value : null;
+      const cursor = headcountInput.value;
+      recompute();
       render();
-      if (active) {
-        const nextInput = document.getElementById("headcount-input");
-        if (nextInput) {
-          nextInput.value = cursorValue;
-          nextInput.focus();
-        }
+      const next = document.getElementById("headcount-input");
+      if (next) {
+        next.value = cursor;
+        next.focus();
       }
     });
-
-    const profilePanel = el("div", { class: "panel" }, [
-      el("h2", { text: "Model inputs" }),
-      el("p", {
-        class: "big-money",
-        text: report.headcount.estimate ? `${formatNumber(report.headcount.estimate)} devs` : "? devs",
-      }),
-      el("p", { class: "subtle", text: report.headcount.description }),
-      el("div", { class: "headcount-row" }, [
-        el("label", { for: "headcount-input", text: "Override headcount" }),
-        headcountInput,
-      ]),
-      coverageChips(report.coverage || {}),
-      el("p", {
-        class: "subtle",
-        text: `Model confidence ${(report.confidence * 100).toFixed(0)}%`,
-      }),
-    ]);
-
-    reportBody.appendChild(
-      el("div", { class: "summary-grid" }, [
-        el("div", { class: "panel score-panel" }, [
-          scoreDial(report.overall.score),
-          el("span", { class: "score-tier", text: report.overall.tier }),
+    return el("section", {}, [
+      statusNode(),
+      el("div", { class: "summary" }, [
+        el("div", { class: "panel" }, [scoreDial(report.overall.score)]),
+        el("div", { class: "panel" }, [
+          el("p", { class: "section-title", text: "Modeled monthly spend" }),
+          el("div", { class: "company-line" }, [
+            el("strong", { text: (report.company && report.company.name) || report.domain }),
+            el("span", { class: "dom", text: report.domain }),
+          ]),
+          el("div", {
+            class: "money",
+            text: report.totalMonthly
+              ? `${formatUsd(report.totalMonthly.mid)}/mo`
+              : "$0/mo",
+          }),
+          el("p", {
+            class: "range",
+            text: report.totalMonthly
+              ? `${formatUsd(report.totalMonthly.low)} – ${formatUsd(
+                  report.totalMonthly.high
+                )} · ${formatUsd((report.totalMonthly.mid || 0) * 12)}/yr mid`
+              : "No spend-relevant public signals yet",
+          }),
+          mixBar(report),
+          el("p", { class: "thesis", text: report.brief?.headline || "" }),
+          el("p", { class: "thesis", text: report.brief?.thesis || "" }),
         ]),
-        companyPanel,
-        profilePanel,
-      ])
-    );
-
-    reportBody.appendChild(
-      el("div", { class: "vendor-grid" }, report.vendors.map(vendorCard))
-    );
-
-    reportBody.appendChild(
+        el("div", { class: "panel" }, [
+          el("p", { class: "section-title", text: "Model inputs" }),
+          el("div", {
+            class: "money",
+            text: report.headcount.estimate
+              ? `${formatNumber(report.headcount.estimate)}`
+              : "?",
+          }),
+          el("p", { class: "range", text: "engineers" }),
+          el("p", { class: "thesis", text: report.headcount.description }),
+          el("div", { class: "headcount" }, [
+            el("label", { for: "headcount-input", text: "Override" }),
+            headcountInput,
+          ]),
+          el("div", { class: "chips" }, coverageChips(report.coverage || {})),
+          el("p", {
+            class: "hint",
+            text: `Confidence ${report.brief?.confidenceLabel || "—"} · ${(
+              report.confidence * 100
+            ).toFixed(0)}%`,
+          }),
+          el("p", { class: "hint", text: orgText }),
+        ]),
+      ]),
+      report.brief?.drivers?.length
+        ? el("div", { class: "panel", style: "margin-bottom:14px" }, [
+            el("p", { class: "section-title", text: "What drives the read" }),
+            el(
+              "ul",
+              { class: "caveats", style: "margin:0" },
+              report.brief.drivers.map((line) => el("li", { text: line }))
+            ),
+          ])
+        : null,
+      el("div", { class: "vendors" }, report.vendors.map(vendorCard)),
       el("div", { class: "caveats" }, [
-        el("strong", { text: "Read this like an analyst:" }),
-        el("ul", {}, report.caveats.map((caveat) => el("li", { text: caveat }))),
-      ])
-    );
-
-    const refreshButton = el("button", {
-      class: "refresh-button",
-      type: "button",
-      text: "Refresh readings",
-    });
-    refreshButton.addEventListener("click", () => lookup(state.domain, { refresh: true }));
-    const collectedText = relativeTime(report.collectedAt);
-    reportBody.appendChild(
-      el("div", { class: "report-footer" }, [
+        el("strong", { text: "Read this like an analyst" }),
+        el(
+          "ul",
+          {},
+          report.caveats.map((caveat) => el("li", { text: caveat }))
+        ),
+      ]),
+      el("div", { class: "foot" }, [
         el("span", {
-          text: `Readings collected ${collectedText || "recently"} · ${report.model.id} v${report.model.version}`,
+          text: `Readings ${relativeTime(report.collectedAt) || "recently"} · ${
+            report.model.id
+          } v${report.model.version}`,
         }),
-        refreshButton,
-      ])
+        el("button", {
+          class: "ghost",
+          type: "button",
+          text: "Refresh readings",
+          onClick: () =>
+            startLookup(state.domain, {
+              name: state.companyName,
+              domain: state.domain,
+              refresh: true,
+            }),
+        }),
+      ]),
+    ]);
+  }
+
+  function coverageChips(coverage) {
+    const chips = [
+      ["GitHub org", coverage.githubOrgResolved],
+      ["Code search", coverage.codeSearch],
+      ["Commit trails", coverage.commitSearch],
+      ["Agent PRs", coverage.prSearch],
+      ["Web research", coverage.webResearch === "ok"],
+    ];
+    return chips.map(([label, on]) =>
+      el("span", { class: `chip${on ? " on" : ""}`, text: label })
     );
   }
 
-  /* ---------- Lookup + polling ---------- */
+  function renderMethod() {
+    return el("section", { class: "method", style: "margin-top:0" }, [
+      el("article", {}, [
+        el("h3", { text: "1. Resolve" }),
+        el("p", {
+          text: "Company names hit a curated directory, then a domain. Unknown names can still scan if you paste the website.",
+        }),
+      ]),
+      el("article", {}, [
+        el("h3", { text: "2. Enrich once" }),
+        el("p", {
+          text: "Public GitHub markers, commit trailers, agent PRs, plus Firecrawl search for jobs/blogs. Stored in DynamoDB.",
+        }),
+      ]),
+      el("article", {}, [
+        el("h3", { text: "3. Score locally" }),
+        el("p", {
+          text: "ACES v1 uses noisy-OR adoption × blended list prices. Headcount overrides re-score instantly in the browser.",
+        }),
+      ]),
+      el("article", {}, [
+        el("h3", { text: "Honest floor" }),
+        el("p", {
+          text: "Public signals only. Private repos, negotiated contracts, and API overage are invisible — treat this as directional.",
+        }),
+      ]),
+    ]);
+  }
+
+  function render() {
+    if (!root) return;
+    root.replaceChildren();
+    root.appendChild(renderTopbar());
+    const stage = el("main", { class: "stage", id: "app-main" });
+    if (state.view === "gate") stage.appendChild(renderGate());
+    else if (state.view === "scan") stage.appendChild(renderScan());
+    else if (state.view === "report") stage.appendChild(renderReport());
+    else if (state.view === "method") stage.appendChild(renderMethod());
+    else stage.appendChild(renderHome());
+    root.appendChild(stage);
+  }
+
+  /* ---------- lookup flow ---------- */
+
+  let suggestTimer = null;
+  async function onQueryInput(value) {
+    state.query = value;
+    state.activeSuggest = -1;
+    clearTimeout(suggestTimer);
+    if (!value.trim()) {
+      state.suggestions = [];
+      state.suggestOpen = false;
+      render();
+      return;
+    }
+    suggestTimer = setTimeout(async () => {
+      try {
+        const result = await apiSuggest(value.trim());
+        state.suggestions = result.suggestions || [];
+        state.suggestOpen = state.suggestions.length > 0;
+      } catch (error) {
+        if (error.code === "ACCESS_REQUIRED") {
+          state.view = "gate";
+          state.gateError = "Access code required.";
+        }
+        state.suggestions = [];
+        state.suggestOpen = false;
+      }
+      if (state.view === "home") {
+        render();
+        const input = document.getElementById("company-input");
+        if (input) {
+          input.focus();
+          input.value = state.query;
+          const end = input.value.length;
+          input.setSelectionRange(end, end);
+        }
+      }
+    }, 180);
+  }
+
+  function onQueryKeydown(event) {
+    if (!state.suggestOpen || !state.suggestions.length) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      state.activeSuggest = Math.min(
+        state.suggestions.length - 1,
+        state.activeSuggest + 1
+      );
+      render();
+      const input = document.getElementById("company-input");
+      if (input) {
+        input.focus();
+        input.value = state.query;
+      }
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      state.activeSuggest = Math.max(-1, state.activeSuggest - 1);
+      render();
+      const input = document.getElementById("company-input");
+      if (input) {
+        input.focus();
+        input.value = state.query;
+      }
+    } else if (event.key === "Enter" && state.activeSuggest >= 0) {
+      event.preventDefault();
+      const item = state.suggestions[state.activeSuggest];
+      startLookup(item.domain, item);
+    } else if (event.key === "Escape") {
+      state.suggestOpen = false;
+      render();
+    }
+  }
+
+  function recompute() {
+    if (!state.snapshot || !scoring) return;
+    state.report = scoring.scoreCompany(state.snapshot, {
+      headcountOverride: state.headcountOverride,
+    });
+  }
 
   function stopPolling() {
     if (state.pollTimer) {
@@ -470,7 +982,25 @@
     }
   }
 
-  function schedulePoll(domain, seq) {
+  function advanceScanTheater() {
+    if (state.view !== "scan") return;
+    if (state.scanStep < 4) {
+      state.scanStep += 1;
+      render();
+      setTimeout(advanceScanTheater, 900);
+    }
+  }
+
+  function setStatus(kind, message, options) {
+    state.status = {
+      kind,
+      message,
+      spinner: options?.spinner === true,
+      action: options?.action || null,
+    };
+  }
+
+  function schedulePoll(query, seq) {
     stopPolling();
     if (state.pollsLeft <= 0) {
       setStatus(
@@ -479,142 +1009,209 @@
         {
           action: {
             label: "Check again",
-            onClick: () => lookup(domain, { quiet: false }),
+            onClick: () => startLookup(query, { quiet: true }),
           },
         }
       );
+      if (state.view === "scan") state.view = state.snapshot ? "report" : "home";
+      render();
       return;
     }
     state.pollTimer = setTimeout(async () => {
       if (seq !== state.requestSeq) return;
       state.pollsLeft -= 1;
       try {
-        const result = await apiLookup(domain, false);
+        const result = await apiLookup(query, {
+          companyName: state.companyName,
+        });
         if (seq !== state.requestSeq) return;
-        applyResult(domain, result, seq);
+        applyResult(query, result, seq);
       } catch (_error) {
-        schedulePoll(domain, seq);
+        schedulePoll(query, seq);
       }
     }, POLL_INTERVAL_MS);
   }
 
-  function applyResult(domain, result, seq) {
+  function applyResult(query, result, seq) {
     if (!result || typeof result !== "object") {
       setStatus("error", "The lookup returned an unexpected response.");
+      state.view = "home";
+      render();
       return;
     }
+    if (result.status === "unresolved") {
+      state.suggestions = result.suggestions || [];
+      state.suggestOpen = state.suggestions.length > 0;
+      state.view = "home";
+      setStatus(
+        "warn",
+        `Could not resolve “${result.query || query}” to a company domain. Pick a match or paste the website.`
+      );
+      render();
+      return;
+    }
+
     state.meta = result.meta || null;
+    state.domain = result.domain || state.domain;
+    state.companyName = result.companyName || state.companyName;
     if (result.snapshot) {
       state.snapshot = result.snapshot;
-      writeLocalCache(domain, result.snapshot, result.meta);
-      render();
+      writeLocalCache(state.domain, result.snapshot, result.meta);
+      recompute();
+      if (state.report) {
+        rememberRecent(
+          { name: state.companyName, domain: state.domain },
+          state.report
+        );
+      }
     }
 
     switch (result.status) {
       case "current":
-        clearStatus();
+        state.status = null;
+        state.view = "report";
+        state.scanStep = 5;
         break;
       case "queued":
-        setStatus(
-          "progress",
-          `Collecting public signals for ${domain} — first scan takes about a minute.`,
-          { spinner: true }
-        );
-        schedulePoll(domain, seq);
+        state.view = "scan";
+        state.scanLabel = `Collecting public signals for ${state.domain} — first scan takes about a minute.`;
+        setStatus("progress", state.scanLabel, { spinner: true });
+        schedulePoll(state.domain || query, seq);
         break;
       case "refreshing":
-        setStatus("progress", "Refreshing readings in the background…", { spinner: true });
-        schedulePoll(domain, seq);
+        state.view = state.snapshot ? "report" : "scan";
+        setStatus("progress", "Refreshing readings in the background…", {
+          spinner: true,
+        });
+        schedulePoll(state.domain || query, seq);
         break;
       case "blocked":
+        state.view = state.snapshot ? "report" : "home";
         setStatus(
           "warn",
           state.meta && state.meta.budgetExhausted
             ? "Today's enrichment budget is used up. Cached profiles still load; new scans resume tomorrow."
-            : "Enrichment for this domain is temporarily blocked. Try again later."
+            : "Enrichment for this company is temporarily blocked. Try again later."
         );
         break;
       case "none":
+        state.view = "home";
         setStatus(
           "warn",
           state.meta && state.meta.lastError
             ? `Enrichment has not succeeded yet (${state.meta.lastError}). Try again shortly.`
-            : "No readings yet for this domain. Try scanning again.",
+            : "No readings yet. Try scanning again.",
           {
-            action: { label: "Retry", onClick: () => lookup(domain, {}) },
+            action: {
+              label: "Retry",
+              onClick: () => startLookup(state.domain || query, {}),
+            },
           }
         );
         break;
       default:
-        clearStatus();
+        state.view = state.snapshot ? "report" : "home";
+        state.status = null;
     }
+    syncUrl();
+    render();
   }
 
-  async function lookup(domain, options) {
-    if (!domain) return;
+  async function startLookup(rawQuery, option) {
+    const query = String(rawQuery || option?.domain || "").trim();
+    if (!query) return;
+    if (needsGate()) {
+      state.view = "gate";
+      render();
+      return;
+    }
     const seq = ++state.requestSeq;
-    state.domain = domain;
+    state.query = option?.name || query;
+    state.companyName = option?.name || (looksLikeDomain(query) ? null : query);
+    state.domain = option?.domain || (looksLikeDomain(query) ? query : null);
+    state.headcountOverride = null;
+    state.suggestOpen = false;
     state.pollsLeft = MAX_POLLS;
     stopPolling();
 
-    const cached = readLocalCache(domain);
-    if (cached && !options.refresh) {
-      state.snapshot = cached.snapshot;
-      state.meta = cached.meta || null;
-      render();
+    const cachedDomain = state.domain;
+    if (cachedDomain && !option?.refresh) {
+      const cached = readLocalCache(cachedDomain);
+      if (cached) {
+        state.snapshot = cached.snapshot;
+        state.meta = cached.meta || null;
+        recompute();
+      }
     }
 
-    if (submitButton) submitButton.disabled = true;
-    if (!cached || options.refresh) {
-      setStatus("progress", options.refresh ? "Requesting a refresh…" : `Looking up ${domain}…`, {
-        spinner: true,
-      });
-    }
+    state.view = state.snapshot && !option?.refresh ? "report" : "scan";
+    state.scanStep = 0;
+    state.scanLabel = option?.refresh
+      ? "Requesting a refresh…"
+      : `Looking up ${state.query}…`;
+    setStatus("progress", state.scanLabel, { spinner: true });
+    syncUrl();
+    render();
+    setTimeout(advanceScanTheater, 400);
+
     try {
-      const result = await apiLookup(domain, options.refresh === true);
+      const result = await apiLookup(query, {
+        companyName: state.companyName,
+        refresh: option?.refresh === true,
+      });
       if (seq !== state.requestSeq) return;
-      applyResult(domain, result, seq);
+      applyResult(query, result, seq);
     } catch (error) {
       if (seq !== state.requestSeq) return;
-      if (error.code === "NOT_CONFIGURED" || error.code === "ENRICHMENT_NOT_CONFIGURED") {
+      if (error.code === "ACCESS_REQUIRED") {
+        state.accessCode = "";
+        writeAccessCode("");
+        state.view = "gate";
+        state.gateError = "A valid access code is required.";
+      } else if (
+        error.code === "NOT_CONFIGURED" ||
+        error.code === "ENRICHMENT_NOT_CONFIGURED"
+      ) {
+        state.view = "home";
         setStatus(
           "warn",
           "The enrichment backend is not deployed yet, so live scans are unavailable."
         );
-      } else if (error.code === "INVALID_DOMAIN") {
-        setStatus("error", "That doesn't look like a valid company domain.");
+      } else if (error.code === "INVALID_QUERY" || error.code === "INVALID_DOMAIN") {
+        state.view = "home";
+        setStatus("error", "Enter a company name or domain, like Stripe or stripe.com.");
       } else {
+        state.view = "home";
         setStatus("error", `Lookup failed: ${error.message}`);
       }
-    } finally {
-      if (seq === state.requestSeq && submitButton) submitButton.disabled = false;
+      render();
     }
   }
 
-  /* ---------- Wire up ---------- */
+  /* ---------- boot ---------- */
 
-  if (form) {
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const domain = normalizeDomainInput(domainInput.value);
-      if (!domain) {
-        setStatus("error", "Enter a valid company domain, like acme.com.");
-        return;
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".search-wrap")) {
+      if (state.suggestOpen) {
+        state.suggestOpen = false;
+        if (state.view === "home") render();
       }
-      domainInput.value = domain;
-      state.headcountOverride = null;
-      const url = new URL(window.location.href);
-      url.searchParams.set("domain", domain);
-      window.history.replaceState(null, "", url.toString());
-      lookup(domain, {});
-    });
-  }
+    }
+  });
 
-  const initialDomain = normalizeDomainInput(
-    new URLSearchParams(window.location.search).get("domain")
-  );
-  if (initialDomain && domainInput) {
-    domainInput.value = initialDomain;
-    lookup(initialDomain, {});
+  const params = new URLSearchParams(window.location.search);
+  const initial =
+    params.get("q") || params.get("company") || params.get("domain") || "";
+  if (params.get("view") === "method") {
+    state.view = "method";
+    render();
+  } else if (needsGate()) {
+    state.view = "gate";
+    render();
+  } else if (initial) {
+    render();
+    startLookup(initial);
+  } else {
+    render();
   }
 })();

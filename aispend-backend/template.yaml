@@ -11,7 +11,7 @@ Parameters:
       - staging
   AllowedOrigins:
     Type: CommaDelimitedList
-    Default: https://joshuasuzuki.com,https://www.joshuasuzuki.com
+    Default: https://joshuasuzuki.com,https://www.joshuasuzuki.com,https://scope.joshuasuzuki.com
   ApiExecutionRoleArn:
     Type: String
     Default: arn:aws:iam::545095759709:role/aispend-production-api
@@ -44,6 +44,11 @@ Parameters:
     Default: 50
     MinValue: 1
     MaxValue: 10000
+  AccessCode:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Shared access code for the unlisted Spendscope app. Empty disables the gate.
 
 Resources:
   CompanyTable:
@@ -101,6 +106,7 @@ Resources:
         AllowOrigins: !Ref AllowedOrigins
         AllowHeaders:
           - Content-Type
+          - X-Spendscope-Key
         AllowMethods:
           - POST
           - OPTIONS
@@ -136,6 +142,7 @@ Resources:
           COMPANY_TABLE_NAME: !Ref CompanyTable
           ENRICH_QUEUE_URL: !Ref EnrichQueue
           MAX_DAILY_ENRICHMENTS: !Ref MaxDailyEnrichments
+          ACCESS_CODE: !Ref AccessCode
       LoggingConfig:
         ApplicationLogLevel: ERROR
         LogFormat: JSON
@@ -146,6 +153,12 @@ Resources:
           Properties:
             ApiId: !Ref CompanyApi
             Path: /v1/aispend/company
+            Method: POST
+        Suggest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CompanyApi
+            Path: /v1/aispend/suggest
             Method: POST
 
   EnrichWorkerFunction:
@@ -274,6 +287,9 @@ Outputs:
   CompanyEndpoint:
     Description: Spendscope company lookup endpoint
     Value: !Sub https://${CompanyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}/v1/aispend/company
+  SuggestEndpoint:
+    Description: Spendscope company typeahead endpoint
+    Value: !Sub https://${CompanyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}/v1/aispend/suggest
   GithubSecretName:
     Description: Secrets Manager name that should contain a read-only GitHub token
     Value: !Ref GithubSecretName

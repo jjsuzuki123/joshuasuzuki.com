@@ -1,76 +1,39 @@
 # Spendscope
 
-Spendscope estimates how much a company spends on AI coding tools — in the
-spirit of Intricately's cloud-spend intelligence, but for Claude Code,
-Cursor, OpenAI Codex, GitHub Copilot, and Devin. Enter a company domain; the
-backend enriches it from public signals once, stores the readings in
-DynamoDB, and the browser scores them locally.
+Unlisted AI coding-tool spend intelligence in the spirit of Intricately.
+Enter a **company name** (or domain); the backend enriches public GitHub and
+web signals once, stores the readings in DynamoDB, and the browser scores
+them locally with ACES v1.
+
+The app lives at `/aispend/` with `noindex`, is not linked from the homepage,
+and can sit behind a shared access code (`AISPEND_ACCESS_CODE`). A vanity
+host such as `scope.joshuasuzuki.com` can be pointed at the same CloudFront
+distribution later — CORS already allows it.
 
 ## Model
 
-**ACES v1 — AI Coding Expenditure Signal** (`score-engine.js`, shared
-between the browser and Node tests)
+**ACES v1 — AI Coding Expenditure Signal** (`score-engine.js`)
 
-Per vendor, each stored reading feeds a bounded component with a saturating
-count curve:
+Per vendor, each stored reading feeds a saturating component, combined with
+a noisy-OR so corroborating evidence compounds. Spend is seats × blended
+list price (Devin is per concurrent agent). Headcount prefers web-reported
+engineer counts, then public GitHub members ×3, then repo count, and can be
+overridden in the UI without another API call.
 
-\[
-c_i = w_i \cdot \frac{v}{v + k_i}
-\]
-
-Repository markers (CLAUDE.md, `.cursorrules`, AGENTS.md, …) also earn
-credit for covering a small org's repositories, so a 10-repo startup with 5
-markers is not outscored by a 500-repo enterprise with 5. Components combine
-with a noisy-OR so corroborating evidence compounds without any single count
-dominating:
-
-\[
-\text{adoption} = 100 \cdot \left(1 - \prod_i (1 - c_i)\right)
-\]
-
-Spend is seats times blended list price:
-
-\[
-\text{seats} = \text{devs} \cdot p_{\max} \cdot \frac{\text{adoption}}{100},
-\qquad
-\text{mid} = \text{seats} \cdot \text{price}
-\]
-
-Devin is priced per concurrent agent (sized from public agent pull-request
-volume) rather than per developer. The low/high band widens as coverage
-confidence drops. Developer headcount comes from public GitHub org members
-(×3, membership is opt-in), falls back to repository count, and can be
-overridden in the UI — the report re-scores instantly without another API
-call.
-
-| Signal family | Examples | Why it matters |
-| --- | --- | --- |
-| Repo markers | CLAUDE.md, .cursor/rules, AGENTS.md, copilot-instructions.md | Tool is wired into the workflow |
-| Attribution trails | `Co-authored-by: Claude`, `Co-authored-by: Cursor Agent` commits | Sustained usage volume |
-| Agent pull requests | devin-ai-integration, copilot-swe-agent, claude, cursor bots | Paid agent products in production |
-| Web mentions | jobs, engineering blogs, press (cited links) | Corroboration beyond GitHub |
-
-Confidence reflects coverage (org resolved, code/commit/PR search ran, web
-research ran) and reading age. It is a data-quality indicator, not a
-calibrated probability.
+The report includes an analyst **brief**: headline, thesis, vendor mix, and
+top evidence drivers.
 
 ## Honest limitations
 
-- Estimates are modeled from public signals — never billing data.
-- Public GitHub only: private-repo usage is invisible and usually larger,
-  so treat results as a floor stated with wide uncertainty.
+- Modeled from public signals — never billing data.
+- Public GitHub only: private-repo usage is invisible and usually larger.
 - Prices are blended list prices; negotiated contracts differ.
-- AGENTS.md is becoming a cross-tool convention, so it is attributed to
-  OpenAI with reduced weight.
 
-## Performance
-
-No framework, no web fonts, no image payloads. Readings are cached
-server-side (DynamoDB, 14-day validity) and locally (10-minute
-`localStorage` cache), so repeat lookups render instantly and re-scoring
-with a manual headcount is pure client-side math.
+## Local demo
 
 ```sh
+node scripts/aispend-demo-server.js
+# open http://127.0.0.1:8787/aispend/  (access code: demo-access)
 node scripts/aispend-score-engine.test.js
 node scripts/aispend-service.test.js
 ```

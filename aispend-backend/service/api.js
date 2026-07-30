@@ -5,7 +5,8 @@ const {
   MAX_REQUEST_BYTES,
   SCHEMA_VERSION,
   parseCachedPayload,
-  parseCompanyRequest,
+  parseLookupRequest,
+  parseSuggestRequest,
   cleanText,
 } = require("./core.js");
 
@@ -26,7 +27,7 @@ function response(statusCode, origin, body) {
     statusCode,
     headers: {
       "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, X-Spendscope-Key",
       "Access-Control-Allow-Methods": "POST,OPTIONS",
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",
@@ -49,6 +50,28 @@ function eventMethod(event) {
   return String(
     event?.requestContext?.http?.method || event?.httpMethod || ""
   ).toUpperCase();
+}
+
+function eventPath(event) {
+  return String(
+    event?.rawPath ||
+      event?.requestContext?.http?.path ||
+      event?.path ||
+      ""
+  );
+}
+
+function configuredAccessCode() {
+  return String(process.env.ACCESS_CODE || "").trim();
+}
+
+function eventAccessCode(event) {
+  return cleanText(
+    event?.headers?.["x-spendscope-key"] ||
+      event?.headers?.["X-Spendscope-Key"] ||
+      "",
+    200
+  );
 }
 
 function eventBody(event) {
@@ -271,19 +294,65 @@ async function handler(event) {
     });
   }
 
-  let parsed;
+  const accessCode = configuredAccessCode();
+  if (accessCode && eventAccessCode(event) !== accessCode) {
+    return response(401, origin, {
+      error: "A valid access code is required.",
+      code: "ACCESS_REQUIRED",
+      gate: true,
+    });
+  }
+
+  let body;
   try {
-    parsed = parseCompanyRequest(eventBody(event));
+    body = eventBody(event);
   } catch (error) {
     return response(error.code === "REQUEST_TOO_LARGE" ? 413 : 400, origin, {
       error: error.message,
       code: error.code || "INVALID_REQUEST",
     });
   }
+
+  if (eventPath(event).endsWith("/suggest")) {
+    const parsedSuggest = parseSuggestRequest(body);
+    if (!parsedSuggest) {
+      return response(400, origin, {
+        error: "Enter a company name or domain.",
+        code: "INVALID_QUERY",
+      });
+    }
+    return response(200, origin, {
+      schemaVersion: SCHEMA_VERSION,
+      query: parsedSuggest.query,
+      suggestions: parsedSuggest.suggestions,
+    });
+  }
+
+  const parsed = parseLookupRequest(body);
   if (!parsed) {
     return response(400, origin, {
-      error: "Enter a valid company domain, like acme.com.",
-      code: "INVALID_DOMAIN",
+      error: "Enter a company name or domain, like Stripe or stripe.com.",
+      code: "INVALID_QUERY",
+    });
+  }
+  if (parsed.unresolved) {
+    return response(200, origin, {
+      schemaVersion: SCHEMA_VERSION,
+      status: "unresolved",
+      query: parsed.query,
+      suggestions: parsed.suggestions,
+      meta: {
+        cached: false,
+        queued: false,
+        pending: false,
+        budgetExhausted: false,
+        state: null,
+        lastError: null,
+        updatedAt: null,
+        nextRefreshAfter: null,
+      },
+      snapshot: null,
+      generatedAt: new Date().toISOString(),
     });
   }
 
@@ -345,7 +414,11 @@ async function handler(event) {
           message: {
             schemaVersion: SCHEMA_VERSION,
             requestedAt: now.toISOString(),
-            company: { domain: parsed.domain, cacheKey: parsed.cacheKey },
+            company: {
+              domain: parsed.domain,
+              cacheKey: parsed.cacheKey,
+              name: parsed.companyName,
+            },
             queueToken,
           },
         });
@@ -377,7 +450,11 @@ async function handler(event) {
             : "none";
     return response(200, origin, {
       schemaVersion: SCHEMA_VERSION,
+      query: parsed.query,
       domain: parsed.domain,
+      companyName: parsed.companyName,
+      source: parsed.source,
+      suggestions: parsed.suggestions,
       status,
       meta: {
         cached: Boolean(fresh),

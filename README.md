@@ -16,4 +16,3 @@ HTML, CSS, and JavaScript.
 - `/fantasy/`: RosterLab fantasy baseball trade analysis
 - `/fantasy/football/`: Redraft football trade calculator
 - `/sunset/`: Afterglow sunset quality forecast
-- `/aispend/`: Spendscope AI coding tool spend estimates from public signals

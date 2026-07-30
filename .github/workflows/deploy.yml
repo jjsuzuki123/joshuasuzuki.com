@@ -114,10 +114,12 @@ jobs:
           node --check aispend/config.js
           node --check aispend/score-engine.js
           node --check aispend-backend/service/core.js
+          node --check aispend-backend/service/directory.js
           node --check aispend-backend/service/github.js
           node --check aispend-backend/service/api.js
           node --check aispend-backend/service/worker.js
           node --check scripts/write-aispend-config.js
+          node --check scripts/aispend-demo-server.js
           node scripts/aispend-score-engine.test.js
           node scripts/aispend-service.test.js
 
@@ -232,9 +234,13 @@ jobs:
           sam deploy \
             --template-file aispend-backend/packaged.yaml \
             --stack-name "${AISPEND_STACK}" \
-            --parameter-overrides Environment=production \
+            --parameter-overrides \
+              Environment=production \
+              AccessCode="${AISPEND_ACCESS_CODE}" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
+        env:
+          AISPEND_ACCESS_CODE: ${{ secrets.AISPEND_ACCESS_CODE }}
 
       - name: Configure fantasy data endpoints
         run: |
@@ -267,16 +273,33 @@ jobs:
         run: |
           set -euo pipefail
           AISPEND_ENDPOINT=""
+          AISPEND_SUGGEST_ENDPOINT=""
+          AISPEND_GATED="false"
           if [[ "${{ steps.aispend.outputs.ready }}" == "true" ]]; then
             AISPEND_ENDPOINT="$(aws cloudformation describe-stacks \
               --stack-name "${AISPEND_STACK}" \
               --query "Stacks[0].Outputs[?OutputKey=='CompanyEndpoint'].OutputValue | [0]" \
               --output text 2>/dev/null || true)"
+            AISPEND_SUGGEST_ENDPOINT="$(aws cloudformation describe-stacks \
+              --stack-name "${AISPEND_STACK}" \
+              --query "Stacks[0].Outputs[?OutputKey=='SuggestEndpoint'].OutputValue | [0]" \
+              --output text 2>/dev/null || true)"
             if [[ "${AISPEND_ENDPOINT}" != https://* ]]; then
               AISPEND_ENDPOINT=""
             fi
+            if [[ "${AISPEND_SUGGEST_ENDPOINT}" != https://* ]]; then
+              AISPEND_SUGGEST_ENDPOINT=""
+            fi
+            if [[ -n "${AISPEND_ACCESS_CODE}" ]]; then
+              AISPEND_GATED="true"
+            fi
           fi
-          AISPEND_ENDPOINT="${AISPEND_ENDPOINT}" node scripts/write-aispend-config.js
+          AISPEND_ENDPOINT="${AISPEND_ENDPOINT}" \
+            AISPEND_SUGGEST_ENDPOINT="${AISPEND_SUGGEST_ENDPOINT}" \
+            AISPEND_GATED="${AISPEND_GATED}" \
+            node scripts/write-aispend-config.js
+        env:
+          AISPEND_ACCESS_CODE: ${{ secrets.AISPEND_ACCESS_CODE }}
 
       - name: Sync to S3
         run: |

@@ -82,6 +82,7 @@
         { key: "claudeCoauthoredCommits", weight: 0.85, halfMax: 150 },
         { key: "claudeAppPrs", weight: 0.55, halfMax: 30 },
         { key: "webMentions", weight: 0.45, halfMax: 2 },
+        { key: "jobMentions", weight: 0.35, halfMax: 2 },
       ],
     },
     {
@@ -99,6 +100,7 @@
         { key: "cursorCoauthoredCommits", weight: 0.8, halfMax: 100 },
         { key: "cursorAgentPrs", weight: 0.6, halfMax: 25 },
         { key: "webMentions", weight: 0.45, halfMax: 2 },
+        { key: "jobMentions", weight: 0.35, halfMax: 2 },
       ],
     },
     {
@@ -116,6 +118,7 @@
         { key: "agentsMdFiles", weight: 0.6, halfMax: 6, repoMarker: true },
         { key: "codexConnectorPrs", weight: 0.65, halfMax: 25 },
         { key: "webMentions", weight: 0.45, halfMax: 2 },
+        { key: "jobMentions", weight: 0.3, halfMax: 2 },
       ],
     },
     {
@@ -131,6 +134,7 @@
         { key: "copilotInstructions", weight: 0.75, halfMax: 5, repoMarker: true },
         { key: "copilotAgentPrs", weight: 0.6, halfMax: 25 },
         { key: "webMentions", weight: 0.4, halfMax: 2 },
+        { key: "jobMentions", weight: 0.3, halfMax: 2 },
       ],
     },
     {
@@ -147,6 +151,7 @@
       signals: [
         { key: "devinPrs", weight: 0.9, halfMax: 40 },
         { key: "webMentions", weight: 0.5, halfMax: 2 },
+        { key: "jobMentions", weight: 0.35, halfMax: 2 },
       ],
     },
   ];
@@ -179,8 +184,25 @@
   function readingSignalKey(reading) {
     const id = String(reading?.id || "");
     if (id.startsWith("web.mention.")) return "webMentions";
+    if (id.startsWith("web.jobs.")) return "jobMentions";
+    if (id.startsWith("web.headcount.")) return "webHeadcount";
     const parts = id.split(".");
     return parts.length >= 3 && parts[0] === "github" ? parts.at(-1) : null;
+  }
+
+  function webEngineerEstimate(payload) {
+    const reading = (payload?.readings || []).find(
+      (entry) =>
+        entry?.vendor === "company" && String(entry.id || "").startsWith("web.headcount.")
+    );
+    const value = Number(reading?.value);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return {
+      estimate: Math.round(clamp(value, HEADCOUNT.minimum, HEADCOUNT.maximum)),
+      detail: reading.detail,
+      metric: reading.metric,
+      url: reading.url,
+    };
   }
 
   // Sums reading values per signal key for one vendor across all orgs.
@@ -217,6 +239,15 @@
         estimate: Math.round(clamp(override, 1, 500000)),
         basis: "manual",
         description: "Developer headcount entered manually.",
+      };
+    }
+    const web = webEngineerEstimate(payload);
+    if (web) {
+      return {
+        estimate: web.estimate,
+        basis: "web-reported",
+        description: `${web.metric}: about ${web.estimate.toLocaleString("en-US")} engineers from public pages.`,
+        url: web.url,
       };
     }
     const members = totalPublicMembers(payload);
@@ -441,7 +472,7 @@
       caveats.push(`Headcount is inferred: ${headcount.description}`);
     }
 
-    return {
+    const report = {
       model: MODEL,
       domain: payload?.domain || null,
       company: payload?.company || null,
@@ -463,13 +494,94 @@
         : null,
       caveats,
     };
+    report.brief = buildBrief(report);
+    return report;
+  }
+
+  function formatUsd(value) {
+    if (!Number.isFinite(value) || value <= 0) return "$0";
+    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+    if (value >= 10_000) return `$${Math.round(value / 1000)}k`;
+    if (value >= 1000) return `$${(value / 1000).toFixed(1)}k`;
+    return `$${Math.round(value)}`;
+  }
+
+  function buildBrief(report) {
+    const companyName = report.company?.name || report.domain || "This company";
+    const active = report.vendors
+      .filter((vendor) => vendor.adoptionScore > 0)
+      .slice()
+      .sort((left, right) => {
+        const leftSpend = left.monthly?.mid || 0;
+        const rightSpend = right.monthly?.mid || 0;
+        return rightSpend - leftSpend || right.adoptionScore - left.adoptionScore;
+      });
+    const priced = active.filter((vendor) => (vendor.monthly?.mid || 0) > 0);
+    const primary = active[0] || null;
+    const total = report.totalMonthly;
+    const mix = priced.map((vendor) => ({
+      id: vendor.id,
+      name: vendor.name,
+      pct: total?.mid
+        ? Math.round((vendor.monthly.mid / total.mid) * 100)
+        : 0,
+      monthly: vendor.monthly,
+    }));
+    let headline;
+    if (!primary) {
+      headline = `${companyName} shows no public AI coding-tool footprint yet.`;
+    } else if (total?.mid) {
+      headline = `${companyName} looks like a ${formatUsd(total.mid)}/mo ${primary.name}-led shop.`;
+    } else {
+      headline = `${companyName} is adopting ${primary.name}, but headcount is needed to price spend.`;
+    }
+    const drivers = [];
+    for (const vendor of active.slice(0, 3)) {
+      const topSignal = (vendor.evidence || []).find((item) => item.value > 0);
+      if (topSignal) {
+        drivers.push(
+          `${vendor.name}: ${topSignal.metric.toLowerCase()} (${Number(topSignal.value).toLocaleString("en-US")})`
+        );
+      }
+    }
+    const thesis = primary
+      ? [
+          `${primary.name} is the strongest public signal (${primary.adoptionScore}/100 adoption).`,
+          mix[0] && mix[0].pct >= 40
+            ? `It accounts for about ${mix[0].pct}% of modeled monthly spend.`
+            : null,
+          report.headcount.estimate
+            ? `Sized against ~${report.headcount.estimate.toLocaleString("en-US")} engineers (${report.headcount.basis.replace(/-/g, " ")}).`
+            : "No engineer count yet — override headcount to lock a dollar range.",
+          report.confidence >= 0.75
+            ? "Coverage is solid across GitHub and web checks."
+            : "Treat this as a directional floor; private repos are invisible.",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : "Run a refresh after wiring GitHub access, or try a company with a public engineering GitHub org.";
+    return {
+      headline,
+      thesis,
+      primary: primary ? { id: primary.id, name: primary.name } : null,
+      mix,
+      drivers,
+      confidenceLabel:
+        report.confidence >= 0.75
+          ? "High"
+          : report.confidence >= 0.45
+            ? "Medium"
+            : "Low",
+    };
   }
 
   return {
     MODEL,
     VENDORS,
     aggregateSignals,
+    buildBrief,
     estimateHeadcount,
+    formatUsd,
     roundSpend,
     saturate,
     scoreCompany,

@@ -1,17 +1,22 @@
 # Spendscope enrichment service
 
-This service powers `/aispend/` — an Intricately-style estimate of how much a
-company spends on AI coding tools (Claude Code, Cursor, OpenAI Codex, GitHub
-Copilot, Devin). It is deliberately asynchronous:
+This service powers the unlisted `/aispend/` product — an Intricately-style
+estimate of how much a company spends on AI coding tools (Claude Code,
+Cursor, OpenAI Codex, GitHub Copilot, Devin). The UI is company-name first,
+not linked from the homepage, and optionally gated by `AccessCode`.
 
-1. The browser posts a company domain to the lookup API.
-2. The API returns the current DynamoDB record immediately. When the domain
-   has no fresh readings, it atomically claims the row, consumes one unit of
-   the daily enrichment budget, and queues a worker message.
-3. One worker collects public adoption signals for the domain and stores the
-   readings back into DynamoDB.
-4. The browser polls quietly until the readings land, then scores them
-   locally with the shared ACES model (`aispend/score-engine.js`).
+It is deliberately asynchronous:
+
+1. Typeahead hits `POST /v1/aispend/suggest`. Lookup posts a company name or
+   domain to `POST /v1/aispend/company`.
+2. The API resolves the name via a curated directory (or treats the input as
+   a domain), then returns the current DynamoDB record. When there are no
+   fresh readings, it atomically claims the row, consumes one unit of the
+   daily enrichment budget, and queues a worker message.
+3. One worker collects public adoption signals (GitHub + optional Firecrawl
+   tool/job mentions and headcount snippets) and stores the readings.
+4. The browser polls until readings land, then scores them locally with the
+   shared ACES model (`aispend/score-engine.js`).
 
 Secrets exist only in AWS Secrets Manager. They are never written to the
 static site, the queue, DynamoDB, logs, or the repository.
@@ -49,8 +54,9 @@ never treated as instructions.
   (`MaxDailyEnrichments`, 50/day by default) inside the claim transaction.
 - A domain is not re-enriched more than once per day (`researchAfter`), and
   readings with signal stay valid for 14 days.
-- Firecrawl usage is search-only (about 5 credits per enrichment) behind its
-  own atomic daily budget (`MaxDailyFirecrawlCredits`, 100/day by default).
+- Firecrawl usage is search-only (about 8 credits per enrichment: tool
+  mentions + headcount SERP) behind its own atomic daily budget
+  (`MaxDailyFirecrawlCredits`, 100/day by default).
   Set a provider-side Firecrawl project limit as a second billing boundary.
 - GitHub calls are capped at 40 per enrichment and back off immediately on
   rate-limit responses. Worker concurrency is 1 with a 2-message queue cap.
@@ -90,7 +96,8 @@ Apply the updated `permissions-policy.json` to the
 `GitHubActionsDeployPersonalSite` role. The production workflow deploys the
 `aispend-production` stack once the bootstrap roles exist, reads its
 `CompanyEndpoint` output, and writes that HTTPS URL into the no-cache runtime
-`aispend/config.js`. Without the GitHub secret filled in, enrichment still
+`aispend/config.js`. Set GitHub Actions secret `AISPEND_ACCESS_CODE` to gate
+the unlisted UI and API. Without the GitHub secret filled in, enrichment still
 runs in the degraded anonymous mode; without the Firecrawl secret, web
 research reports `missing-key` and everything else works.
 

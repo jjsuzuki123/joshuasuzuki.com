@@ -207,11 +207,11 @@ function profileMatchesDomain(profile, domain) {
   });
 }
 
-async function searchOrgCandidates(client, domain) {
+async function searchOrgCandidates(client, query) {
   let response;
   try {
     response = await client.request(
-      `/search/users?q=${encodeURIComponent(`"${domain}" type:org`)}&per_page=5`
+      `/search/users?q=${encodeURIComponent(`${query} type:org`)}&per_page=5`
     );
   } catch (_error) {
     return [];
@@ -224,13 +224,23 @@ async function searchOrgCandidates(client, domain) {
     .slice(0, 5);
 }
 
-async function resolveOrgs(client, domain, maxOrgs) {
+async function resolveOrgs(client, domain, maxOrgs, companyName) {
   const matches = [];
   const checked = new Set();
   const ownerLabel = domain.split(".")[0];
   const candidates = [ownerLabel];
+  if (companyName) {
+    const slug = String(companyName)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    if (slug && slug !== ownerLabel) candidates.push(slug.replace(/-/g, ""));
+  }
   try {
-    candidates.push(...(await searchOrgCandidates(client, domain)));
+    candidates.push(...(await searchOrgCandidates(client, `"${domain}"`)));
+    if (companyName) {
+      candidates.push(...(await searchOrgCandidates(client, `"${companyName}"`)));
+    }
   } catch (_error) {
     // Search failures leave the direct-login probe as the only candidate.
   }
@@ -328,7 +338,13 @@ async function collectSignalGroup({
   return completed;
 }
 
-async function collectGithubSignals({ domain, token, fetchImpl, now = new Date() }) {
+async function collectGithubSignals({
+  domain,
+  companyName,
+  token,
+  fetchImpl,
+  now = new Date(),
+}) {
   const client = createGithubClient({ token, fetchImpl });
   const readings = [];
   const notes = [];
@@ -343,7 +359,7 @@ async function collectGithubSignals({ domain, token, fetchImpl, now = new Date()
 
   let orgs = [];
   try {
-    orgs = await resolveOrgs(client, domain, maxOrgs);
+    orgs = await resolveOrgs(client, domain, maxOrgs, companyName);
   } catch (_error) {
     orgs = [];
   }

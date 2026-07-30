@@ -102,6 +102,13 @@ const totals = aggregateSignals(richPayload.readings, "claude-code");
 assert.equal(totals.get("claudeMdFiles"), 18);
 assert.equal(totals.get("claudeCoauthoredCommits"), 420);
 assert.equal(totals.get("webMentions"), 1);
+assert.equal(
+  aggregateSignals(
+    [reading("web.jobs.claude-code.0", "claude-code", 1)],
+    "claude-code"
+  ).get("jobMentions"),
+  1
+);
 
 // ---------- headcount ----------
 
@@ -120,6 +127,12 @@ const repoOnly = {
 };
 assert.equal(estimateHeadcount(repoOnly).basis, "github-repos");
 assert.equal(estimateHeadcount(repoOnly).estimate, 60);
+const webSized = {
+  ...emptyPayload,
+  readings: [reading("web.headcount.engineers", "company", 80)],
+};
+assert.equal(estimateHeadcount(webSized).basis, "web-reported");
+assert.equal(estimateHeadcount(webSized).estimate, 80);
 
 // ---------- confidence ----------
 
@@ -168,6 +181,9 @@ assert.deepEqual(report.totalMonthly, {
 });
 assert.equal(report.totalAnnual.mid, 12700 * 12);
 assert.ok(report.caveats.length >= 3);
+assert.match(report.brief.headline, /Claude Code/);
+assert.ok(report.brief.mix.length >= 1);
+assert.equal(report.brief.confidenceLabel, "High");
 
 // ---------- headcount override scales seat-based spend ----------
 

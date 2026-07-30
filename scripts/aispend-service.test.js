@@ -3,16 +3,25 @@
 const assert = require("node:assert/strict");
 const {
   buildCompanyPayload,
+  buildHeadcountSearchRequest,
   buildWebSearchRequest,
   classifyVendorMentions,
   companyCacheKey,
+  extractHeadcountFromText,
   normalizeCompanyDomain,
+  normalizeHeadcountResults,
   normalizeWebResults,
   parseCachedPayload,
   parseCompanyRequest,
+  parseLookupRequest,
   parseQueueMessage,
+  parseSuggestRequest,
   sanitizeCitationUrl,
 } = require("../aispend-backend/service/core.js");
+const {
+  resolveCompanyQuery,
+  suggestCompanies,
+} = require("../aispend-backend/service/directory.js");
 const { collectGithubSignals } = require("../aispend-backend/service/github.js");
 const aispendApi = require("../aispend-backend/service/api.js");
 const aispendWorker = require("../aispend-backend/service/worker.js");
@@ -39,6 +48,7 @@ assert.equal(normalizeCompanyDomain("a".repeat(300) + ".com"), null);
 
 assert.deepEqual(parseCompanyRequest({ schemaVersion: 1, domain: "Acme.com" }), {
   domain: "acme.com",
+  companyName: null,
   cacheKey: "company:v1:acme.com",
   refresh: false,
 });
@@ -133,6 +143,67 @@ assert.equal(webReadings[0].vendor, "claude-code");
 assert.equal(webReadings[0].source, "web");
 assert.equal(webReadings[1].vendor, "cursor");
 
+const jobReadings = normalizeWebResults({
+  response: {
+    success: true,
+    data: {
+      web: [
+        {
+          url: "https://jobs.example/acme-cursor",
+          title: "Acme is hiring Staff Engineers",
+          description: "Experience with Cursor as our AI code editor required",
+        },
+      ],
+    },
+  },
+  now: NOW,
+});
+assert.equal(jobReadings[0].id.startsWith("web.jobs."), true);
+
+assert.deepEqual(extractHeadcountFromText("Join our 120 software engineers"), {
+  value: 120,
+  kind: "engineers",
+});
+assert.deepEqual(extractHeadcountFromText("2,400 employees worldwide"), {
+  value: 2400,
+  kind: "employees",
+});
+assert.equal(extractHeadcountFromText("no numbers here"), null);
+const headcountReadings = normalizeHeadcountResults({
+  response: {
+    success: true,
+    data: {
+      web: [
+        {
+          url: "https://acme.com/about",
+          title: "About Acme",
+          description: "We are 80 engineers building payments infrastructure",
+        },
+      ],
+    },
+  },
+  now: NOW,
+});
+assert.equal(headcountReadings[0].id, "web.headcount.engineers");
+assert.equal(headcountReadings[0].vendor, "company");
+assert.equal(headcountReadings[0].value, 80);
+
+const headcountRequest = buildHeadcountSearchRequest({
+  domain: "acme.com",
+  companyName: "Acme",
+});
+assert.match(headcountRequest.query, /"Acme"/);
+assert.match(headcountRequest.query, /engineers/);
+
+assert.equal(resolveCompanyQuery("Stripe").domain, "stripe.com");
+assert.equal(resolveCompanyQuery("stripe.com").source, "domain");
+assert.equal(resolveCompanyQuery("DefinitelyNotARealCoXYZ").source, "unresolved");
+assert.ok(suggestCompanies("stri").some((entry) => entry.domain === "stripe.com"));
+assert.deepEqual(parseLookupRequest({ schemaVersion: 1, query: "Vercel" }).domain, "vercel.com");
+assert.equal(parseLookupRequest({ schemaVersion: 1, query: "nope-unknown-zz" }).unresolved, true);
+assert.ok(parseSuggestRequest({ query: "notion" }).suggestions.length > 0);
+assert.equal(parseSuggestRequest({ query: "" }), null);
+
 /* ---------- core: queue message parsing ---------- */
 
 const validMessage = {
@@ -141,7 +212,7 @@ const validMessage = {
   queueToken: QUEUE_TOKEN,
 };
 assert.deepEqual(parseQueueMessage({ body: JSON.stringify(validMessage) }), {
-  company: { domain: "acme.com", cacheKey: "company:v1:acme.com" },
+  company: { domain: "acme.com", cacheKey: "company:v1:acme.com", name: "" },
   queueToken: QUEUE_TOKEN,
 });
 assert.equal(
@@ -466,7 +537,8 @@ async function testWorker() {
   assert.equal(happy.calls.saveResearch.length, 1);
   const saved = happy.calls.saveResearch[0];
   assert.equal(saved.cacheKey, "company:v1:acme.com");
-  assert.equal(saved.creditsUsed, 5);
+  assert.equal(saved.creditsUsed, 8);
+  assert.equal(happy.calls.searchWeb.length, 2);
   assert.equal(
     saved.validUntil,
     new Date(NOW.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
@@ -481,7 +553,7 @@ async function testWorker() {
       (entry) => entry.id === "github.acme.claudeMdFiles"
     )
   );
-  assert.equal(happy.calls.reserveBudget[0].cost, 5);
+  assert.equal(happy.calls.reserveBudget[0].cost, 8);
 
   const budgetDenied = workerDeps({
     reserveBudget: async () => false,
@@ -564,10 +636,17 @@ async function testWorker() {
 
 /* ---------- api ---------- */
 
-function apiEvent(body, origin = "https://joshuasuzuki.com", method = "POST") {
+function apiEvent(
+  body,
+  origin = "https://joshuasuzuki.com",
+  method = "POST",
+  path = "/v1/aispend/company",
+  extraHeaders = {}
+) {
   return {
-    headers: { origin },
-    requestContext: { http: { method } },
+    headers: { origin, ...extraHeaders },
+    rawPath: path,
+    requestContext: { http: { method, path } },
     body: typeof body === "string" ? body : JSON.stringify(body),
     isBase64Encoded: false,
   };
@@ -610,10 +689,11 @@ function freshItem({ researchAfterEpoch, state = "ready" }) {
 
 async function testApi() {
   process.env.ALLOWED_ORIGINS =
-    "https://joshuasuzuki.com,https://www.joshuasuzuki.com";
+    "https://joshuasuzuki.com,https://www.joshuasuzuki.com,https://scope.joshuasuzuki.com";
   process.env.COMPANY_TABLE_NAME = "aispend-test";
   process.env.ENRICH_QUEUE_URL = "https://sqs.test/queue";
   process.env.MAX_DAILY_ENRICHMENTS = "50";
+  delete process.env.ACCESS_CODE;
 
   const nowEpoch = Math.floor(NOW.getTime() / 1000);
 
@@ -621,6 +701,15 @@ async function testApi() {
     apiEvent({ schemaVersion: 1, domain: "acme.com" }, "https://evil.example")
   );
   assert.equal(badOrigin.statusCode, 403);
+
+  const hiddenOrigin = await aispendApi.handler(
+    apiEvent(
+      { schemaVersion: 1, query: "DefinitelyNotARealCoXYZ" },
+      "https://scope.joshuasuzuki.com"
+    )
+  );
+  assert.equal(hiddenOrigin.statusCode, 200);
+  assert.equal(JSON.parse(hiddenOrigin.body).status, "unresolved");
 
   const options = await aispendApi.handler(
     apiEvent({}, "https://joshuasuzuki.com", "OPTIONS")
@@ -632,11 +721,51 @@ async function testApi() {
   );
   assert.equal(wrongMethod.statusCode, 405);
 
-  const invalidDomain = await aispendApi.handler(
-    apiEvent({ schemaVersion: 1, domain: "not a domain" })
+  const invalidQuery = await aispendApi.handler(
+    apiEvent({ schemaVersion: 1, query: "" })
   );
-  assert.equal(invalidDomain.statusCode, 400);
-  assert.equal(JSON.parse(invalidDomain.body).code, "INVALID_DOMAIN");
+  assert.equal(invalidQuery.statusCode, 400);
+  assert.equal(JSON.parse(invalidQuery.body).code, "INVALID_QUERY");
+
+  const unresolved = await aispendApi.handler(
+    apiEvent({ schemaVersion: 1, query: "DefinitelyNotARealCoXYZ" })
+  );
+  assert.equal(unresolved.statusCode, 200);
+  assert.equal(JSON.parse(unresolved.body).status, "unresolved");
+
+  process.env.ACCESS_CODE = "secret-gate";
+  const gated = await aispendApi.handler(
+    apiEvent({ schemaVersion: 1, query: "Stripe" })
+  );
+  assert.equal(gated.statusCode, 401);
+  assert.equal(JSON.parse(gated.body).code, "ACCESS_REQUIRED");
+  const gateDeps = apiDeps();
+  aispendApi.setDependenciesForTest(gateDeps);
+  const unlocked = await aispendApi.handler(
+    apiEvent(
+      { schemaVersion: 1, query: "Stripe" },
+      "https://joshuasuzuki.com",
+      "POST",
+      "/v1/aispend/company",
+      { "x-spendscope-key": "secret-gate" }
+    )
+  );
+  assert.equal(unlocked.statusCode, 200);
+  assert.equal(JSON.parse(unlocked.body).domain, "stripe.com");
+  assert.equal(gateDeps.calls.enqueue[0].message.company.name, "Stripe");
+  aispendApi.setDependenciesForTest(null);
+  const suggest = await aispendApi.handler(
+    apiEvent(
+      { query: "stri" },
+      "https://joshuasuzuki.com",
+      "POST",
+      "/v1/aispend/suggest",
+      { "x-spendscope-key": "secret-gate" }
+    )
+  );
+  assert.equal(suggest.statusCode, 200);
+  assert.ok(JSON.parse(suggest.body).suggestions.length > 0);
+  delete process.env.ACCESS_CODE;
 
   const tooLarge = await aispendApi.handler(
     apiEvent(JSON.stringify({ domain: "x".repeat(20000) }))

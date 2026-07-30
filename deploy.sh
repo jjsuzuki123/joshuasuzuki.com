@@ -57,6 +57,10 @@ else
     node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
 fi
 
+AISPEND_GATED="${AISPEND_GATED:-false}"
+if [[ -n "${AISPEND_ACCESS_CODE:-}" ]]; then
+  AISPEND_GATED="true"
+fi
 if AISPEND_ENDPOINT="$(aws cloudformation describe-stacks \
     --stack-name "${AISPEND_STACK}" \
     --query "Stacks[0].Outputs[?OutputKey=='CompanyEndpoint'].OutputValue | [0]" \
@@ -64,11 +68,20 @@ if AISPEND_ENDPOINT="$(aws cloudformation describe-stacks \
     --profile "${AWS_PROFILE}" \
     --region "${AWS_REGION}" 2>/dev/null)" &&
     [[ "${AISPEND_ENDPOINT}" == https://* ]]; then
+  AISPEND_SUGGEST_ENDPOINT="$(aws cloudformation describe-stacks \
+    --stack-name "${AISPEND_STACK}" \
+    --query "Stacks[0].Outputs[?OutputKey=='SuggestEndpoint'].OutputValue | [0]" \
+    --output text \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" 2>/dev/null || true)"
   AISPEND_ENDPOINT="${AISPEND_ENDPOINT}" \
+    AISPEND_SUGGEST_ENDPOINT="${AISPEND_SUGGEST_ENDPOINT:-}" \
+    AISPEND_GATED="${AISPEND_GATED}" \
     node "scripts/write-aispend-config.js" "${AISPEND_CONFIG_FILE}"
 else
   echo "Spendscope backend is not ready; deploying the static app without live scans."
   AISPEND_ENDPOINT="" \
+    AISPEND_GATED="${AISPEND_GATED}" \
     node "scripts/write-aispend-config.js" "${AISPEND_CONFIG_FILE}"
 fi
 

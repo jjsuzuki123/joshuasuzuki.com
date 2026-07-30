@@ -3,7 +3,9 @@
 const crypto = require("node:crypto");
 const {
   buildCompanyPayload,
+  buildHeadcountSearchRequest,
   buildWebSearchRequest,
+  normalizeHeadcountResults,
   normalizeWebResults,
   parseQueueMessage,
 } = require("./core.js");
@@ -11,7 +13,7 @@ const { collectGithubSignals } = require("./github.js");
 
 const FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search";
 // Search-only request, no scrapes: one credit per returned result.
-const ESTIMATED_CREDITS_PER_ENRICHMENT = 5;
+const ESTIMATED_CREDITS_PER_ENRICHMENT = 8;
 const MAX_FIRECRAWL_RESPONSE_BYTES = 5_000_000;
 const READY_TTL_SECONDS = 60 * 24 * 60 * 60;
 const RICH_VALID_SECONDS = 14 * 24 * 60 * 60;
@@ -315,6 +317,7 @@ async function enrichCompany(
     );
     const github = await dependencies.collectGithub({
       domain: company.domain,
+      companyName: company.name,
       token: githubToken,
       now,
     });
@@ -348,17 +351,35 @@ async function enrichCompany(
           webResearch = "budget";
         } else {
           try {
-            const response = await dependencies.searchWeb({
+            const companyName =
+              company.name || github.orgs?.[0]?.name || null;
+            const toolResponse = await dependencies.searchWeb({
               apiKey: firecrawlKey,
               request: buildWebSearchRequest({
                 domain: company.domain,
-                companyName: github.orgs?.[0]?.name,
+                companyName,
               }),
             });
+            webReadings.push(...normalizeWebResults({ response: toolResponse, now }));
+            let sizeResponse = null;
+            try {
+              sizeResponse = await dependencies.searchWeb({
+                apiKey: firecrawlKey,
+                request: buildHeadcountSearchRequest({
+                  domain: company.domain,
+                  companyName,
+                }),
+              });
+              webReadings.push(
+                ...normalizeHeadcountResults({ response: sizeResponse, now })
+              );
+            } catch (_error) {
+              // Headcount search is additive; tool mentions still count.
+            }
             creditsUsed =
-              Number(response.creditsUsed || response.data?.creditsUsed) ||
+              Number(toolResponse.creditsUsed || toolResponse.data?.creditsUsed || 0) +
+                Number(sizeResponse?.creditsUsed || sizeResponse?.data?.creditsUsed || 0) ||
               ESTIMATED_CREDITS_PER_ENRICHMENT;
-            webReadings = normalizeWebResults({ response, now });
             webResearch = "ok";
           } catch (_error) {
             creditsUsed = ESTIMATED_CREDITS_PER_ENRICHMENT;
@@ -370,6 +391,7 @@ async function enrichCompany(
 
     const payload = buildCompanyPayload({
       domain: company.domain,
+      companyName: company.name || github.orgs?.[0]?.name,
       github,
       webReadings,
       coverage: {
