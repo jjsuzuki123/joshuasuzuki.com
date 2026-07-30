@@ -5,6 +5,7 @@ S3_BUCKET="josh-personal-site-1"
 CF_DISTRIBUTION_ID="E3LDS3FK17E3JF"
 FANTASY_IMPORT_STACK="rosterlab-fantasy-import-production"
 FANTASY_INSIGHTS_STACK="rosterlab-fantasy-insights-production"
+AISPEND_STACK="aispend-production"
 AWS_PROFILE="${AWS_PROFILE:-default}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 SOURCE_ENDPOINT="${SOURCE_ENDPOINT:-}"
@@ -17,8 +18,10 @@ if [[ ! -f "index.html" ]]; then
 fi
 
 FANTASY_CONFIG_FILE="$(mktemp)"
-trap 'rm -f "${FANTASY_CONFIG_FILE}"' EXIT
+AISPEND_CONFIG_FILE="$(mktemp)"
+trap 'rm -f "${FANTASY_CONFIG_FILE}" "${AISPEND_CONFIG_FILE}"' EXIT
 cp "fantasy/config.js" "${FANTASY_CONFIG_FILE}"
+cp "aispend/config.js" "${AISPEND_CONFIG_FILE}"
 if DISCOVERED_SOURCE_ENDPOINT="$(aws cloudformation describe-stacks \
       --stack-name "${FANTASY_INSIGHTS_STACK}" \
       --query "Stacks[0].Outputs[?OutputKey=='SourceEndpoint'].OutputValue | [0]" \
@@ -54,6 +57,34 @@ else
     node "scripts/write-fantasy-config.js" "${FANTASY_CONFIG_FILE}"
 fi
 
+AISPEND_GATED="${AISPEND_GATED:-false}"
+if [[ -n "${AISPEND_ACCESS_CODE:-}" ]]; then
+  AISPEND_GATED="true"
+fi
+if AISPEND_ENDPOINT="$(aws cloudformation describe-stacks \
+    --stack-name "${AISPEND_STACK}" \
+    --query "Stacks[0].Outputs[?OutputKey=='CompanyEndpoint'].OutputValue | [0]" \
+    --output text \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" 2>/dev/null)" &&
+    [[ "${AISPEND_ENDPOINT}" == https://* ]]; then
+  AISPEND_SUGGEST_ENDPOINT="$(aws cloudformation describe-stacks \
+    --stack-name "${AISPEND_STACK}" \
+    --query "Stacks[0].Outputs[?OutputKey=='SuggestEndpoint'].OutputValue | [0]" \
+    --output text \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" 2>/dev/null || true)"
+  AISPEND_ENDPOINT="${AISPEND_ENDPOINT}" \
+    AISPEND_SUGGEST_ENDPOINT="${AISPEND_SUGGEST_ENDPOINT:-}" \
+    AISPEND_GATED="${AISPEND_GATED}" \
+    node "scripts/write-aispend-config.js" "${AISPEND_CONFIG_FILE}"
+else
+  echo "Spendscope backend is not ready; deploying the static app without live scans."
+  AISPEND_ENDPOINT="" \
+    AISPEND_GATED="${AISPEND_GATED}" \
+    node "scripts/write-aispend-config.js" "${AISPEND_CONFIG_FILE}"
+fi
+
 aws s3 sync . "s3://${S3_BUCKET}" \
   --delete \
   --exclude ".git/*" \
@@ -70,8 +101,10 @@ aws s3 sync . "s3://${S3_BUCKET}" \
   --exclude "extensions/*" \
   --exclude "fantasy-backend/*" \
   --exclude "fantasy-insights/*" \
+  --exclude "aispend-backend/*" \
   --exclude "*/node_modules/*" \
   --exclude "fantasy/config.js" \
+  --exclude "aispend/config.js" \
   --exclude "_deploy/*" \
   --exclude "scripts/*" \
   --exclude "permissions-policy.json" \
@@ -93,6 +126,12 @@ for infra_object in \
 done
 
 aws s3 cp "${FANTASY_CONFIG_FILE}" "s3://${S3_BUCKET}/fantasy/config.js" \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "application/javascript; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}"
+
+aws s3 cp "${AISPEND_CONFIG_FILE}" "s3://${S3_BUCKET}/aispend/config.js" \
   --cache-control "no-cache, no-store, must-revalidate" \
   --content-type "application/javascript; charset=utf-8" \
   --profile "${AWS_PROFILE}" \
@@ -120,6 +159,13 @@ aws s3 cp "s3://${S3_BUCKET}/admin/index.html" "s3://${S3_BUCKET}/admin/index.ht
   --region "${AWS_REGION}"
 
 aws s3 cp "s3://${S3_BUCKET}/sunset/index.html" "s3://${S3_BUCKET}/sunset/index.html" \
+  --metadata-directive REPLACE \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "text/html; charset=utf-8" \
+  --profile "${AWS_PROFILE}" \
+  --region "${AWS_REGION}"
+
+aws s3 cp "s3://${S3_BUCKET}/aispend/index.html" "s3://${S3_BUCKET}/aispend/index.html" \
   --metadata-directive REPLACE \
   --cache-control "no-cache, no-store, must-revalidate" \
   --content-type "text/html; charset=utf-8" \
@@ -181,6 +227,17 @@ for key in "fantasy/football" "fantasy/football/"; do
     --bucket "${S3_BUCKET}" \
     --key "${key}" \
     --body "fantasy/football/index.html" \
+    --cache-control "no-cache, no-store, must-revalidate" \
+    --content-type "text/html; charset=utf-8" \
+    --profile "${AWS_PROFILE}" \
+    --region "${AWS_REGION}" >/dev/null
+done
+
+for key in "aispend" "aispend/"; do
+  aws s3api put-object \
+    --bucket "${S3_BUCKET}" \
+    --key "${key}" \
+    --body "aispend/index.html" \
     --cache-control "no-cache, no-store, must-revalidate" \
     --content-type "text/html; charset=utf-8" \
     --profile "${AWS_PROFILE}" \

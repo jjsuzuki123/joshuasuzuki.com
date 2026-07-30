@@ -1,0 +1,298 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Cache-backed public-signal AI spend enrichment service for Spendscope
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://joshuasuzuki.com,https://www.joshuasuzuki.com,https://scope.joshuasuzuki.com
+  ApiExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::545095759709:role/aispend-production-api
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/aispend-[a-z0-9-]+-api$
+  WorkerExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::545095759709:role/aispend-production-worker
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/aispend-[a-z0-9-]+-worker$
+  GithubSecretName:
+    Type: String
+    Default: aispend/github/production
+    AllowedPattern: ^[A-Za-z0-9/_+=.@-]{1,512}$
+  FirecrawlSecretName:
+    Type: String
+    Default: aispend/firecrawl/production
+    AllowedPattern: ^[A-Za-z0-9/_+=.@-]{1,512}$
+  WebResearchEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+  MaxDailyFirecrawlCredits:
+    Type: Number
+    Default: 100
+    MinValue: 0
+    MaxValue: 100000
+  MaxDailyEnrichments:
+    Type: Number
+    Default: 50
+    MinValue: 1
+    MaxValue: 10000
+  AccessCode:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Shared access code for the unlisted Spendscope app. Empty disables the gate.
+
+Resources:
+  CompanyTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub aispend-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  EnrichDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub aispend-${Environment}-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  EnrichQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub aispend-${Environment}
+      MessageRetentionPeriod: 86400
+      VisibilityTimeout: 720
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EnrichDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  CompanyApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/aispend-${Environment}
+      RetentionInDays: 7
+
+  CompanyApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowHeaders:
+          - Content-Type
+          - X-Spendscope-Key
+        AllowMethods:
+          - POST
+          - OPTIONS
+        MaxAge: 300
+      AccessLogSettings:
+        DestinationArn: !GetAtt CompanyApiAccessLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 4
+        ThrottlingRateLimit: 1
+      FailOnWarnings: true
+
+  CompanyApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - CompanyApiFunctionLogGroup
+    Properties:
+      FunctionName: !Sub aispend-${Environment}-api
+      Description: Serves cached company AI-spend readings and queues enrichment
+      CodeUri: service/
+      Handler: api.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: 2
+      Role: !Ref ApiExecutionRoleArn
+      Environment:
+        Variables:
+          ALLOWED_ORIGINS: !Join [",", !Ref AllowedOrigins]
+          COMPANY_TABLE_NAME: !Ref CompanyTable
+          ENRICH_QUEUE_URL: !Ref EnrichQueue
+          MAX_DAILY_ENRICHMENTS: !Ref MaxDailyEnrichments
+          ACCESS_CODE: !Ref AccessCode
+      LoggingConfig:
+        ApplicationLogLevel: ERROR
+        LogFormat: JSON
+        SystemLogLevel: WARN
+      Events:
+        Company:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CompanyApi
+            Path: /v1/aispend/company
+            Method: POST
+        Suggest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CompanyApi
+            Path: /v1/aispend/suggest
+            Method: POST
+
+  EnrichWorkerFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - EnrichWorkerFunctionLogGroup
+    Properties:
+      FunctionName: !Sub aispend-${Environment}-worker
+      Description: Collects public GitHub and web AI-adoption signals per company
+      CodeUri: service/
+      Handler: worker.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      MemorySize: 512
+      Timeout: 110
+      ReservedConcurrentExecutions: 1
+      Role: !Ref WorkerExecutionRoleArn
+      Environment:
+        Variables:
+          COMPANY_TABLE_NAME: !Ref CompanyTable
+          GITHUB_SECRET_NAME: !Ref GithubSecretName
+          FIRECRAWL_SECRET_NAME: !Ref FirecrawlSecretName
+          WEB_RESEARCH_ENABLED: !Ref WebResearchEnabled
+          MAX_DAILY_FIRECRAWL_CREDITS: !Ref MaxDailyFirecrawlCredits
+      LoggingConfig:
+        ApplicationLogLevel: ERROR
+        LogFormat: JSON
+        SystemLogLevel: WARN
+      Events:
+        EnrichQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EnrichQueue.Arn
+            BatchSize: 1
+            ScalingConfig:
+              MaximumConcurrency: 2
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  CompanyApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/aispend-${Environment}-api
+      RetentionInDays: 7
+
+  EnrichWorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/aispend-${Environment}-worker
+      RetentionInDays: 7
+
+  CompanyApiErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub aispend-${Environment}-api-errors
+      AlarmDescription: Spendscope company API Lambda errors
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CompanyApiFunction
+
+  EnrichWorkerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub aispend-${Environment}-worker-errors
+      AlarmDescription: Spendscope enrichment worker errors
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref EnrichWorkerFunction
+
+  EnrichDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub aispend-${Environment}-dead-letters
+      AlarmDescription: Spendscope enrichment dead-letter messages
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 300
+      Statistic: Maximum
+      Threshold: 1
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt EnrichDeadLetterQueue.QueueName
+
+  EnrichQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub aispend-${Environment}-queue-age
+      AlarmDescription: Spendscope enrichment queue has waited more than 15 minutes
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateAgeOfOldestMessage
+      Namespace: AWS/SQS
+      Period: 300
+      Statistic: Maximum
+      Threshold: 900
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt EnrichQueue.QueueName
+
+Outputs:
+  CompanyEndpoint:
+    Description: Spendscope company lookup endpoint
+    Value: !Sub https://${CompanyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}/v1/aispend/company
+  SuggestEndpoint:
+    Description: Spendscope company typeahead endpoint
+    Value: !Sub https://${CompanyApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}/v1/aispend/suggest
+  GithubSecretName:
+    Description: Secrets Manager name that should contain a read-only GitHub token
+    Value: !Ref GithubSecretName
+  FirecrawlSecretName:
+    Description: Secrets Manager name that may contain a Firecrawl API key
+    Value: !Ref FirecrawlSecretName
